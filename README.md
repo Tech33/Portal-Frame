@@ -30,7 +30,7 @@ as the screensaver).
 
 ## Features
 
-- Plays a public **Google Photos or iCloud** shared album; new photos appear automatically.
+- Plays a **Google Photos or iCloud** shared album; new photos appear automatically.
 - On-device setup: **QR scan** or paste the link — no computer needed after install.
 - Clock & weather, photo date captions, shuffle, adjustable timing and transitions.
 - Side-by-side portraits, cinematic pan/zoom, auto-enhance, ambient color, night dimming,
