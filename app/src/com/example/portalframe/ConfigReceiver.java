@@ -31,6 +31,7 @@ public class ConfigReceiver extends BroadcastReceiver {
     static final String KEY_CAPTIONS = "captions";   // boolean: photo date captions
     static final String KEY_FACE = "face_framing";   // boolean: face-aware Ken Burns target
     static final String KEY_AMBIENT = "ambient_color"; // boolean: per-photo color glow
+    static final String KEY_ENHANCE = "auto_enhance"; // boolean: on-device auto-levels + vibrance
     static final long DEFAULT_DELAY_MS = 6000L;
     static final long DEFAULT_FADE_MS = 1200L;
     static final boolean DEFAULT_PAIRS = true;
@@ -41,6 +42,7 @@ public class ConfigReceiver extends BroadcastReceiver {
     static final boolean DEFAULT_CAPTIONS = true;
     static final boolean DEFAULT_FACE = true;
     static final boolean DEFAULT_AMBIENT = true;
+    static final boolean DEFAULT_ENHANCE = true;
 
     // ADB-settable boolean extras (extra name -> pref key) for quick testing, e.g.
     //   adb shell am broadcast -n com.example.portalframe/.ConfigReceiver --ez ken_burns false
@@ -48,6 +50,7 @@ public class ConfigReceiver extends BroadcastReceiver {
             {"shuffle", KEY_SHUFFLE}, {"pairs", KEY_PAIRS}, {"ken_burns", KEY_KEN_BURNS},
             {"clock", KEY_CLOCK}, {"night", KEY_NIGHT}, {"on_this_day", KEY_ON_THIS_DAY},
             {"captions", KEY_CAPTIONS}, {"face_framing", KEY_FACE}, {"ambient_color", KEY_AMBIENT},
+            {"auto_enhance", KEY_ENHANCE},
     };
 
     // Cached photo list so the screensaver starts straight from the album (no

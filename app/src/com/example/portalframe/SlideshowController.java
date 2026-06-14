@@ -101,11 +101,13 @@ public class SlideshowController {
     private final boolean captions; // photo date captions (lower-right)
     private final boolean faceFraming;  // bias Ken Burns toward detected faces
     private final boolean ambientColor; // tint chrome to each photo's palette
+    private final boolean enhance;      // on-device auto-levels + vibrance
 
     // Ken Burns animation state.
     private final java.util.Random rnd = new java.util.Random();
     private ValueAnimator kbAnim;
     private KenBurns kbPath;
+    private android.graphics.ColorMatrixColorFilter enhanceFilter; // per-slide, or null
 
     private List<Slide> items = new ArrayList<>();
     private boolean remote = false;
@@ -138,6 +140,7 @@ public class SlideshowController {
         this.captions = prefs.getBoolean(ConfigReceiver.KEY_CAPTIONS, ConfigReceiver.DEFAULT_CAPTIONS);
         this.faceFraming = prefs.getBoolean(ConfigReceiver.KEY_FACE, ConfigReceiver.DEFAULT_FACE);
         this.ambientColor = prefs.getBoolean(ConfigReceiver.KEY_AMBIENT, ConfigReceiver.DEFAULT_AMBIENT);
+        this.enhance = prefs.getBoolean(ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE);
         monthYearFmt.setTimeZone(TimeZone.getTimeZone("UTC"));
 
         root.setBackgroundColor(Color.BLACK);
@@ -536,6 +539,8 @@ public class SlideshowController {
                     applyKenBurnsStart(back, kbPath);
                     startKenBurnsOnBack(gen);
                     updateAmbient(b);
+                    enhanceFilter = enhance ? makeEnhance(b) : null;
+                    back.setColorFilter(enhanceFilter);
                 }
                 prefetchNext(nextStart(i, isPair));
                 scheduleAuto();
@@ -585,6 +590,8 @@ public class SlideshowController {
                 // settles onto `back` we hand off at the same transform and animate to the end.
                 kbPath = newKenBurnsPath(bmp);
                 applyKenBurnsStart(front, kbPath);
+                enhanceFilter = enhance ? makeEnhance(bmp) : null;
+                front.setColorFilter(enhanceFilter);
                 front.animate().alpha(1f).setDuration(fadeMs).withEndAction(new Runnable() {
                     @Override
                     public void run() {
@@ -593,8 +600,10 @@ public class SlideshowController {
                         }
                         back.setImageBitmap(bmp);
                         applyKenBurnsStart(back, kbPath);
+                        back.setColorFilter(enhanceFilter);
                         front.setAlpha(0f);
                         applyKenBurnsStart(front, null); // reset incoming view for reuse
+                        front.setColorFilter(null);
                         startKenBurnsOnBack(gen);
                         updateAmbient(bmp);
                         prefetchNext(nextStart(next, isPair));
@@ -657,6 +666,14 @@ public class SlideshowController {
         g.setColors(new int[]{0x00000000, 0x00000000, edge}); // clear core -> color rim
         ambientGlow.setBackground(g);
         ambientGlow.animate().alpha(1f).setDuration(600);
+    }
+
+    // ---------------------------------------------------------------- auto-enhance
+
+    /** Per-photo auto-levels + vibrance color filter (null when off / not needed). */
+    private android.graphics.ColorMatrixColorFilter makeEnhance(Bitmap bmp) {
+        android.graphics.ColorMatrix cm = PhotoEnhance.compute(bmp);
+        return cm == null ? null : new android.graphics.ColorMatrixColorFilter(cm);
     }
 
     // ---------------------------------------------------------------- Ken Burns

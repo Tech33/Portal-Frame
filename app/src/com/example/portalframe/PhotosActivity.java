@@ -312,6 +312,9 @@ public class PhotosActivity extends Activity {
         topMargin(faceRow, 8);
         aiCard.addView(faceRow);
         aiCard.addView(Ui.hairline(this));
+        aiCard.addView(boolRow("Auto-enhance photos",
+                ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE));
+        aiCard.addView(Ui.hairline(this));
         aiCard.addView(boolRow("Ambient color glow",
                 ConfigReceiver.KEY_AMBIENT, ConfigReceiver.DEFAULT_AMBIENT));
         aiCard.addView(Ui.hairline(this));
