@@ -13,6 +13,21 @@ Download the latest `Frame-*.apk` from **[Releases](https://github.com/Ishtiaqho
 then follow the **[Install & User Guide](INSTALL.md)** (install the APK, add your album, turn it on
 as the screensaver).
 
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/01-slideshow.png" alt="Slideshow screensaver"><br><sub><b>Slideshow</b> — your photos when the Portal is idle</sub></td>
+    <td width="50%"><img src="docs/screenshots/02-settings-albums.png" alt="Albums settings"><br><sub><b>Albums</b> — add several, stop or remove each</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/03-add-album.png" alt="Add an album"><br><sub><b>Add an album</b> — scan a QR or paste a link</sub></td>
+    <td><img src="docs/screenshots/04-empty-state.png" alt="First-run setup"><br><sub><b>Setup</b> — first run</sub></td>
+  </tr>
+</table>
+
+<sub>Sample photos shown; personal photos, album names and links are scrubbed.</sub>
+
 ## Features
 
 - Plays a public **Google Photos or iCloud** shared album; new photos appear automatically.
