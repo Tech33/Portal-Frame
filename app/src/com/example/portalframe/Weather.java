@@ -26,10 +26,12 @@ final class Weather {
     static final class Now {
         final String emoji;
         final int temp;
+        final boolean moon; // clear/mainly-clear at night → draw a blue crescent
 
-        Now(String emoji, int temp) {
+        Now(String emoji, int temp, boolean moon) {
             this.emoji = emoji;
             this.temp = temp;
+            this.moon = moon;
         }
 
         /** e.g. "☀️ 72°" */
@@ -48,22 +50,25 @@ final class Weather {
             }
             String url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat
                     + "&longitude=" + lon
-                    + "&current=temperature_2m,weather_code"
+                    + "&current=temperature_2m,weather_code,is_day"
                     + "&temperature_unit=" + (fahrenheit ? "fahrenheit" : "celsius");
             JSONObject cur = new JSONObject(httpGet(url)).getJSONObject("current");
             double t = cur.getDouble("temperature_2m");
             int code = cur.optInt("weather_code", 0);
-            return new Now(emojiFor(code), (int) Math.round(t));
+            boolean day = cur.optInt("is_day", 1) == 1;
+            boolean moon = !day && (code == 0 || code == 1); // clear / mainly-clear night
+            return new Now(emojiFor(code, day), (int) Math.round(t), moon);
         } catch (Exception e) {
             Log.w(TAG, "weather fetch failed", e);
             return null;
         }
     }
 
-    /** Map a WMO weather code (Open-Meteo) to a single emoji. */
-    private static String emojiFor(int c) {
-        if (c == 0) return "☀️";                    // clear sky
-        if (c == 1 || c == 2) return "⛅";                // mainly clear / partly cloudy
+    /** Map a WMO weather code (Open-Meteo) to a single emoji, day/night aware. */
+    private static String emojiFor(int c, boolean day) {
+        if (c == 0) return day ? "☀️" : "🌙";        // clear sky → moon at night
+        if (c == 1) return day ? "🌤️" : "🌙";       // mainly clear
+        if (c == 2) return day ? "⛅" : "☁️";          // partly cloudy
         if (c == 3) return "☁️";                    // overcast
         if (c == 45 || c == 48) return "🌫️";  // fog
         if (c >= 51 && c <= 57) return "🌦️";  // drizzle

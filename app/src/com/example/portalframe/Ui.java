@@ -77,6 +77,32 @@ final class Ui {
         }
     }
 
+    private static Typeface sClock;
+
+    /**
+     * The Portal system clock font — Meta's "Optimistic" (Display, Light), loaded
+     * straight from /system/fonts (world-readable) so our clock matches the native
+     * home/screensaver clock exactly. Falls back to the bundled regular face on
+     * non-Portal devices.
+     */
+    static Typeface clockFace(Context c) {
+        if (sClock == null) {
+            sClock = loadFile("/system/fonts/Optimistic_Display_A_Lt.ttf", c);
+        }
+        return sClock;
+    }
+
+    private static Typeface loadFile(String path, Context c) {
+        try {
+            java.io.File f = new java.io.File(path);
+            if (f.exists()) {
+                return Typeface.createFromFile(f);
+            }
+        } catch (Exception ignored) {
+        }
+        return regular(c);
+    }
+
     static int dp(Context c, float v) {
         return Math.round(TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP, v, c.getResources().getDisplayMetrics()));
@@ -323,6 +349,24 @@ final class Ui {
         v.setLayoutParams(lp);
         v.setBackgroundColor(HAIRLINE);
         return v;
+    }
+
+    /** A filled crescent-moon bitmap (for the night weather glyph), {@code color}-tinted. */
+    static android.graphics.Bitmap crescent(int sizePx, int color) {
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(
+                sizePx, sizePx, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas cv = new android.graphics.Canvas(b);
+        android.graphics.Paint p =
+                new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setColor(color);
+        float r = sizePx / 2f;
+        cv.drawCircle(r, r, r, p);
+        // Carve an offset disc to leave a crescent.
+        p.setXfermode(new android.graphics.PorterDuffXfermode(
+                android.graphics.PorterDuff.Mode.CLEAR));
+        cv.drawCircle(r + r * 0.52f, r - r * 0.16f, r * 0.95f, p);
+        p.setXfermode(null);
+        return b;
     }
 
     // ---- drawable helpers ----

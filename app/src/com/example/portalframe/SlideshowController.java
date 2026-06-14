@@ -71,9 +71,13 @@ public class SlideshowController {
     private final java.text.DateFormat timeFmt;
     private final java.text.SimpleDateFormat dateFmt =
             new java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.getDefault());
+    private final java.text.SimpleDateFormat monthYearFmt =
+            new java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.getDefault());
     private final boolean fahrenheit =
             "US".equals(java.util.Locale.getDefault().getCountry());
-    private String weatherText = ""; // e.g. "☀️ 72°" once loaded
+    private final View nightTint;   // warm overlay that fades in at night (Ambient-EQ-lite)
+    private Weather.Now weather; // current reading; null until loaded
+    private final android.graphics.drawable.Drawable moonDrawable; // blue crescent, clear nights
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final int reqW;
     private final int reqH;
@@ -88,10 +92,12 @@ public class SlideshowController {
     private final long intervalMs;  // time each slide is held
     private final long autoFadeMs;  // auto crossfade duration
     private final boolean shuffle;  // play photos in random order
+    private final boolean pairs;    // pair portrait photos side-by-side
 
     private List<Slide> items = new ArrayList<>();
     private boolean remote = false;
     private int index = 0;
+    private boolean curIsPair = false; // current frame shows a portrait pair
     private boolean running = false;
     private long animGen = 0;
     private Runnable onDismiss;
@@ -111,6 +117,8 @@ public class SlideshowController {
         this.autoFadeMs = prefs.getLong(
                 ConfigReceiver.KEY_FADE_MS, ConfigReceiver.DEFAULT_FADE_MS);
         this.shuffle = prefs.getBoolean(ConfigReceiver.KEY_SHUFFLE, false);
+        this.pairs = prefs.getBoolean(ConfigReceiver.KEY_PAIRS, ConfigReceiver.DEFAULT_PAIRS);
+        monthYearFmt.setTimeZone(TimeZone.getTimeZone("UTC"));
 
         root.setBackgroundColor(Color.BLACK);
         back = newImageView();
@@ -174,10 +182,15 @@ public class SlideshowController {
                 java.util.Locale.getDefault());
         clock = new TextView(context);
         clock.setTextColor(Color.WHITE);
-        clock.setTypeface(Ui.regular(context));
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 52);
+        clock.setTypeface(Ui.clockFace(context)); // match the Portal native clock
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 80);
         clock.setShadowLayer(12f, 0f, 2f, Color.BLACK);
         clock.setIncludeFontPadding(false);
+        int moonPx = Ui.dp(context, 22);
+        android.graphics.drawable.BitmapDrawable md = new android.graphics.drawable.BitmapDrawable(
+                context.getResources(), Ui.crescent(moonPx, 0xFF5FA8FF));
+        md.setBounds(0, 0, moonPx, moonPx);
+        moonDrawable = md;
         dateLine = new TextView(context);
         dateLine.setTextColor(0xFFF0F0F0);
         dateLine.setTypeface(Ui.medium(context));
@@ -192,8 +205,17 @@ public class SlideshowController {
                 FrameLayout.LayoutParams.WRAP_CONTENT);
         cbp.gravity = Gravity.BOTTOM | Gravity.START;
         cbp.leftMargin = margin;
-        cbp.bottomMargin = margin;
+        cbp.bottomMargin = Ui.dp(context, 95); // match the Portal home clock's height off the bottom
         clockBox.setLayoutParams(cbp);
+
+        // Warm overlay over the photo that fades in at night (Ambient-EQ-lite): the
+        // image is dimmed by the window brightness and tinted cozy-warm here.
+        nightTint = new View(context);
+        nightTint.setBackgroundColor(0xFFFF8A2A);
+        nightTint.setAlpha(0f);
+        nightTint.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
 
         // Shimmer over the dark first frame so it never looks "stuck" while loading.
         shimmer = new ShimmerView(context);
@@ -203,6 +225,7 @@ public class SlideshowController {
 
         root.addView(back);
         root.addView(front);
+        root.addView(nightTint);
         root.addView(shimmer);
         root.addView(topScrim);
         root.addView(bottomScrim);
@@ -395,7 +418,7 @@ public class SlideshowController {
 
     public void showNext() {
         if (!items.isEmpty()) {
-            transitionTo((index + 1) % items.size(), SWIPE_FADE_MS);
+            transitionTo(nextStart(index, curIsPair), SWIPE_FADE_MS);
         }
     }
 
@@ -418,8 +441,9 @@ public class SlideshowController {
             if (!running || items.isEmpty()) {
                 return;
             }
+            int step = curIsPair ? 2 : 1;
             int next;
-            if (index + 1 >= items.size()) {
+            if (index + step >= items.size()) {
                 // Wrapped a full loop: reshuffle so the next loop differs and
                 // doesn't open with a photo we just showed.
                 if (shuffle && items.size() > 2) {
@@ -427,7 +451,7 @@ public class SlideshowController {
                 }
                 next = 0;
             } else {
-                next = index + 1;
+                next = index + step;
             }
             transitionTo(next, autoFadeMs);
         }
@@ -436,7 +460,9 @@ public class SlideshowController {
     /** Show item i directly (no crossfade) — used for the first frame. */
     private void showImmediate(final int i) {
         final long gen = ++animGen;
-        loader.load(items.get(i).id, reqW, reqH, new ImageLoader.Callback() {
+        final int j = pairWith(i);
+        final boolean isPair = j >= 0;
+        ImageLoader.Callback cb = new ImageLoader.Callback() {
             @Override
             public void onLoaded(Bitmap b) {
                 if (gen != animGen) {
@@ -447,25 +473,36 @@ public class SlideshowController {
                     front.setImageDrawable(null);
                     front.setAlpha(0f);
                     index = i;
+                    curIsPair = isPair;
                     status.setText("");
                     info.setText(captionOf(i));
                     noteShown(i);
+                    if (isPair) {
+                        noteShown(j);
+                    }
                     hideShimmer();
                 }
-                prefetchNext(i);
+                prefetchNext(nextStart(i, isPair));
                 scheduleAuto();
             }
-        });
+        };
+        if (isPair) {
+            loader.loadPair(items.get(i).id, items.get(j).id, reqW, reqH, cb);
+        } else {
+            loader.load(items.get(i).id, reqW, reqH, cb);
+        }
     }
 
-    /** Crossfade to item {@code next}; loads async, safe to call mid-fade. */
+    /** Crossfade to start item {@code next}; loads async, safe to call mid-fade. */
     private void transitionTo(final int next, final long fadeMs) {
         if (items.isEmpty()) {
             return;
         }
         handler.removeCallbacks(autoTick);
         final long gen = ++animGen;
-        loader.load(items.get(next).id, reqW, reqH, new ImageLoader.Callback() {
+        final int j = pairWith(next);
+        final boolean isPair = j >= 0;
+        ImageLoader.Callback cb = new ImageLoader.Callback() {
             @Override
             public void onLoaded(final Bitmap bmp) {
                 if (gen != animGen) {
@@ -473,6 +510,7 @@ public class SlideshowController {
                 }
                 if (bmp == null) {
                     index = next;
+                    curIsPair = isPair;
                     scheduleAuto();
                     return;
                 }
@@ -480,9 +518,13 @@ public class SlideshowController {
                 front.setImageBitmap(bmp);
                 front.setAlpha(0f);
                 index = next;
+                curIsPair = isPair;
                 status.setText("");
                 info.setText(captionOf(next));
                 noteShown(next);
+                if (isPair) {
+                    noteShown(j);
+                }
                 hideShimmer();
                 front.animate().alpha(1f).setDuration(fadeMs).withEndAction(new Runnable() {
                     @Override
@@ -492,23 +534,77 @@ public class SlideshowController {
                         }
                         back.setImageBitmap(bmp);
                         front.setAlpha(0f);
-                        prefetchNext(next);
+                        prefetchNext(nextStart(next, isPair));
                         scheduleAuto();
                     }
                 });
             }
-        });
+        };
+        if (isPair) {
+            loader.loadPair(items.get(next).id, items.get(j).id, reqW, reqH, cb);
+        } else {
+            loader.load(items.get(next).id, reqW, reqH, cb);
+        }
     }
 
-    private void prefetchNext(int from) {
-        if (items.size() > 1) {
-            loader.prefetch(items.get((from + 1) % items.size()).id, reqW, reqH);
+    /** Index this slide pairs with (the next portrait), or -1 if it doesn't pair. */
+    private int pairWith(int start) {
+        if (!pairs || items.size() < 2 || start < 0 || start >= items.size()) {
+            return -1;
+        }
+        if (!items.get(start).portrait) {
+            return -1;
+        }
+        int j = start + 1;
+        if (j >= items.size() || !items.get(j).portrait) {
+            return -1; // don't pair across the loop wrap
+        }
+        return j;
+    }
+
+    /** The start index after this one, stepping over a pair, wrapping to 0. */
+    private int nextStart(int start, boolean isPair) {
+        int n = start + (isPair ? 2 : 1);
+        return n >= items.size() ? 0 : n;
+    }
+
+    private void prefetchNext(int startIndex) {
+        if (items.size() > 1 && startIndex >= 0 && startIndex < items.size()) {
+            loader.prefetch(items.get(startIndex).id, reqW, reqH);
         }
     }
 
     private String captionOf(int i) {
-        String cap = items.get(i).caption;
-        return cap == null ? "" : cap;
+        Slide s = items.get(i);
+        if (s.caption != null) {
+            return s.caption; // explicit override (e.g. an "On this day" badge)
+        }
+        return s.timeMs == Slide.NO_DATE ? "" : relativeTime(s.timeMs);
+    }
+
+    /** "Today" / "Yesterday" / "N days|weeks|months ago", or "MMM yyyy" past a year. */
+    private String relativeTime(long timeMs) {
+        long now = System.currentTimeMillis();
+        long todayDays = (now + TimeZone.getDefault().getOffset(now)) / 86400000L;
+        long days = todayDays - timeMs / 86400000L; // timeMs is already a UTC wall clock
+        if (days <= 0) {
+            return "Today";
+        }
+        if (days == 1) {
+            return "Yesterday";
+        }
+        if (days < 7) {
+            return days + " days ago";
+        }
+        if (days < 45) {
+            long w = Math.round(days / 7.0);
+            return w <= 1 ? "1 week ago" : w + " weeks ago";
+        }
+        if (days < 365) {
+            long m = Math.round(days / 30.0);
+            return m <= 1 ? "1 month ago" : m + " months ago";
+        }
+        return monthYearFmt.format(new java.util.Date(timeMs));
     }
 
     // ---------------------------------------------------------------- smart shuffle
@@ -592,7 +688,7 @@ public class SlideshowController {
             String badge = yearsAgo == 1
                     ? "1 year ago today ✨"
                     : yearsAgo + " years ago today ✨";
-            memories.add(new Slide(s.id, badge, s.timeMs));
+            memories.add(new Slide(s.id, badge, s.timeMs, s.portrait));
             it.remove();
         }
         if (memories.isEmpty()) {
@@ -628,7 +724,42 @@ public class SlideshowController {
         Calendar c = Calendar.getInstance();
         clock.setText(timeFmt.format(c.getTime()));
         String date = dateFmt.format(c.getTime());
-        dateLine.setText(weatherText.isEmpty() ? date : date + "   " + weatherText);
+        if (weather == null) {
+            dateLine.setText(date);
+        } else if (weather.moon && moonDrawable != null) {
+            // Clear night: draw a blue crescent (color emoji can't be tinted) + temp.
+            android.text.SpannableStringBuilder sb =
+                    new android.text.SpannableStringBuilder(date + "   ");
+            int s = sb.length();
+            sb.append(" ");
+            sb.setSpan(new android.text.style.ImageSpan(
+                            moonDrawable, android.text.style.ImageSpan.ALIGN_CENTER),
+                    s, s + 1, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.append("  ").append(String.valueOf(weather.temp)).append("°");
+            dateLine.setText(sb);
+        } else {
+            dateLine.setText(date + "   " + weather.label());
+        }
+        nightTint.setAlpha(warmthForHour(
+                c.get(Calendar.HOUR_OF_DAY) + c.get(Calendar.MINUTE) / 60f));
+    }
+
+    /**
+     * Warm-overlay strength by time of day (Ambient-EQ-lite): none in daylight,
+     * easing in 20:00→23:00, full overnight, easing out 06:00→08:00.
+     */
+    private static float warmthForHour(float h) {
+        final float MAX = 0.14f;
+        if (h >= 8f && h < 20f) {
+            return 0f;
+        }
+        if (h >= 20f && h < 23f) {
+            return MAX * (h - 20f) / 3f;
+        }
+        if (h >= 23f || h < 6f) {
+            return MAX;
+        }
+        return MAX * (8f - h) / 2f; // 06:00–08:00
     }
 
     // ---------------------------------------------------------------- weather
@@ -644,7 +775,7 @@ public class SlideshowController {
     private void startWeather() {
         handler.removeCallbacks(weatherTick);
         // Fetch immediately if we have nothing yet; otherwise keep the periodic cadence.
-        handler.postDelayed(weatherTick, weatherText.isEmpty() ? 0 : WEATHER_INTERVAL_MS);
+        handler.postDelayed(weatherTick, weather == null ? 0 : WEATHER_INTERVAL_MS);
     }
 
     private void refreshWeather() {
@@ -658,7 +789,7 @@ public class SlideshowController {
                 handler.post(new Runnable() {
                     @Override
                     public void run() {
-                        weatherText = now.label();
+                        weather = now;
                         updateClock();
                     }
                 });

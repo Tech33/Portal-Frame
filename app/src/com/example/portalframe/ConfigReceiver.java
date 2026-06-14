@@ -23,15 +23,18 @@ public class ConfigReceiver extends BroadcastReceiver {
     static final String KEY_DELAY_MS = "delay_ms";   // ms each photo is held
     static final String KEY_SHUFFLE = "shuffle";     // boolean: random order
     static final String KEY_FADE_MS = "fade_ms";     // ms auto crossfade duration
+    static final String KEY_PAIRS = "pairs";         // boolean: pair portraits side-by-side
     static final long DEFAULT_DELAY_MS = 6000L;
     static final long DEFAULT_FADE_MS = 1200L;
+    static final boolean DEFAULT_PAIRS = true;
 
     // Cached photo list so the screensaver starts straight from the album (no
     // bundled-sample flash). KEY_PHOTO_CACHE_URL records which album it's for.
-    // v2: bumped to discard any older cache that may have contained a video
-    // (before the stronger video detection landed).
-    static final String KEY_PHOTO_CACHE = "photo_cache_v2";
-    static final String KEY_PHOTO_CACHE_URL = "photo_cache_url_v2";
+    // v3: bumped for the new per-photo schema (capture time + portrait flag) and
+    // the album title; captions are now derived at display time, not cached.
+    static final String KEY_PHOTO_CACHE = "photo_cache_v3";
+    static final String KEY_PHOTO_CACHE_URL = "photo_cache_url_v3";
+    static final String KEY_ALBUM_TITLE = "album_title_v3";
 
     @Override
     public void onReceive(Context ctx, Intent intent) {

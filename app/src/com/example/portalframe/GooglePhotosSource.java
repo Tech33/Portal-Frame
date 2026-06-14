@@ -7,14 +7,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
-import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,26 +34,36 @@ public class GooglePhotosSource {
     // First thumbnail (base url, width, height) within an item.
     private static final Pattern THUMB = Pattern.compile(
             "\"(https://lh3\\.googleusercontent\\.com/[^\"]+?)\",(\\d{2,5}),(\\d{2,5})");
-    // A real photo carries a filesize element after its dimensions...
-    private static final Pattern FILESIZE = Pattern.compile("\\[null,null,1\\],\\[\\d+\\]\\]");
-    // ...or an EXIF block (camera make/model etc.).
-    private static final Pattern EXIF = Pattern.compile("\\[\\d{3,4},\\d{3,4},1,null,\\[");
     // Capture time (ms) , "mediaId" , tzOffset(ms)
     private static final Pattern DATE = Pattern.compile(
             ",(\\d{13}),\"[A-Za-z0-9_\\-]+\",(-?\\d{5,9}),");
+    // The only reliable POSITIVE video signal: a transcoded download URL on this
+    // host. The earlier heuristics (absence of EXIF/filesize, "video-only"
+    // metadata keys) were false-positives that discarded ~95% of a large mixed
+    // album as "videos" — see isVideo().
     private static final String VIDEO_MARKER = "video-downloads.googleusercontent.com";
-    // Protobuf field keys present on every item (owner / common metadata). A
-    // VIDEO item additionally carries a video-specific key (e.g. 76647426 or
-    // 117194011) that photos never have — this structural signal is reliable
-    // even when the lazy "video-downloads" URL is absent from a given response.
-    private static final Pattern META_KEY = Pattern.compile("\"(\\d{8,9})\":");
-    private static final java.util.Set<String> PHOTO_KEYS = new java.util.HashSet<>(
-            java.util.Arrays.asList("101428965", "525000002"));
 
     private static final Pattern SHARE_URL = Pattern.compile(
             "(https://photos\\.google\\.com/share/[A-Za-z0-9_\\-]+\\?key=[A-Za-z0-9_\\-]+)");
 
-    public static List<Slide> fetch(String shareUrl) throws Exception {
+    // Album name from the share page's Open Graph title (content/property order varies).
+    private static final Pattern OG_TITLE_A = Pattern.compile(
+            "<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]*)\"");
+    private static final Pattern OG_TITLE_B = Pattern.compile(
+            "<meta[^>]+content=\"([^\"]*)\"[^>]+property=\"og:title\"");
+
+    /** An album: its display title (may be empty) and its photos. */
+    public static final class Album {
+        public final String title;
+        public final List<Slide> slides;
+
+        Album(String title, List<Slide> slides) {
+            this.title = title;
+            this.slides = slides;
+        }
+    }
+
+    public static Album fetch(String shareUrl) throws Exception {
         String html = httpGet(shareUrl);
         List<Slide> slides = parse(html);
         if (slides.isEmpty()) {
@@ -65,11 +71,27 @@ public class GooglePhotosSource {
             if (sm.find()) {
                 String longUrl = sm.group(1).replace("\\u003d", "=").replace("\\/", "/");
                 Log.i(TAG, "following embedded share url: " + longUrl);
-                slides = parse(httpGet(longUrl));
+                html = httpGet(longUrl);
+                slides = parse(html);
             }
         }
-        Log.i(TAG, "Google Photos album: " + slides.size() + " photos");
-        return slides;
+        String title = parseTitle(html);
+        Log.i(TAG, "Google Photos album: " + slides.size() + " photos, title='" + title + "'");
+        return new Album(title, slides);
+    }
+
+    private static String parseTitle(String html) {
+        Matcher m = OG_TITLE_A.matcher(html);
+        if (!m.find()) {
+            m = OG_TITLE_B.matcher(html);
+            if (!m.find()) {
+                return "";
+            }
+        }
+        String t = m.group(1)
+                .replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", "\"").trim();
+        // The generic site title isn't an album name.
+        return t.equalsIgnoreCase("Google Photos") ? "" : t;
     }
 
     private static List<Slide> parse(String html) {
@@ -112,8 +134,9 @@ public class GooglePhotosSource {
                 continue;
             }
             long tms = captureMillis(item);
-            String cap = tms != Slide.NO_DATE ? formatDate(tms) : null;
-            out.add(new Slide(base + "=w" + IMG_WIDTH, cap, tms));
+            // Caption is derived at display time (album · relative time); keep only
+            // the raw capture instant and the portrait flag here.
+            out.add(new Slide(base + "=w" + IMG_WIDTH, null, tms, h > w));
         }
         if (videos > 0) {
             Log.i(TAG, "skipped " + videos + " video(s)");
@@ -122,24 +145,15 @@ public class GooglePhotosSource {
     }
 
     /**
-     * Treat a media item as a video if ANY signal says so:
-     *  - a video-specific protobuf key (most reliable, always present), or
-     *  - a video-downloads URL, or
-     *  - it carries neither a still filesize nor camera EXIF (transcoded clip).
+     * Treat a media item as a video only on the reliable positive signal — a
+     * transcoded {@code video-downloads} URL. We deliberately do NOT infer "video"
+     * from the absence of EXIF/filesize or from "unexpected" metadata keys: those
+     * heuristics false-positived on most photos of a large mixed album and dropped
+     * them. A video whose marker is lazy-loaded (absent here) just shows its still
+     * poster frame, which is fine for a photo frame.
      */
     private static boolean isVideo(String item) {
-        Matcher km = META_KEY.matcher(item);
-        while (km.find()) {
-            if (!PHOTO_KEYS.contains(km.group(1))) {
-                return true; // a metadata key photos never have
-            }
-        }
-        if (item.contains(VIDEO_MARKER)) {
-            return true;
-        }
-        boolean hasFilesize = FILESIZE.matcher(item).find();
-        boolean hasExif = EXIF.matcher(item).find();
-        return !hasFilesize && !hasExif;
+        return item.contains(VIDEO_MARKER);
     }
 
     /**
@@ -158,13 +172,6 @@ public class GooglePhotosSource {
             }
         }
         return Slide.NO_DATE;
-    }
-
-    /** Human caption from a capture instant (location data isn't present). */
-    private static String formatDate(long ms) {
-        SimpleDateFormat f = new SimpleDateFormat("MMM d, yyyy", Locale.US);
-        f.setTimeZone(TimeZone.getTimeZone("UTC"));
-        return f.format(new Date(ms));
     }
 
     private static String httpGet(String urlStr) throws Exception {

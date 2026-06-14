@@ -165,6 +165,10 @@ public class PhotosActivity extends Activity {
         return prefs().getBoolean(ConfigReceiver.KEY_SHUFFLE, false);
     }
 
+    private boolean getPairs() {
+        return prefs().getBoolean(ConfigReceiver.KEY_PAIRS, ConfigReceiver.DEFAULT_PAIRS);
+    }
+
     // ------------------------------------------------------- Status / settings
 
     private void showStatus() {
@@ -281,6 +285,17 @@ public class PhotosActivity extends Activity {
             }
         });
         slideCard.addView(fadeRow);
+        slideCard.addView(Ui.hairline(this));
+
+        final View pairsRow = Ui.row(this, "Side-by-side portraits", getPairs() ? "On" : "Off", null);
+        pairsRow.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean next = !getPairs();
+                prefs().edit().putBoolean(ConfigReceiver.KEY_PAIRS, next).apply();
+                Ui.setRowValue(pairsRow, next ? "On" : "Off");
+            }
+        });
+        slideCard.addView(pairsRow);
         right.addView(slideCard);
 
         // Tips

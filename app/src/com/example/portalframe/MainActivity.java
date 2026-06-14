@@ -198,7 +198,8 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 try {
-                    final List<Slide> photos = GooglePhotosSource.fetch(url);
+                    final GooglePhotosSource.Album album = GooglePhotosSource.fetch(url);
+                    final List<Slide> photos = album.slides;
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
@@ -213,7 +214,7 @@ public class MainActivity extends Activity {
                                 }
                                 return;
                             }
-                            persistAlbum(url, photos);
+                            persistAlbum(url, photos, album.title);
                             List<String> newIds = idsOf(photos);
                             if (!newIds.equals(currentIds)) {
                                 currentIds = newIds;
@@ -249,7 +250,7 @@ public class MainActivity extends Activity {
     // JSON (no raw newlines/tabs) so the value survives SharedPreferences' XML
     // round-trip intact — a delimiter-based blob got corrupted by control-char
     // escaping and produced phantom entries.
-    private void persistAlbum(String url, List<Slide> photos) {
+    private void persistAlbum(String url, List<Slide> photos, String title) {
         JSONArray arr = new JSONArray();
         for (Slide s : photos) {
             JSONObject o = new JSONObject();
@@ -257,6 +258,7 @@ public class MainActivity extends Activity {
                 o.put("u", s.id);
                 o.put("c", s.caption == null ? "" : s.caption);
                 o.put("t", s.timeMs);
+                o.put("pt", s.portrait);
             } catch (JSONException ignored) {
                 continue;
             }
@@ -265,6 +267,7 @@ public class MainActivity extends Activity {
         getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE).edit()
                 .putString(ConfigReceiver.KEY_PHOTO_CACHE, arr.toString())
                 .putString(ConfigReceiver.KEY_PHOTO_CACHE_URL, url)
+                .putString(ConfigReceiver.KEY_ALBUM_TITLE, title == null ? "" : title)
                 .apply();
         Log.i(TAG, "persisted " + photos.size() + " photos to cache");
     }
@@ -286,8 +289,9 @@ public class MainActivity extends Activity {
                 String id = o.optString("u", "");
                 String caption = o.optString("c", "");
                 long t = o.optLong("t", Slide.NO_DATE);
+                boolean portrait = o.optBoolean("pt", false);
                 if (!id.isEmpty()) {
-                    out.add(new Slide(id, caption.isEmpty() ? null : caption, t));
+                    out.add(new Slide(id, caption.isEmpty() ? null : caption, t, portrait));
                 }
             }
         } catch (JSONException e) {

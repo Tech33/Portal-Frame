@@ -106,23 +106,76 @@ public class ImageLoader {
 
     private Bitmap loadSync(String id, int reqW, int reqH) {
         try {
-            Bitmap raw;
-            if (id.startsWith("http")) {
-                File f = new File(cacheDir, md5(id) + ".img");
-                if (!f.exists() || f.length() == 0) {
-                    if (!download(id, f)) {
-                        return null;
-                    }
-                }
-                raw = decodeFile(f.getAbsolutePath(), reqW, reqH);
-            } else {
-                raw = decodeAsset(id, reqW, reqH);
+            Bitmap raw = decodeRaw(id, reqW, reqH);
+            if (raw == null) {
+                return null;
             }
             return composeFill(raw, reqW, reqH);
         } catch (Exception e) {
             Log.e(TAG, "load failed " + id, e);
             return null;
         }
+    }
+
+    /** Decode the source bitmap (downloading + disk-caching remote ids first). */
+    private Bitmap decodeRaw(String id, int reqW, int reqH) throws Exception {
+        if (id.startsWith("http")) {
+            File f = new File(cacheDir, md5(id) + ".img");
+            if (!f.exists() || f.length() == 0) {
+                if (!download(id, f)) {
+                    return null;
+                }
+            }
+            return decodeFile(f.getAbsolutePath(), reqW, reqH);
+        }
+        return decodeAsset(id, reqW, reqH);
+    }
+
+    /**
+     * Load two portrait photos composed side-by-side into one screen-sized frame
+     * ("show pairs"). Cached in memory under a combined key; falls back to null on
+     * failure so the caller can skip the pair.
+     */
+    public void loadPair(final String id1, final String id2,
+                         final int reqW, final int reqH, final Callback cb) {
+        final String key = id1 + "|" + id2;
+        Bitmap cached = mem.get(key);
+        if (cached != null) {
+            cb.onLoaded(cached);
+            return;
+        }
+        io.execute(new Runnable() {
+            @Override
+            public void run() {
+                Bitmap out = null;
+                Bitmap a = null;
+                Bitmap b = null;
+                try {
+                    a = decodeRaw(id1, reqW / 2, reqH);
+                    b = decodeRaw(id2, reqW / 2, reqH);
+                    if (a != null && b != null) {
+                        out = composePair(a, b, reqW, reqH); // recycles a and b
+                        a = null;
+                        b = null;
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "loadPair failed " + key, e);
+                } finally {
+                    if (a != null) a.recycle();
+                    if (b != null) b.recycle();
+                }
+                final Bitmap result = out;
+                if (result != null) {
+                    mem.put(key, result);
+                }
+                main.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        cb.onLoaded(result);
+                    }
+                });
+            }
+        });
     }
 
     /**
@@ -139,26 +192,64 @@ public class ImageLoader {
         Bitmap out = Bitmap.createBitmap(screenW, screenH, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+        drawComposed(c, p, src, 0, 0, screenW, screenH);
+        if (src != out) {
+            src.recycle();
+        }
+        return out;
+    }
+
+    /**
+     * Two portrait photos side-by-side, each fit into half the width over its own
+     * blurred fill, with a thin black seam between. Recycles {@code a} and {@code b}.
+     */
+    private static Bitmap composePair(Bitmap a, Bitmap b, int screenW, int screenH) {
+        Bitmap out = Bitmap.createBitmap(screenW, screenH, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+        int gap = Math.max(2, screenW / 300);
+        int half = (screenW - gap) / 2;
+        drawComposed(c, p, a, 0, 0, half, screenH);
+        drawComposed(c, p, b, half + gap, 0, screenW - half - gap, screenH);
+        Paint seam = new Paint();
+        seam.setColor(Color.BLACK);
+        c.drawRect(half, 0, half + gap, screenH, seam);
+        a.recycle();
+        b.recycle();
+        return out;
+    }
+
+    /**
+     * Draw {@code src} into the rect ({@code left},{@code top},{@code w}×{@code h}):
+     * a blurred, center-cropped fill behind a gentle scrim, with the whole photo
+     * fit-centered (never cropped) on top. Does not recycle {@code src}.
+     */
+    private static void drawComposed(Canvas c, Paint p, Bitmap src,
+                                     int left, int top, int w, int h) {
+        if (src == null || w <= 0 || h <= 0) {
+            return;
+        }
+        Rect dst = new Rect(left, top, left + w, top + h);
 
         // Blurred background: center-crop into a tiny bitmap, blur, draw upscaled.
-        int bw = Math.max(1, screenW / 16);
-        int bh = Math.max(1, screenH / 16);
+        int bw = Math.max(1, w / 16);
+        int bh = Math.max(1, h / 16);
         Bitmap small = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
         Canvas sc = new Canvas(small);
         sc.drawBitmap(src, centerCropRect(src.getWidth(), src.getHeight(), bw, bh),
                 new Rect(0, 0, bw, bh), p);
         boxBlur(small, 3, 2);
-        c.drawBitmap(small, new Rect(0, 0, bw, bh), new Rect(0, 0, screenW, screenH), p);
+        c.drawBitmap(small, new Rect(0, 0, bw, bh), dst, p);
         small.recycle();
-        c.drawColor(Color.argb(70, 0, 0, 0)); // gentle scrim behind the photo
+
+        Paint scrim = new Paint();
+        scrim.setColor(Color.argb(70, 0, 0, 0)); // gentle scrim behind the photo
+        c.drawRect(dst, scrim);
 
         // Sharp foreground: whole photo, fit-centered (no crop).
-        c.drawBitmap(src, null, fitCenterRect(src.getWidth(), src.getHeight(), screenW, screenH), p);
-
-        if (src != out) {
-            src.recycle();
-        }
-        return out;
+        RectF fc = fitCenterRect(src.getWidth(), src.getHeight(), w, h);
+        fc.offset(left, top);
+        c.drawBitmap(src, null, fc, p);
     }
 
     private static Rect centerCropRect(int sw, int sh, int dw, int dh) {
