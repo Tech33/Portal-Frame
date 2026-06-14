@@ -163,7 +163,7 @@ class PhotosActivity : Activity() {
         val url = album()
         val hasAlbum = url.isNotEmpty()
 
-        col.addView(Ui.title(this, if (hasAlbum) "Your photos" else "Show your Google Photos"))
+        col.addView(Ui.title(this, if (hasAlbum) "Your photos" else "Show your photos"))
 
         val panes = Ui.twoColumns(this, col)
         val left = panes[0]
@@ -208,7 +208,7 @@ class PhotosActivity : Activity() {
         } else {
             val none = Ui.body(
                 this,
-                "Add a Google Photos shared album to show your own photos.",
+                "Add a Google Photos or iCloud shared album to show your own photos.",
             )
             topMargin(none, 6)
             albumCard.addView(none)
@@ -390,8 +390,9 @@ class PhotosActivity : Activity() {
         col.addView(Ui.title(this, "Enter album link"))
         val help = Ui.body(
             this,
-            "Paste or type the Google Photos shared-album link (it starts with " +
-                "https://photos.app.goo.gl/ or https://photos.google.com/share/).",
+            "Paste or type a shared-album link. Google Photos links start with " +
+                "https://photos.app.goo.gl/ ; iCloud links start with " +
+                "https://www.icloud.com/sharedalbum/#.",
         )
         topMargin(help, 12)
         col.addView(help)
@@ -409,7 +410,7 @@ class PhotosActivity : Activity() {
             Ui.primary(this, "Save") {
                 val url = edit.text.toString().trim()
                 if (!isPhotosLink(url)) {
-                    toast("That doesn't look like a Google Photos link")
+                    toast("That doesn't look like a Google Photos or iCloud link")
                 } else {
                     prefs().edit().putString(ConfigReceiver.KEY_ALBUM, url).apply()
                     Log.i(TAG, "album_url set via manual entry: $url")
@@ -718,7 +719,7 @@ class PhotosActivity : Activity() {
     private fun onQr(text: String?) {
         val url = text?.trim() ?: ""
         if (!isPhotosLink(url)) {
-            scanHint?.text = "That QR isn't a Google Photos album link — try again"
+            scanHint?.text = "That QR isn't a Google Photos or iCloud album link — try again"
             scanning = true // keep scanning
             return
         }
@@ -801,8 +802,6 @@ class PhotosActivity : Activity() {
             return 0 // Portal has only a front camera, which faces the user holding the phone
         }
 
-        private fun isPhotosLink(s: String): Boolean =
-            s.startsWith("https://photos.app.goo.gl/") ||
-                s.startsWith("https://photos.google.com/share/")
+        private fun isPhotosLink(s: String): Boolean = PhotoSources.matches(s)
     }
 }

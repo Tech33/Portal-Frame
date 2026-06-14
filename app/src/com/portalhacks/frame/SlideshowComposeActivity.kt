@@ -166,7 +166,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         }
         loader.executor().execute {
             try {
-                val album = GooglePhotosSource.fetch(url)
+                val album = PhotoSources.fetch(url)
                 val photos = album.slides
                 runOnUiThread {
                     if (url != albumUrl) {

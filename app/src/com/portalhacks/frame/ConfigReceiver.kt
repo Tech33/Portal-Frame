@@ -6,10 +6,12 @@ import android.content.Intent
 import android.util.Log
 
 /**
- * Lets the Google Photos shared-album URL be set over ADB without rebuilding:
+ * Lets the shared-album URL (Google Photos or iCloud) be set over ADB without rebuilding:
  *
  *   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver \
  *       --es url "https://photos.app.goo.gl/XXXXXXXX"
+ *   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver \
+ *       --es url "https://www.icloud.com/sharedalbum/#XXXXXXXX"
  *
  * Clear it (revert to bundled samples) with:
  *   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --es url ""
@@ -26,15 +28,15 @@ class ConfigReceiver : BroadcastReceiver() {
             val url = intent.getStringExtra("url")?.trim() ?: ""
             // This receiver is exported (so the album can be set over ADB), which means
             // any installed app could broadcast to it. Only persist an empty value
-            // (clears the album, reverting to the bundled samples) or a real Google
-            // Photos HTTPS link; ignore anything else so a hostile broadcast can't point
-            // the frame at an arbitrary URL.
+            // (clears the album, reverting to the bundled samples) or a recognised
+            // shared-album HTTPS link; ignore anything else so a hostile broadcast can't
+            // point the frame at an arbitrary URL.
             if (url.isEmpty() || isAlbumUrl(url)) {
                 ed.putString(KEY_ALBUM, url)
                 Log.i("PortalFrame", "album_url set to: '$url'")
                 any = true
             } else {
-                Log.w("PortalFrame", "ignoring non-Google-Photos album_url")
+                Log.w("PortalFrame", "ignoring unrecognised album_url")
             }
         }
         for (e in BOOL_EXTRAS) {
@@ -96,10 +98,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_PHOTO_CACHE_URL = "photo_cache_url_v3"
         const val KEY_ALBUM_TITLE = "album_title_v3"
 
-        /** True for a Google Photos shared-album HTTPS link (the only URLs we'll fetch). */
-        fun isAlbumUrl(s: String?): Boolean =
-            s != null &&
-                (s.startsWith("https://photos.app.goo.gl/") ||
-                    s.startsWith("https://photos.google.com/share/"))
+        /** True for a recognised shared-album HTTPS link (Google Photos or iCloud). */
+        fun isAlbumUrl(s: String?): Boolean = PhotoSources.matches(s)
     }
 }

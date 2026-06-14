@@ -142,7 +142,7 @@ class SettingsActivity : ComponentActivity() {
                 if (hasAlbum) {
                     AlbumPreview(album)
                 } else {
-                    Body("Add a Google Photos shared album to show your own photos.")
+                    Body("Add a Google Photos or iCloud shared album to show your own photos.")
                 }
                 Spacer(Modifier.height(12.dp))
                 PrimaryBtn(if (hasAlbum) "Change album" else "Add album") { gotoPhotos("scan") }
@@ -218,7 +218,7 @@ class SettingsActivity : ComponentActivity() {
                     .padding(horizontal = sidePad, vertical = 72.dp),
             ) {
                 Text(
-                    if (hasAlbum) "Your photos" else "Show your Google Photos",
+                    if (hasAlbum) "Your photos" else "Show your photos",
                     color = PortalColors.Text, fontSize = 30.sp, fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.height(8.dp))
@@ -303,7 +303,7 @@ class SettingsActivity : ComponentActivity() {
                 // Not fetched yet (album just added) — fetch once, persist, then show.
                 loader.executor().execute {
                     try {
-                        val a = GooglePhotosSource.fetch(album)
+                        val a = PhotoSources.fetch(album)
                         android.util.Log.i("PortalFrame", "album preview fetched ${a.slides.size} photos")
                         if (a.slides.isEmpty()) {
                             runOnUiThread { failed = true }
