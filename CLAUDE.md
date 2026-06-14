@@ -5,8 +5,8 @@ Guidance for AI assistants (and humans) working in this repo.
 ## What this is
 
 **Frame** (repo: PortalFrame, app id `com.portalhacks.frame`) — an Android slideshow /
-screensaver for the **Meta Portal Go** (Android 10 / API 29) that shows Google Photos shared
-albums. App is 100% Kotlin — Jetpack Compose for the settings screen, Android Views for the
+screensaver for the **Meta Portal Go** (Android 10 / API 29) that shows Google Photos and iCloud
+shared albums. App is 100% Kotlin — Jetpack Compose for the settings screen, Android Views for the
 slideshow/scanner. There is no backend.
 
 ## Build & run
@@ -46,7 +46,12 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - **`SettingsActivity`** (Kotlin/Compose) — the home-icon ("Frame") setup/settings screen. Hands
   off to `PhotosActivity` for the camera scanner / manual link entry.
 - **`PhotosActivity`** (Kotlin, Android Views) — camera QR scanner + manual entry (ZXing, vendored jar).
-- **`GooglePhotosSource`** — scrapes the public shared-album page (the Library API is gone).
+- **`PhotoProvider` / `PhotoSources`** — provider abstraction + registry. `PhotoSources.matches(url)`
+  / `fetch(url)` route a link to the right provider and return a shared `Album` (title + slides).
+  Add a new provider by implementing `PhotoProvider` and listing it in `PhotoSources`.
+- **`GooglePhotosSource`** — provider that scrapes the public shared-album page (the Library API is gone).
+- **`ApplePhotosSource`** — provider for public iCloud Shared Albums via Apple's `sharedstreams`
+  web API (`webstream` → `webasseturls`, handling the 330 partition redirect).
 - **`ImageLoader`** — background decode + disk/memory image cache.
 - **`AlbumCache`** — shared persistence of the fetched photo list + title in `SharedPreferences`,
   used by both the slideshow and the settings preview.

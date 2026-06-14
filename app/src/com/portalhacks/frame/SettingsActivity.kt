@@ -119,10 +119,10 @@ class SettingsActivity : ComponentActivity() {
     private fun SettingsScreen() {
         val ctx = LocalContext.current
         var tick by remember { mutableIntStateOf(0) } // bump to recompose after pref writes
-        resumeTick.intValue // read so returning from the scanner re-reads the album below
-        val album = prefs.getString(ConfigReceiver.KEY_ALBUM, "") ?: ""
-        val hasAlbum = album.isNotEmpty()
+        resumeTick.intValue // read so returning from the scanner re-reads albums below
         tick // read so writes that bump it recompose
+        val albums = Albums.list(prefs)
+        val hasAlbum = albums.isNotEmpty()
 
         // Card groups, so the layout can be one or two columns by available width.
         val sourceCards: @Composable () -> Unit = {
@@ -138,35 +138,20 @@ class SettingsActivity : ComponentActivity() {
                 if (active) OutlineBtn("Change screensaver") { openScreensaver() }
                 else PrimaryBtn("Use as screensaver") { openScreensaver() }
             }
-            Card(if (hasAlbum) "Album" else "No album yet") {
+            Card(if (hasAlbum) "Albums" else "No albums yet") {
                 if (hasAlbum) {
-                    AlbumPreview(album)
-                } else {
-                    Body("Add a Google Photos shared album to show your own photos.")
-                }
-                Spacer(Modifier.height(12.dp))
-                PrimaryBtn(if (hasAlbum) "Change album" else "Add album") { gotoPhotos("scan") }
-                Spacer(Modifier.height(10.dp))
-                OutlineBtn("Enter link manually") { gotoPhotos("manual") }
-                if (hasAlbum) {
-                    Spacer(Modifier.height(10.dp))
-                    var armed by remember { mutableStateOf(false) }
-                    OutlinedButton(
-                        onClick = {
-                            if (!armed) armed = true
-                            else {
-                                prefs.edit().remove(ConfigReceiver.KEY_ALBUM).apply()
-                                tick++
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                    ) {
-                        Text(
-                            if (armed) "Tap again to confirm" else "Stop showing photos",
-                            color = PortalColors.Red, fontSize = 18.sp,
-                        )
+                    // One removable row per album; the slideshow plays them all merged.
+                    albums.forEachIndexed { i, url ->
+                        if (i > 0) Divider()
+                        AlbumRow(url) { Albums.remove(prefs, url); tick++ }
                     }
+                    Spacer(Modifier.height(14.dp))
+                } else {
+                    Body("Add a Google Photos or iCloud shared album to show your own photos.")
+                    Spacer(Modifier.height(12.dp))
                 }
+                // One add-album screen — scan a QR or paste a link there.
+                PrimaryBtn("Add album") { gotoPhotos("scan") }
             }
         }
         val settingsCards: @Composable () -> Unit = {
@@ -218,7 +203,7 @@ class SettingsActivity : ComponentActivity() {
                     .padding(horizontal = sidePad, vertical = 72.dp),
             ) {
                 Text(
-                    if (hasAlbum) "Your photos" else "Show your Google Photos",
+                    if (hasAlbum) "Your photos" else "Show your photos",
                     color = PortalColors.Text, fontSize = 30.sp, fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.height(8.dp))
@@ -275,91 +260,120 @@ class SettingsActivity : ComponentActivity() {
     }
 
     /**
-     * Album preview: the first photo (so the user can recognise which album is set)
-     * with the album title and link beneath. Starts from the cache the slideshow
-     * writes; if the album was just added and isn't cached yet, fetches it once in
-     * the background, persists it, and then shows the first photo.
+     * One album in the list: a thumbnail of its first photo, the album title +
+     * provider/link, and a (two-tap) Remove button. The preview starts from the cache
+     * the slideshow writes; if the album was just added and isn't cached yet, it's
+     * fetched once in the background, persisted, then shown.
      */
     @Composable
-    private fun AlbumPreview(album: String) {
-        var bmp by remember(album) { mutableStateOf<android.graphics.Bitmap?>(null) }
-        var title by remember(album) { mutableStateOf("") }
-        var failed by remember(album) { mutableStateOf(false) }
+    private fun AlbumRow(url: String, onRemove: () -> Unit) {
+        var bmp by remember(url) { mutableStateOf<android.graphics.Bitmap?>(null) }
+        var title by remember(url) { mutableStateOf("") }
+        var failed by remember(url) { mutableStateOf(false) }
+        var armed by remember(url) { mutableStateOf(false) }
 
-        // Show the photo, or fall back to the error state (don't hang on "Loading…"
-        // if the image itself fails to decode/download).
-        val onBitmap = ImageLoader.Callback { b ->
-            if (b != null) bmp = b else failed = true
-        }
+        // Show the photo, or fall back to the error state (don't hang on "Loading…").
+        val onBitmap = ImageLoader.Callback { b -> if (b != null) bmp = b else failed = true }
 
-        LaunchedEffect(album) {
-            if (album.isEmpty()) return@LaunchedEffect
-            AlbumCache.title(prefs, album)?.let { title = it }
-            val firstId = AlbumCache.firstId(prefs, album)
+        LaunchedEffect(url) {
+            AlbumCache.title(prefs, url)?.let { title = it }
+            val firstId = AlbumCache.firstId(prefs, url)
             if (firstId != null) {
-                android.util.Log.i("PortalFrame", "album preview from cache: $firstId")
                 loader.load(firstId, PREVIEW_W, PREVIEW_H, onBitmap)
             } else {
-                // Not fetched yet (album just added) — fetch once, persist, then show.
+                // Not fetched yet (just added) — fetch once, persist, then show.
                 loader.executor().execute {
                     try {
-                        val a = GooglePhotosSource.fetch(album)
-                        android.util.Log.i("PortalFrame", "album preview fetched ${a.slides.size} photos")
+                        val a = PhotoSources.fetch(url)
                         if (a.slides.isEmpty()) {
                             runOnUiThread { failed = true }
                             return@execute
                         }
-                        AlbumCache.write(prefs, album, a.slides, a.title)
+                        AlbumCache.write(prefs, url, a.slides, a.title)
                         val id = a.slides[0].id
                         runOnUiThread {
-                            // ignore if the user changed the album while fetching
-                            if (album == (prefs.getString(ConfigReceiver.KEY_ALBUM, "") ?: "")) {
+                            if (Albums.list(prefs).contains(url)) {
                                 title = a.title ?: ""
                                 loader.load(id, PREVIEW_W, PREVIEW_H, onBitmap)
                             }
                         }
                     } catch (e: Exception) {
-                        android.util.Log.w("PortalFrame", "album preview fetch failed", e)
+                        android.util.Log.w("PortalFrame", "album preview fetch failed: $url", e)
                         runOnUiThread { failed = true }
                     }
                 }
             }
         }
 
-        val shape = RoundedCornerShape(14.dp)
-        val image = bmp
-        if (image != null) {
-            Image(
-                bitmap = image.asImageBitmap(),
-                contentDescription = "First photo from the album",
-                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
+        var on by remember(url) { mutableStateOf(Albums.isEnabled(prefs, url)) }
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val shape = RoundedCornerShape(10.dp)
+            val image = bmp
             Box(
-                Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape)
-                    .background(PortalColors.Field),
+                Modifier.width(120.dp).aspectRatio(16f / 9f).clip(shape).background(PortalColors.Field),
                 contentAlignment = Alignment.Center,
             ) {
+                if (image != null) {
+                    Image(
+                        bitmap = image.asImageBitmap(),
+                        contentDescription = "First photo from the album",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Text(
+                        if (failed) "—" else "…",
+                        color = PortalColors.TextMuted, fontSize = 16.sp,
+                    )
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
                 Text(
-                    if (failed) "Couldn't load a preview" else "Loading preview…",
-                    color = PortalColors.TextMuted, fontSize = 15.sp,
+                    title.ifEmpty { if (failed) "Couldn't load" else "Loading…" },
+                    color = if (on) PortalColors.Text else PortalColors.TextMuted,
+                    fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    providerLabel(url) + " · " + url,
+                    color = PortalColors.TextMuted, fontSize = 13.sp,
+                    maxLines = 1, overflow = TextOverflow.MiddleEllipsis,
+                )
+                Spacer(Modifier.height(8.dp))
+                // Stop/resume (keeps the album, just pauses it) + Remove (two-tap).
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = on,
+                        onCheckedChange = { on = it; Albums.setEnabled(prefs, url, it) },
+                        colors = SwitchDefaults.colors(checkedTrackColor = PortalColors.Blue),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        if (on) "Playing" else "Stopped",
+                        color = PortalColors.TextMuted, fontSize = 14.sp,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        if (armed) "Confirm" else "Remove",
+                        color = PortalColors.Red, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { if (!armed) armed = true else onRemove() }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
             }
         }
-        if (title.isNotEmpty()) {
-            Spacer(Modifier.height(12.dp))
-            Text(
-                title, color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            album, color = PortalColors.Blue, fontSize = 14.sp,
-            maxLines = 1, overflow = TextOverflow.MiddleEllipsis,
-        )
     }
+
+    /** "Google Photos" / "iCloud" / "Link" for the album's URL. */
+    private fun providerLabel(url: String): String =
+        PhotoSources.providerFor(url)?.displayName ?: "Link"
 
     @Composable
     private fun Body(text: String) =

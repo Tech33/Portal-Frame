@@ -1,8 +1,8 @@
 # Frame — Install & User Guide
 
-Turn your **Meta Portal Go** into a digital photo frame that plays your **Google Photos**
-albums whenever it's idle. You install a ready-made `Frame-*.apk` — you don't need to build
-anything.
+Turn your **Meta Portal Go** into a digital photo frame that plays your **Google Photos** or
+**iCloud** shared albums whenever it's idle. You install a ready-made `Frame-*.apk` — you don't
+need to build anything.
 
 > New here? You'll do three things once: **install** the app, **add your album**, and
 > **turn it on as the screensaver**. After that it just runs.
@@ -27,7 +27,7 @@ to verify the download). Save it to the computer you'll use in Part 1.
 - A **computer** (Mac, Windows, or Linux) and a **USB cable** to connect the Portal — this is
   the one-time step to get the app onto the device. (The Portal has no app store, so apps are
   "sideloaded" from a computer.)
-- A phone or computer that can open your **Google Photos** album (to get its share link/QR).
+- A phone or computer that can open your **Google Photos** or **iCloud** album (to get its share link/QR).
 
 If a friend or family member is more comfortable with computers, Part 1 is the only part
 they need to help with — everything after that happens on the Portal's screen.
@@ -69,22 +69,29 @@ Installing uses a free Google tool called **ADB** (Android Debug Bridge).
 
 Tap the **Frame** icon on the Portal home screen to open the setup screen.
 
-### Step 1 — Add your Google Photos album
-Frame plays a **shared album** from Google Photos. First, create the share link on your phone:
+### Step 1 — Add your album
+Frame plays a public **shared album** from either **Google Photos** or **iCloud**. First, create
+the share link on your phone:
 
-1. Open the **Google Photos** app on your phone.
-2. Open the album you want to show. (Don't have one? Create an album and add photos to it.)
-3. Tap **Share** → **Create link** (so the album is shared by link).
-4. Show its **QR code** if offered, or copy the link (it starts with
-   `https://photos.app.goo.gl/…`).
+**Google Photos:**
+1. Open the **Google Photos** app, open the album you want (or create one and add photos).
+2. Tap **Share** → **Create link** (so the album is shared by link).
+3. Show its **QR code** if offered, or copy the link (starts with `https://photos.app.goo.gl/…`).
 
-Then, on the Portal:
+**iCloud (Apple Photos):**
+1. In the **Photos** app, open the album, tap the people/share icon → **Shared Album**, or open an
+   existing Shared Album.
+2. Turn on **Public Website** (in the Shared Album's settings) and **copy the link** (starts with
+   `https://www.icloud.com/sharedalbum/…`).
 
-- **Easiest — scan the QR:** tap **Add album**, allow the camera once, and hold your phone up to
-  the Portal. Make the QR **fill your phone screen at full brightness** and hold it **about half a
-  meter (1.5 ft) away**, steady, until you see **"Album set ✓"**.
-- **No QR? Type the link:** tap **Enter link manually** and paste/type the
-  `https://photos.app.goo.gl/…` link, then **Save**.
+Then, on the Portal, tap **Add album**. That one screen lets you either:
+
+- **Scan the QR:** allow the camera once and hold your phone up to the Portal — make the QR **fill
+  your phone screen at full brightness**, held **about half a meter (1.5 ft) away**, steady, until
+  you see **"Album added ✓"**. (Google Photos shows a QR directly; for iCloud, generate a QR from
+  the link or just paste it — see below.)
+- **Paste the link:** in the same screen, type/paste the shared-album link into the field
+  (`https://photos.app.goo.gl/…` or `https://www.icloud.com/sharedalbum/#…`) and tap **Add album**.
 
 Once set, the Album card shows the album's **title and a preview of its first photo**, so you can
 confirm it's the right one.
@@ -106,8 +113,8 @@ Tap **Done** to leave setup.
   - **Swipe left / right** — next / previous photo
   - **Single tap** — dismiss (wake the Portal)
   - **Long‑press** — open the Frame setup screen
-- **Add photos anytime.** New photos you add to the shared album in Google Photos show up on the
-  Portal automatically (it re-checks each time it goes idle).
+- **Add photos anytime.** New photos you add to the shared album (in Google Photos or iCloud) show
+  up on the Portal automatically (it re-checks each time it goes idle).
 
 ### Settings you can change (in the Frame app)
 - **Seconds per photo** — how long each photo stays (4s up to 1 minute).
@@ -119,24 +126,29 @@ Tap **Done** to leave setup.
 - **Ambient intelligence** — face‑aware framing, auto‑enhance, ambient color glow, clock &
   weather, night warmth, and "On This Day" memories. Turn any on/off to taste.
 
-### Changing or removing your album
-- **Change album** — set a different one (scan/paste a new link).
-- **Stop showing photos** — clears your album; Frame falls back to a few built‑in sample photos.
+### Managing albums
+- **Multiple albums** — tap **Add album** again (scan or paste) to add more; the slideshow plays
+  photos from all of them, merged together. Each album shows its title and a thumbnail of its first
+  photo so you can tell them apart.
+- **Stop one temporarily** — flip an album's **Playing** switch to off. It stays in the list (link
+  kept) but its photos are paused; flip it back on anytime.
+- **Remove one** — tap **Remove** next to an album, then **Confirm**. The others keep playing.
+- **Remove all** — remove each album; with none left, Frame falls back to the built‑in samples.
 
 ---
 
 ## Tips & troubleshooting
 
-- **The album must be shared *by link*.** A private album won't load — in Google Photos use
-  **Share → Create link** so the album has a `photos.app.goo.gl` link.
+- **The album must be shared *publicly by link*.** A private album won't load — in Google Photos
+  use **Share → Create link**; in iCloud, enable the Shared Album's **Public Website**.
 - **Preview says "Couldn't load a preview" / no photos appear.**
   - Check the Portal is on Wi‑Fi.
-  - Re‑check the link is the shared‑album link (starts with `https://photos.app.goo.gl/` or
-    `https://photos.google.com/share/`).
-  - Open the album in a browser to confirm the link is still shared and not empty.
+  - Re‑check the link is a shared‑album link — Google Photos `https://photos.app.goo.gl/…` /
+    `https://photos.google.com/share/…`, or iCloud `https://www.icloud.com/sharedalbum/#…`.
+  - Open the album link in a browser to confirm it's still shared and not empty.
 - **The QR won't scan.** The Portal's camera is fixed‑focus and wide — hold the phone **~0.5 m
-  away**, **full screen brightness**, and let the QR **fill the on‑screen box**. Still no luck? Use
-  **Enter link manually** instead.
+  away**, **full screen brightness**, and let the QR **fill the on‑screen box**. Still no luck?
+  Paste the link into the field on the same **Add album** screen instead.
 - **"Frame" isn't in the screensaver list.** Make sure the app installed (the **Frame** icon is on
   the home screen), then tap **Use as screensaver** again.
 - **Videos are skipped.** Frame shows photos only; videos in the album are ignored.

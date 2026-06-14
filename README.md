@@ -1,7 +1,7 @@
 # Frame
 
 An open-source slideshow **screensaver for the Meta Portal Go** (Android 10 / API 29) that shows
-your **Google Photos** shared albums. Set it up on-device by scanning the album's QR code (or
+your **Google Photos** or **iCloud** shared albums. Set it up on-device by scanning the album's QR code (or
 pasting the link), and it plays your photos whenever the Portal is idle — with a clock, captions,
 cinematic motion, and ambient color.
 
@@ -15,7 +15,7 @@ as the screensaver).
 
 ## Features
 
-- Plays a public Google Photos **shared album**; new photos appear automatically.
+- Plays a public **Google Photos or iCloud** shared album; new photos appear automatically.
 - On-device setup: **QR scan** or paste the link — no computer needed after install.
 - Clock & weather, photo date captions, shuffle, adjustable timing and transitions.
 - Side-by-side portraits, cinematic pan/zoom, auto-enhance, ambient color, night dimming,

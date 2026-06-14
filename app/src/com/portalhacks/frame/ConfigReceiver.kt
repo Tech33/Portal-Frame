@@ -6,12 +6,16 @@ import android.content.Intent
 import android.util.Log
 
 /**
- * Lets the Google Photos shared-album URL be set over ADB without rebuilding:
+ * Lets shared albums (Google Photos or iCloud) be managed over ADB without rebuilding:
  *
+ *   # add an album (repeat to add several)
  *   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver \
  *       --es url "https://photos.app.goo.gl/XXXXXXXX"
+ *   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver \
+ *       --es url "https://www.icloud.com/sharedalbum/#XXXXXXXX"
  *
- * Clear it (revert to bundled samples) with:
+ *   # remove one album / clear all (revert to bundled samples)
+ *   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --es remove_url "https://…"
  *   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --es url ""
  */
 class ConfigReceiver : BroadcastReceiver() {
@@ -20,23 +24,39 @@ class ConfigReceiver : BroadcastReceiver() {
         if (intent == null) {
             return
         }
-        val ed = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-        var any = false
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+        // This receiver is exported (so albums can be managed over ADB), which means any
+        // installed app could broadcast to it. `url` adds a recognised shared-album link
+        // (empty clears ALL albums); `remove_url` removes one. Unrecognised links are
+        // ignored so a hostile broadcast can't point the frame at an arbitrary URL.
         if (intent.hasExtra("url")) {
             val url = intent.getStringExtra("url")?.trim() ?: ""
-            // This receiver is exported (so the album can be set over ADB), which means
-            // any installed app could broadcast to it. Only persist an empty value
-            // (clears the album, reverting to the bundled samples) or a real Google
-            // Photos HTTPS link; ignore anything else so a hostile broadcast can't point
-            // the frame at an arbitrary URL.
-            if (url.isEmpty() || isAlbumUrl(url)) {
-                ed.putString(KEY_ALBUM, url)
-                Log.i("PortalFrame", "album_url set to: '$url'")
-                any = true
-            } else {
-                Log.w("PortalFrame", "ignoring non-Google-Photos album_url")
+            when {
+                url.isEmpty() -> { Albums.clear(prefs); Log.i("PortalFrame", "albums cleared") }
+                isAlbumUrl(url) -> if (Albums.add(prefs, url)) Log.i("PortalFrame", "album added: '$url'")
+                else -> Log.w("PortalFrame", "ignoring unrecognised album_url")
             }
         }
+        if (intent.hasExtra("remove_url")) {
+            val url = intent.getStringExtra("remove_url")?.trim() ?: ""
+            if (url.isNotEmpty()) {
+                Albums.remove(prefs, url)
+                Log.i("PortalFrame", "album removed: '$url'")
+            }
+        }
+        for (pair in arrayOf("enable_url" to true, "disable_url" to false)) {
+            if (intent.hasExtra(pair.first)) {
+                val url = intent.getStringExtra(pair.first)?.trim() ?: ""
+                if (url.isNotEmpty()) {
+                    Albums.setEnabled(prefs, url, pair.second)
+                    Log.i("PortalFrame", "album ${if (pair.second) "resumed" else "stopped"}: '$url'")
+                }
+            }
+        }
+
+        val ed = prefs.edit()
+        var any = false
         for (e in BOOL_EXTRAS) {
             if (intent.hasExtra(e[0])) {
                 val value = intent.getBooleanExtra(e[0], true)
@@ -52,7 +72,9 @@ class ConfigReceiver : BroadcastReceiver() {
 
     companion object {
         const val PREFS = "portalframe"
-        const val KEY_ALBUM = "album_url"
+        const val KEY_ALBUM = "album_url" // legacy single album (migrated into KEY_ALBUMS)
+        const val KEY_ALBUMS = "album_urls" // JSON array of configured album URLs
+        const val KEY_ALBUMS_DISABLED = "album_urls_disabled" // JSON array of stopped album URLs
 
         // Slideshow settings (written by PhotosActivity, read by SlideshowController).
         const val KEY_DELAY_MS = "delay_ms"     // ms each photo is held
@@ -88,18 +110,9 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("auto_enhance", KEY_ENHANCE),
         )
 
-        // Cached photo list so the screensaver starts straight from the album (no
-        // bundled-sample flash). KEY_PHOTO_CACHE_URL records which album it's for.
-        // v3: bumped for the new per-photo schema (capture time + portrait flag) and
-        // the album title; captions are now derived at display time, not cached.
-        const val KEY_PHOTO_CACHE = "photo_cache_v3"
-        const val KEY_PHOTO_CACHE_URL = "photo_cache_url_v3"
-        const val KEY_ALBUM_TITLE = "album_title_v3"
+        // Per-album photo caches are managed by AlbumCache (keyed by album URL).
 
-        /** True for a Google Photos shared-album HTTPS link (the only URLs we'll fetch). */
-        fun isAlbumUrl(s: String?): Boolean =
-            s != null &&
-                (s.startsWith("https://photos.app.goo.gl/") ||
-                    s.startsWith("https://photos.google.com/share/"))
+        /** True for a recognised shared-album HTTPS link (Google Photos or iCloud). */
+        fun isAlbumUrl(s: String?): Boolean = PhotoSources.matches(s)
     }
 }

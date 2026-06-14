@@ -41,22 +41,25 @@ Then either launch the **Frame** app icon (setup/settings) or set it as the scre
 
 ## Project layout
 
-- `app/src/com/portalhacks/frame/` — sources.
-  - `MainActivity` / `SlideshowController` — the full-screen slideshow (Java).
-  - `FrameDreamService` — the screensaver trampoline that launches `MainActivity`.
-  - `SettingsActivity` (Kotlin/Compose) — the home-screen setup/settings UI.
-  - `PhotosActivity` (Java) — camera QR scanner + manual link entry.
-  - `GooglePhotosSource` / `ImageLoader` / `AlbumCache` — fetching, decoding, caching.
+- `app/src/com/portalhacks/frame/` — sources (all Kotlin).
+  - `SlideshowComposeActivity` / `SlideshowController` — the full-screen slideshow.
+  - `FrameDreamService` — the screensaver trampoline that launches the slideshow.
+  - `SettingsActivity` (Compose) — the home-screen setup/settings UI.
+  - `PhotosActivity` (Android Views) — camera QR scanner + manual link entry.
+  - `PhotoProvider` / `PhotoSources` — provider abstraction + registry (route a link → `Album`).
+  - `GooglePhotosSource`, `ApplePhotosSource` — the providers.
+  - `ImageLoader` / `AlbumCache` — decoding/caching and the persisted photo cache.
 - `app/res/`, `app/assets/` — resources, fonts, sample slides.
 - `tools/` — pure-stdlib Python helpers that generate the sample slides and launcher icon.
 
 ## Code style
 
-- Match the surrounding code: plain Java for the existing view-based pieces, idiomatic
-  Compose/Kotlin for the new UI. Keep the dark Portal palette/typography (`Ui` / `PortalColors`).
-- The Google Photos scraper (`GooglePhotosSource`) is unofficial and relies on the share-page
-  format; keep its regexes tightly anchored and fail closed (fall back to bundled samples).
-- Only fetch over HTTPS from Google Photos / Google image hosts (see `SECURITY.md`).
+- All Kotlin. Idiomatic Compose for new UI, Android Views for the existing slideshow/scanner.
+  Keep the dark Portal palette/typography (`Ui` / `PortalColors`).
+- **Adding a photo provider:** implement `PhotoProvider` (`matches` + `fetch` → `Album`) and add it
+  to the `PhotoSources` list. Don't special-case a provider in the UI — it routes by URL.
+- Providers are unofficial (they use public share endpoints) — fail closed (return empty / throw so
+  callers fall back to bundled samples), and only fetch over **HTTPS** (see `SECURITY.md`).
 
 ## Pull requests
 

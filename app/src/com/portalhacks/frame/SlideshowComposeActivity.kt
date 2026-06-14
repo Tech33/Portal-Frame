@@ -35,7 +35,7 @@ class SlideshowComposeActivity : ComponentActivity() {
     private lateinit var controller: SlideshowController
     private val handler = Handler(Looper.getMainLooper())
 
-    private var albumUrl = ""
+    private var currentAlbums: List<String> = emptyList()
     private var currentIds: List<String> = ArrayList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,28 +91,28 @@ class SlideshowComposeActivity : ComponentActivity() {
         controller.blank()
         startDimming() // ease screen brightness down at night, up in the morning
         val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
-        albumUrl = prefs.getString(ConfigReceiver.KEY_ALBUM, "") ?: ""
+        currentAlbums = Albums.enabled(prefs)
 
-        if (albumUrl.isEmpty()) {
-            // No album configured: show the bundled samples.
+        if (currentAlbums.isEmpty()) {
+            // No albums playing (none configured, or all stopped): show the bundled samples.
             controller.start()
             return
         }
 
-        // Album configured: start straight from the cached album if we have it
-        // (disk-cached images make the first photo appear near-instantly);
-        // otherwise show a black "Loading…" screen — never the samples.
-        val cached = AlbumCache.read(prefs, albumUrl)
-        if (cached != null && cached.isNotEmpty()) {
+        // Albums configured: start straight from their merged caches if we have them
+        // (disk-cached images make the first photo appear near-instantly); otherwise
+        // show a black "Loading…" screen — never the samples.
+        val cached = currentAlbums.flatMap { AlbumCache.read(prefs, it) ?: emptyList() }
+        if (cached.isNotEmpty()) {
             currentIds = idsOf(cached)
             controller.setItems(cached)
         } else {
             currentIds = ArrayList()
-            controller.setStatusHint("Loading Google Photos…")
+            controller.setStatusHint("Loading photos…")
         }
 
         // Refresh now, then keep checking periodically while we're on screen.
-        fetchAndApply(cached == null || cached.isEmpty())
+        fetchAllAndApply(cached.isEmpty())
         handler.removeCallbacks(refreshTick)
         handler.postDelayed(refreshTick, REFRESH_INTERVAL_MS)
     }
@@ -150,54 +150,54 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     private val refreshTick = object : Runnable {
         override fun run() {
-            fetchAndApply(false)
+            fetchAllAndApply(false)
             handler.postDelayed(this, REFRESH_INTERVAL_MS)
         }
     }
 
     /**
-     * Fetch the album in the background; on success persist it and apply it only
-     * if the photo set actually changed (avoids a redundant restart/flicker).
+     * Fetch every configured album in the background; cache each and re-apply the merged
+     * photo set as each one lands (only when the set actually changed, to avoid flicker).
      */
-    private fun fetchAndApply(showHint: Boolean) {
-        val url = albumUrl
-        if (url.isEmpty()) {
+    private fun fetchAllAndApply(showHint: Boolean) {
+        val albums = currentAlbums
+        if (albums.isEmpty()) {
             return
         }
-        loader.executor().execute {
-            try {
-                val album = GooglePhotosSource.fetch(url)
-                val photos = album.slides
-                runOnUiThread {
-                    if (url != albumUrl) {
-                        return@runOnUiThread // album changed while fetching
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
+        for (url in albums) {
+            loader.executor().execute {
+                try {
+                    val album = PhotoSources.fetch(url)
+                    if (album.slides.isNotEmpty()) {
+                        AlbumCache.write(prefs, url, album.slides, album.title)
                     }
-                    if (photos.isEmpty()) {
-                        if (showHint) {
-                            controller.setStatusHint(
-                                "Album returned no photos (check sharing/link)",
-                            )
-                        }
-                        return@runOnUiThread
-                    }
-                    AlbumCache.write(
-                        getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE),
-                        url, photos, album.title,
-                    )
-                    val newIds = idsOf(photos)
-                    if (newIds != currentIds) {
-                        currentIds = newIds
-                        controller.setItems(photos)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "album fetch failed", e)
-                if (showHint) {
-                    runOnUiThread {
-                        controller.setStatusHint("Couldn't load album — retrying later")
+                    runOnUiThread { rebuildFromCaches(showHint) }
+                } catch (e: Exception) {
+                    Log.e(TAG, "album fetch failed: $url", e)
+                    if (showHint) {
+                        runOnUiThread { rebuildFromCaches(true) }
                     }
                 }
             }
+        }
+    }
+
+    /** Recompute the slideshow from all albums' caches and apply it if it changed. */
+    private fun rebuildFromCaches(showHint: Boolean) {
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
+        if (currentAlbums != Albums.enabled(prefs)) {
+            return // the playing album set changed while fetching
+        }
+        val merged = currentAlbums.flatMap { AlbumCache.read(prefs, it) ?: emptyList() }
+        if (merged.isEmpty()) {
+            if (showHint) controller.setStatusHint("Couldn't load photos — retrying later")
+            return
+        }
+        val ids = idsOf(merged)
+        if (ids != currentIds) {
+            currentIds = ids
+            controller.setItems(merged)
         }
     }
 

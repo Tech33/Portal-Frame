@@ -18,7 +18,13 @@ import java.util.regex.Pattern
  * Unofficial — can break if Google changes the page format. Callers should fall
  * back to bundled images when this returns empty.
  */
-internal object GooglePhotosSource {
+internal object GooglePhotosSource : PhotoProvider {
+
+    override val displayName = "Google Photos"
+
+    override fun matches(url: String): Boolean =
+        url.startsWith("https://photos.app.goo.gl/") ||
+            url.startsWith("https://photos.google.com/share/")
 
     private const val TAG = "PortalFrame"
     private const val IMG_WIDTH = 1280
@@ -56,15 +62,8 @@ internal object GooglePhotosSource {
         "<meta[^>]+content=\"([^\"]*)\"[^>]+property=\"og:title\"",
     )
 
-    /** An album: its display title (may be empty) and its photos. */
-    class Album internal constructor(
-        @JvmField val title: String,
-        @JvmField val slides: List<Slide>,
-    )
-
-    @JvmStatic
     @Throws(Exception::class)
-    fun fetch(shareUrl: String): Album {
+    override fun fetch(shareUrl: String): Album {
         var html = httpGet(shareUrl)
         var slides = parse(html)
         if (slides.isEmpty()) {

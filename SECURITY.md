@@ -11,21 +11,23 @@ project — but reports are appreciated and will be looked at.
 
 ## Trust model & hardening
 
-- **Network.** The app only talks to Google Photos / Google image hosts, always over **HTTPS**.
-  Cleartext traffic is disabled via `res/xml/network_security_config.xml`, and the album fetch
-  (`GooglePhotosSource`) and image download (`ImageLoader`) both refuse non-HTTPS URLs and cap
+- **Network.** The app only talks to the photo providers' hosts (Google Photos / iCloud and their
+  image CDNs), always over **HTTPS**. Cleartext traffic is disabled via
+  `res/xml/network_security_config.xml`, and the album fetch (`PhotoSources` → `GooglePhotosSource`
+  / `ApplePhotosSource`) and image download (`ImageLoader`) both refuse non-HTTPS URLs and cap
   response sizes to avoid memory/disk exhaustion from a hostile or oversized response.
 
-- **Album scraping.** The official Google Photos Library API was deprecated (2025-03-31), so
-  `GooglePhotosSource` scrapes the **public shared-album** page. It is unofficial and may break
-  if Google changes the page format; it fails closed (falls back to the bundled sample photos).
-  Only public, link-shared albums are readable — the app has no access to a private library.
+- **Public shared albums only.** Providers read **public, link-shared** albums via their public
+  share endpoints — Google Photos by scraping the share page (the Library API was deprecated
+  2025-03-31), iCloud via the `sharedstreams` web API. These are unofficial and may break if the
+  provider changes its format; each fails closed (falls back to the bundled sample photos). The app
+  has no account access and cannot read a private library.
 
 - **`ConfigReceiver` (exported).** This broadcast receiver lets the album be set over ADB
   (`am broadcast`) without rebuilding, so it is exported and any app on the device could send to
-  it. It only writes the app's own private `SharedPreferences`, and it **validates** the album
-  URL — it persists only an empty value (clear) or a real `https://photos.app.goo.gl/` /
-  `https://photos.google.com/share/` link, ignoring anything else.
+  it. It only writes the app's own private `SharedPreferences`, and it **validates** the album URL
+  (`PhotoSources.matches`) — it persists only an empty value (clear) or a recognised Google Photos
+  / iCloud shared-album link, ignoring anything else.
 
 - **`MainActivity` (exported).** The slideshow Activity is intentionally exported so it can be
   launched for testing (`am start`) and by the screensaver trampoline. It displays photos only

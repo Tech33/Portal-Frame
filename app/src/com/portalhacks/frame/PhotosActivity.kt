@@ -48,7 +48,7 @@ import java.util.EnumMap
  * targets, centred max-width column, reserved top overlay inset). Three screens:
  *
  *  - Status/settings: album currently playing, how to add one, slideshow settings.
- *  - Scanner: live camera QR scan (validated, written to [ConfigReceiver.KEY_ALBUM]).
+ *  - Scanner: live camera QR scan (validated, added to the album list via [Albums]).
  *  - Manual entry: type/paste the link with the on-screen keyboard (QR-less fallback).
  *
  * All persist to the same `portalframe` prefs the slideshow reads
@@ -79,6 +79,8 @@ class PhotosActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Pan the screen up when the on-screen keyboard appears so the link field stays visible.
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
         root = FrameLayout(this)
         root.setBackgroundColor(Ui.BG)
         setContentView(root)
@@ -86,7 +88,7 @@ class PhotosActivity : Activity() {
         val gotoExtra = intent?.getStringExtra("goto")
         when (gotoExtra) {
             "scan" -> startScan()
-            "manual" -> showManualEntry()
+            "manual" -> startScan() // manual entry now lives inside the scanner panel
             else -> showStatus()
         }
     }
@@ -138,7 +140,7 @@ class PhotosActivity : Activity() {
     private fun prefs(): SharedPreferences =
         getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
 
-    private fun album(): String = prefs().getString(ConfigReceiver.KEY_ALBUM, "") ?: ""
+    private fun album(): String = Albums.list(prefs()).firstOrNull() ?: ""
 
     private fun getDelay(): Long =
         prefs().getLong(ConfigReceiver.KEY_DELAY_MS, ConfigReceiver.DEFAULT_DELAY_MS)
@@ -163,7 +165,7 @@ class PhotosActivity : Activity() {
         val url = album()
         val hasAlbum = url.isNotEmpty()
 
-        col.addView(Ui.title(this, if (hasAlbum) "Your photos" else "Show your Google Photos"))
+        col.addView(Ui.title(this, if (hasAlbum) "Your photos" else "Show your photos"))
 
         val panes = Ui.twoColumns(this, col)
         val left = panes[0]
@@ -208,7 +210,7 @@ class PhotosActivity : Activity() {
         } else {
             val none = Ui.body(
                 this,
-                "Add a Google Photos shared album to show your own photos.",
+                "Add a Google Photos or iCloud shared album to show your own photos.",
             )
             topMargin(none, 6)
             albumCard.addView(none)
@@ -217,7 +219,7 @@ class PhotosActivity : Activity() {
             Ui.primary(this, if (hasAlbum) "Change album" else "Add album") { startScan() },
         )
         albumCard.addView(
-            Ui.outline(this, "Enter link manually") { showManualEntry() },
+            Ui.outline(this, "Enter link manually") { startScan() },
         )
         if (hasAlbum) {
             val stop = Ui.destructive(this, "Stop showing photos", null)
@@ -226,7 +228,7 @@ class PhotosActivity : Activity() {
                     stopArmed = true
                     stop.text = "Tap again to confirm"
                 } else {
-                    prefs().edit().remove(ConfigReceiver.KEY_ALBUM).apply()
+                    Albums.clear(prefs())
                     toast("Showing sample photos")
                     showStatus()
                 }
@@ -380,58 +382,44 @@ class PhotosActivity : Activity() {
     // ------------------------------------------------ Manual entry
 
     /** Type/paste the album link using the on-screen keyboard (QR-less fallback). */
-    private fun showManualEntry() {
-        stopCamera()
-        stopArmed = false
-        showingStatus = false
-        root.removeAllViews()
-        val col = Ui.screen(this, root)
-
-        col.addView(Ui.title(this, "Enter album link"))
-        val help = Ui.body(
-            this,
-            "Paste or type the Google Photos shared-album link (it starts with " +
-                "https://photos.app.goo.gl/ or https://photos.google.com/share/).",
-        )
-        topMargin(help, 12)
-        col.addView(help)
-
-        val edit = Ui.field(this, "https://photos.app.goo.gl/…")
-        edit.setSingleLine(true)
-        edit.inputType = InputType.TYPE_CLASS_TEXT or
-            InputType.TYPE_TEXT_VARIATION_URI or
-            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        edit.setText(album())
-        edit.setSelection(edit.text.length)
-        col.addView(edit)
-
-        col.addView(
-            Ui.primary(this, "Save") {
-                val url = edit.text.toString().trim()
-                if (!isPhotosLink(url)) {
-                    toast("That doesn't look like a Google Photos link")
-                } else {
-                    prefs().edit().putString(ConfigReceiver.KEY_ALBUM, url).apply()
-                    Log.i(TAG, "album_url set via manual entry: $url")
-                    hideKeyboard(edit)
-                    toast("Album set ✓")
-                    finish() // back to the Compose settings screen (sticky Done + preview)
-                }
-            },
-        )
-        col.addView(
-            Ui.secondary(this, "Cancel") {
-                hideKeyboard(edit)
-                finish()
-            },
-        )
-
-        // Pop the on-screen keyboard for the field.
-        edit.requestFocus()
-        edit.post {
-            val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.showSoftInput(edit, InputMethodManager.SHOW_IMPLICIT)
+    /**
+     * "Done" on the add screen: add the pasted link (if any) and close. An empty field just
+     * closes (e.g. after a QR scan already added one); an invalid link warns and stays.
+     */
+    private fun addTypedAlbum(edit: EditText) {
+        val url = edit.text.toString().trim()
+        if (url.isEmpty()) {
+            finish()
+            return
         }
+        if (!isPhotosLink(url)) {
+            toast("That doesn't look like a Google Photos or iCloud link")
+            return
+        }
+        Albums.add(prefs(), url)
+        Log.i(TAG, "album added via manual entry: $url")
+        hideKeyboard(edit)
+        toast("Album added ✓")
+        finish() // back to the Compose settings screen
+    }
+
+    /** A compact, content-width filled button (not full-bleed like the card buttons). */
+    private fun pillButton(label: String, fill: Int, textColor: Int, onClick: () -> Unit): Button {
+        val b = Button(this)
+        b.text = label
+        b.isAllCaps = false
+        b.typeface = Ui.medium(this)
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+        b.setTextColor(textColor)
+        val h = Ui.dp(this, 56f)
+        b.minHeight = h
+        b.minimumHeight = h
+        b.stateListAnimator = null
+        val padH = Ui.dp(this, 36f)
+        b.setPadding(padH, 0, padH, 0)
+        b.background = Ui.roundRect(fill, Ui.dp(this, 14f))
+        b.setOnClickListener { onClick() }
+        return b
     }
 
     private fun hideKeyboard(v: View) {
@@ -478,7 +466,7 @@ class PhotosActivity : Activity() {
         this.surface = surface
         f.addView(surface, FrameLayout.LayoutParams(MATCH, MATCH))
 
-        val boxSize = Ui.dp(this, 340f)
+        val boxSize = Ui.dp(this, 300f)
 
         // Black out everything except the centred box, so the camera preview only lights up
         // that window (less glare in the room) and the user's eye goes to the target. Drawn as
@@ -515,34 +503,57 @@ class PhotosActivity : Activity() {
         bp.gravity = Gravity.CENTER
         f.addView(box, bp)
 
-        val scanHint = TextView(this)
-        this.scanHint = scanHint
-        scanHint.text = "Make the QR fill your phone screen at full brightness, then hold it " +
-            "about half a meter away — sharp and filling the blue box. Hold steady."
-        scanHint.setTextColor(0xFFF0F0F0.toInt())
-        scanHint.typeface = Ui.medium(this)
-        scanHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-        scanHint.gravity = Gravity.CENTER_HORIZONTAL
-        scanHint.setLineSpacing(Ui.dp(this, 4f).toFloat(), 1f)
-        scanHint.setShadowLayer(8f, 0f, 1f, Color.BLACK)
-        val hp = FrameLayout.LayoutParams(Ui.dp(this, 620f), WRAP)
-        hp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-        hp.topMargin = Ui.dp(this, 72f) // clear the top system overlay
-        f.addView(scanHint, hp)
+        // Centred max-width columns so nothing spans the whole screen.
+        val colW = Math.min(Ui.dp(this, 640f), resources.displayMetrics.widthPixels - Ui.dp(this, 48f))
 
-        val typeLink = Ui.secondary(this, "Can't scan? Type the link") { showManualEntry() }
-        val tp = FrameLayout.LayoutParams(WRAP, WRAP)
-        tp.gravity = Gravity.BOTTOM or Gravity.START
-        tp.bottomMargin = Ui.dp(this, 28f)
-        tp.leftMargin = Ui.dp(this, 28f)
-        f.addView(typeLink, tp)
+        // Top: screen title + a subtitle that doubles as scan feedback.
+        val topCol = LinearLayout(this)
+        topCol.orientation = LinearLayout.VERTICAL
+        topCol.gravity = Gravity.CENTER_HORIZONTAL
+        val title = TextView(this)
+        title.text = "Add an album"
+        title.setTextColor(0xFFF0F0F0.toInt())
+        title.typeface = Ui.bold(this)
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
+        title.gravity = Gravity.CENTER_HORIZONTAL
+        title.setShadowLayer(8f, 0f, 1f, Color.BLACK)
+        topCol.addView(title)
+        val subtitle = TextView(this)
+        this.scanHint = subtitle // reused for "that QR isn't…/Album added ✓" feedback
+        subtitle.text = "Scan its QR code in the box, or paste a link below."
+        subtitle.setTextColor(0xFFD2D2D2.toInt())
+        subtitle.typeface = Ui.medium(this)
+        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        subtitle.gravity = Gravity.CENTER_HORIZONTAL
+        subtitle.setLineSpacing(Ui.dp(this, 3f).toFloat(), 1f)
+        subtitle.setShadowLayer(8f, 0f, 1f, Color.BLACK)
+        val subLp = LinearLayout.LayoutParams(MATCH, WRAP)
+        subLp.topMargin = Ui.dp(this, 6f)
+        topCol.addView(subtitle, subLp)
+        val topLp = FrameLayout.LayoutParams(colW, WRAP)
+        topLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        topLp.topMargin = Ui.dp(this, 56f)
+        f.addView(topCol, topLp)
 
-        val cancel = Ui.secondary(this, "Cancel") { finish() }
-        val cp = FrameLayout.LayoutParams(WRAP, WRAP)
-        cp.gravity = Gravity.BOTTOM or Gravity.END
-        cp.bottomMargin = Ui.dp(this, 28f)
-        cp.rightMargin = Ui.dp(this, 28f)
-        f.addView(cancel, cp)
+        // Bottom: paste a link + a compact Done button.
+        val bottomCol = LinearLayout(this)
+        bottomCol.orientation = LinearLayout.VERTICAL
+        val edit = Ui.field(this, "Paste a Google Photos or iCloud link")
+        edit.setSingleLine(true)
+        edit.inputType = InputType.TYPE_CLASS_TEXT or
+            InputType.TYPE_TEXT_VARIATION_URI or
+            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        bottomCol.addView(edit)
+        val done = pillButton("Done", Ui.BLUE, 0xFFF0F0F0.toInt()) { addTypedAlbum(edit) }
+        val doneLp = LinearLayout.LayoutParams(WRAP, WRAP)
+        doneLp.topMargin = Ui.dp(this, 14f)
+        doneLp.gravity = Gravity.END
+        done.layoutParams = doneLp
+        bottomCol.addView(done)
+        val bottomLp = FrameLayout.LayoutParams(colW, WRAP)
+        bottomLp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        bottomLp.bottomMargin = Ui.dp(this, 40f)
+        f.addView(bottomCol, bottomLp)
 
         root.addView(f)
 
@@ -718,12 +729,12 @@ class PhotosActivity : Activity() {
     private fun onQr(text: String?) {
         val url = text?.trim() ?: ""
         if (!isPhotosLink(url)) {
-            scanHint?.text = "That QR isn't a Google Photos album link — try again"
+            scanHint?.text = "That QR isn't a Google Photos or iCloud album link — try again"
             scanning = true // keep scanning
             return
         }
-        prefs().edit().putString(ConfigReceiver.KEY_ALBUM, url).apply()
-        Log.i(TAG, "album_url set via QR: $url")
+        Albums.add(prefs(), url)
+        Log.i(TAG, "album added via QR: $url")
         stopCamera()
         scanHint?.text = "Album set ✓ — your photos will appear shortly"
         toast("Album set ✓")
@@ -801,8 +812,6 @@ class PhotosActivity : Activity() {
             return 0 // Portal has only a front camera, which faces the user holding the phone
         }
 
-        private fun isPhotosLink(s: String): Boolean =
-            s.startsWith("https://photos.app.goo.gl/") ||
-                s.startsWith("https://photos.google.com/share/")
+        private fun isPhotosLink(s: String): Boolean = PhotoSources.matches(s)
     }
 }
