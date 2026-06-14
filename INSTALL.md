@@ -126,9 +126,12 @@ Tap **Done** to leave setup.
 - **Ambient intelligence** — face‑aware framing, auto‑enhance, ambient color glow, clock &
   weather, night warmth, and "On This Day" memories. Turn any on/off to taste.
 
-### Changing or removing your album
-- **Change album** — set a different one (scan/paste a new link).
-- **Stop showing photos** — clears your album; Frame falls back to a few built‑in sample photos.
+### Managing albums
+- **Multiple albums** — tap **Add album** (or **Enter link manually**) again to add more; the
+  slideshow plays photos from all of them, merged together. Each album shows its title and a
+  thumbnail of its first photo so you can tell them apart.
+- **Remove one** — tap **Remove** next to an album, then **Confirm**. The others keep playing.
+- **Remove all** — remove each album; with none left, Frame falls back to the built‑in samples.
 
 ---
 

@@ -48,7 +48,7 @@ import java.util.EnumMap
  * targets, centred max-width column, reserved top overlay inset). Three screens:
  *
  *  - Status/settings: album currently playing, how to add one, slideshow settings.
- *  - Scanner: live camera QR scan (validated, written to [ConfigReceiver.KEY_ALBUM]).
+ *  - Scanner: live camera QR scan (validated, added to the album list via [Albums]).
  *  - Manual entry: type/paste the link with the on-screen keyboard (QR-less fallback).
  *
  * All persist to the same `portalframe` prefs the slideshow reads
@@ -138,7 +138,7 @@ class PhotosActivity : Activity() {
     private fun prefs(): SharedPreferences =
         getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
 
-    private fun album(): String = prefs().getString(ConfigReceiver.KEY_ALBUM, "") ?: ""
+    private fun album(): String = Albums.list(prefs()).firstOrNull() ?: ""
 
     private fun getDelay(): Long =
         prefs().getLong(ConfigReceiver.KEY_DELAY_MS, ConfigReceiver.DEFAULT_DELAY_MS)
@@ -226,7 +226,7 @@ class PhotosActivity : Activity() {
                     stopArmed = true
                     stop.text = "Tap again to confirm"
                 } else {
-                    prefs().edit().remove(ConfigReceiver.KEY_ALBUM).apply()
+                    Albums.clear(prefs())
                     toast("Showing sample photos")
                     showStatus()
                 }
@@ -412,8 +412,8 @@ class PhotosActivity : Activity() {
                 if (!isPhotosLink(url)) {
                     toast("That doesn't look like a Google Photos or iCloud link")
                 } else {
-                    prefs().edit().putString(ConfigReceiver.KEY_ALBUM, url).apply()
-                    Log.i(TAG, "album_url set via manual entry: $url")
+                    Albums.add(prefs(), url)
+                    Log.i(TAG, "album added via manual entry: $url")
                     hideKeyboard(edit)
                     toast("Album set ✓")
                     finish() // back to the Compose settings screen (sticky Done + preview)
@@ -723,8 +723,8 @@ class PhotosActivity : Activity() {
             scanning = true // keep scanning
             return
         }
-        prefs().edit().putString(ConfigReceiver.KEY_ALBUM, url).apply()
-        Log.i(TAG, "album_url set via QR: $url")
+        Albums.add(prefs(), url)
+        Log.i(TAG, "album added via QR: $url")
         stopCamera()
         scanHint?.text = "Album set ✓ — your photos will appear shortly"
         toast("Album set ✓")
