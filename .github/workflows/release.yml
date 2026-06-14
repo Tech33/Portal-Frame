@@ -1,0 +1,75 @@
+name: Release APK
+
+# Build a signed release APK and attach it to a GitHub Release whenever a
+# version tag (e.g. v1.0.0) is pushed. Requires these repository secrets:
+#   FRAME_KEYSTORE_BASE64    - base64 of your release keystore (.jks)
+#   FRAME_KEYSTORE_PASSWORD  - keystore password
+#   FRAME_KEY_ALIAS          - key alias
+#   FRAME_KEY_PASSWORD       - key password
+# See RELEASING.md for how to generate the keystore and set these.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}   # allow manual runs (builds, but only tag pushes publish a Release)
+
+permissions:
+  contents: write          # needed to create the Release and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Decode release keystore
+        run: echo "${{ secrets.FRAME_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/release.jks"
+
+      - name: Build signed release APK
+        env:
+          FRAME_KEYSTORE: ${{ runner.temp }}/release.jks
+          FRAME_KEYSTORE_PASSWORD: ${{ secrets.FRAME_KEYSTORE_PASSWORD }}
+          FRAME_KEY_ALIAS: ${{ secrets.FRAME_KEY_ALIAS }}
+          FRAME_KEY_PASSWORD: ${{ secrets.FRAME_KEY_PASSWORD }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Stage artifact
+        id: artifact
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$APK" ]; then echo "release APK not found"; exit 1; fi
+          OUT="Frame-${{ github.ref_name }}.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          echo "apk=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact (every run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.apk }}
+          path: |
+            ${{ steps.artifact.outputs.apk }}
+            ${{ steps.artifact.outputs.apk }}.sha256
+
+      - name: Publish GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.artifact.outputs.apk }}
+            ${{ steps.artifact.outputs.apk }}.sha256
+          generate_release_notes: true

@@ -13,8 +13,9 @@ is for developers.
 
 ## License & contributing
 Released under the [MIT License](LICENSE); third-party attributions are in [NOTICE](NOTICE).
-See [CONTRIBUTING.md](CONTRIBUTING.md) to build and contribute, and [SECURITY.md](SECURITY.md)
-for the trust model and how to report issues.
+See [CONTRIBUTING.md](CONTRIBUTING.md) to build and contribute, [SECURITY.md](SECURITY.md)
+for the trust model and how to report issues, and [RELEASING.md](RELEASING.md) for cutting a
+signed release APK (a tag push builds and publishes it to GitHub Releases).
 
 ## What it does / architecture
 - **`FrameDreamService`** — a `DreamService` registered as Portal's screensaver
