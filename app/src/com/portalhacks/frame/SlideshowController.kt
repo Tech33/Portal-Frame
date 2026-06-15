@@ -67,6 +67,9 @@ class SlideshowController(
     private val info: TextView
     private val clock: TextView
     private val clockBox: LinearLayout
+    private val bigClock: TextView // centered, larger clock for low-light mode
+    private val bigDate: TextView
+    private val clockOnlyBox: LinearLayout
     private val dateLine: TextView
     private val shimmer: ShimmerView
     private val timeFmt: DateFormat
@@ -262,6 +265,43 @@ class SlideshowController(
             FrameLayout.LayoutParams.MATCH_PARENT,
         )
 
+        // Centered, larger, weather-less clock for low-light "clock only" mode — a touch
+        // dimmer than the overlay clock. Hidden until setClockOnly(true).
+        bigClock = TextView(context)
+        bigClock.setTextColor(0xFFCFCFCF.toInt())
+        bigClock.typeface = Ui.clockFace(context)
+        bigClock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 150f)
+        bigClock.includeFontPadding = false
+        bigClock.gravity = Gravity.CENTER_HORIZONTAL
+        bigClock.setShadowLayer(16f, 0f, 2f, Color.BLACK)
+        bigDate = TextView(context)
+        bigDate.setTextColor(0xFF9AA0AE.toInt())
+        bigDate.typeface = Ui.medium(context)
+        bigDate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+        bigDate.gravity = Gravity.CENTER_HORIZONTAL
+        bigDate.setShadowLayer(8f, 0f, 1f, Color.BLACK)
+        bigClock.setSingleLine(true)
+        clockOnlyBox = LinearLayout(context)
+        clockOnlyBox.orientation = LinearLayout.VERTICAL
+        clockOnlyBox.addView(
+            bigClock,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        val bdlp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+        )
+        bdlp.topMargin = Ui.dp(context, 4f)
+        clockOnlyBox.addView(bigDate, bdlp)
+        // Full-width box so the centered clock never clips; vertically centred on screen.
+        val colp = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+        )
+        colp.gravity = Gravity.CENTER_VERTICAL
+        clockOnlyBox.layoutParams = colp
+        clockOnlyBox.visibility = View.GONE
+
         if (!showClock) {
             clockBox.visibility = View.GONE
         }
@@ -279,6 +319,7 @@ class SlideshowController(
         root.addView(status)
         root.addView(info)
         root.addView(clockBox)
+        root.addView(clockOnlyBox)
         root.addView(buildTouchOverlay())
 
         // Run clock/night + weather + shimmer from the start so they're alive even
@@ -494,9 +535,11 @@ class SlideshowController(
             handler.removeCallbacks(autoTick) // pause advancing
             shimmer.stopSweep()
             blank() // photos -> black
-            clockBox.visibility = View.VISIBLE // show the clock even if the overlay is off
-            startClock()
+            clockBox.visibility = View.GONE // hide the bottom overlay clock
+            clockOnlyBox.visibility = View.VISIBLE // big centered clock instead
+            startClock() // ensure ticking + populate the big clock now
         } else {
+            clockOnlyBox.visibility = View.GONE
             if (!shimmerHidden) {
                 shimmer.startSweep()
             }
@@ -997,11 +1040,15 @@ class SlideshowController(
         } else {
             0f
         }
-        if (!showClock) {
-            return // night tint still updates above; clock/weather text is off
-        }
-        clock.text = timeFmt.format(c.time)
+        val time = timeFmt.format(c.time)
         val date = dateFmt.format(c.time)
+        // Centered low-light clock (no weather) — kept current even when the overlay is off.
+        bigClock.text = time
+        bigDate.text = date
+        if (!showClock) {
+            return // night tint still updates above; the overlay clock/weather text is off
+        }
+        clock.text = time
         val w = weather
         if (w == null) {
             dateLine.text = date
