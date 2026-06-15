@@ -197,11 +197,13 @@ class SettingsActivity : ComponentActivity() {
             Card("Ambient intelligence") {
                 ToggleRow("Face-aware framing", ConfigReceiver.KEY_FACE, true) { tick++ }
                 Divider()
-                ToggleRow("Auto-enhance photos", ConfigReceiver.KEY_ENHANCE, true) { tick++ }
+                ToggleRow("Auto-enhance photos", ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE) { tick++ }
                 Divider()
                 ToggleRow("Ambient color glow", ConfigReceiver.KEY_AMBIENT, true) { tick++ }
                 Divider()
                 ToggleRow("Clock & weather", ConfigReceiver.KEY_CLOCK, true) { tick++ }
+                Divider()
+                ToggleRow("Only clock in low light", ConfigReceiver.KEY_CLOCK_LOW_LIGHT, ConfigReceiver.DEFAULT_CLOCK_LOW_LIGHT) { tick++ }
                 Divider()
                 ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true) { tick++ }
                 Divider()
