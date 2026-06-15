@@ -66,6 +66,7 @@ class SlideshowController(
     private val status: TextView
     private val info: TextView
     private val clock: TextView
+    private val clockBox: LinearLayout
     private val dateLine: TextView
     private val shimmer: ShimmerView
     private val timeFmt: DateFormat
@@ -114,6 +115,7 @@ class SlideshowController(
     private var animGen = 0L
     private var onDismiss: Runnable? = null
     private var onSettings: Runnable? = null
+    private var clockOnly = false // low-light mode: black screen, clock only
 
     init {
         val dm = context.resources.displayMetrics
@@ -220,7 +222,7 @@ class SlideshowController(
         dateLine.typeface = Ui.medium(context)
         dateLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
         dateLine.setShadowLayer(8f, 0f, 1f, Color.BLACK)
-        val clockBox = LinearLayout(context)
+        clockBox = LinearLayout(context)
         clockBox.orientation = LinearLayout.VERTICAL
         clockBox.addView(clock)
         clockBox.addView(dateLine)
@@ -478,6 +480,33 @@ class SlideshowController(
         ambientGlow.alpha = 0f
     }
 
+    /**
+     * Low-light "clock only" mode: a black screen showing just the clock (photos paused).
+     * Mirrors the Portal night-mode "only show clock in low light" behaviour. Driven by
+     * the ambient light sensor in [SlideshowComposeActivity].
+     */
+    fun setClockOnly(on: Boolean) {
+        if (clockOnly == on) {
+            return
+        }
+        clockOnly = on
+        if (on) {
+            handler.removeCallbacks(autoTick) // pause advancing
+            shimmer.stopSweep()
+            blank() // photos -> black
+            clockBox.visibility = View.VISIBLE // show the clock even if the overlay is off
+            startClock()
+        } else {
+            if (!shimmerHidden) {
+                shimmer.startSweep()
+            }
+            clockBox.visibility = if (showClock) View.VISIBLE else View.GONE
+            if (running && items.isNotEmpty()) {
+                showImmediate(index) // resume photos + auto-advance
+            }
+        }
+    }
+
     /** Swap the photo source at runtime (e.g. bundled samples -> album). */
     fun setItems(newItems: List<Slide>?) {
         if (newItems == null || newItems.isEmpty()) {
@@ -491,6 +520,9 @@ class SlideshowController(
             promoteOnThisDay(items)
         }
         remote = true
+        if (clockOnly) {
+            return // keep showing the clock; the new photos display when light returns
+        }
         handler.removeCallbacks(autoTick)
         startClock()
         if (showClock) {

@@ -100,6 +100,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_PAIRS = "pairs"           // boolean: pair portraits side-by-side
         const val KEY_KEN_BURNS = "ken_burns"   // boolean: cinematic pan/zoom
         const val KEY_CLOCK = "clock"           // boolean: clock + weather overlay
+        const val KEY_CLOCK_LOW_LIGHT = "clock_low_light" // boolean: clock-only in low light
         const val KEY_NIGHT = "night"           // boolean: warm night dimming
         const val KEY_ON_THIS_DAY = "on_this_day" // boolean: surface memories
         const val KEY_CAPTIONS = "captions"     // boolean: photo date captions
@@ -111,6 +112,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_PAIRS = false
         const val DEFAULT_KEN_BURNS = true
         const val DEFAULT_CLOCK = true
+        const val DEFAULT_CLOCK_LOW_LIGHT = false
         const val DEFAULT_NIGHT = true
         const val DEFAULT_ON_THIS_DAY = true
         const val DEFAULT_CAPTIONS = true
@@ -122,7 +124,8 @@ class ConfigReceiver : BroadcastReceiver() {
         //   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --ez ken_burns false
         private val BOOL_EXTRAS = arrayOf(
             arrayOf("shuffle", KEY_SHUFFLE), arrayOf("pairs", KEY_PAIRS), arrayOf("ken_burns", KEY_KEN_BURNS),
-            arrayOf("clock", KEY_CLOCK), arrayOf("night", KEY_NIGHT), arrayOf("on_this_day", KEY_ON_THIS_DAY),
+            arrayOf("clock", KEY_CLOCK), arrayOf("clock_low_light", KEY_CLOCK_LOW_LIGHT),
+            arrayOf("night", KEY_NIGHT), arrayOf("on_this_day", KEY_ON_THIS_DAY),
             arrayOf("captions", KEY_CAPTIONS), arrayOf("face_framing", KEY_FACE), arrayOf("ambient_color", KEY_AMBIENT),
             arrayOf("auto_enhance", KEY_ENHANCE),
         )

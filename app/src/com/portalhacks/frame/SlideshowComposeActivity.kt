@@ -1,6 +1,10 @@
 package com.portalhacks.frame
 
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -36,6 +40,22 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     private var currentAlbums: List<String> = emptyList()
     private var currentIds: List<String> = ArrayList()
+
+    private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
+    private val lightSensor: Sensor? by lazy { sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT) }
+
+    // Low-light "clock only" mode (mirrors the Portal night-mode option). When enabled and the
+    // room is dark, drop to a clock-only screen; restore the photos when the light returns.
+    private val lightListener = object : SensorEventListener {
+        override fun onSensorChanged(e: SensorEvent) {
+            val lux = e.values.firstOrNull() ?: return
+            when {
+                lux <= LOW_LUX -> controller.setClockOnly(true)
+                lux >= HIGH_LUX -> controller.setClockOnly(false)
+            }
+        }
+        override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,6 +114,18 @@ class SlideshowComposeActivity : ComponentActivity() {
         // doesn't flash the old image before the first new frame loads.
         controller.blank()
         val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
+
+        // "Only show clock in low light": watch the ambient light sensor when enabled.
+        sensorManager.unregisterListener(lightListener)
+        val low = lightSensor
+        if (prefs.getBoolean(ConfigReceiver.KEY_CLOCK_LOW_LIGHT, ConfigReceiver.DEFAULT_CLOCK_LOW_LIGHT) &&
+            low != null
+        ) {
+            sensorManager.registerListener(lightListener, low, SensorManager.SENSOR_DELAY_NORMAL)
+        } else {
+            controller.setClockOnly(false)
+        }
+
         currentAlbums = Albums.enabled(prefs)
 
         if (currentAlbums.isEmpty()) {
@@ -122,6 +154,7 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        sensorManager.unregisterListener(lightListener)
         handler.removeCallbacks(refreshTick)
         controller.stop()
     }
@@ -182,6 +215,10 @@ class SlideshowComposeActivity : ComponentActivity() {
     companion object {
         private const val TAG = "PortalFrame"
         private const val REFRESH_INTERVAL_MS = 20 * 60 * 1000L // 20 min
+
+        // Lux thresholds for clock-only mode, with hysteresis to avoid flicker near the edge.
+        private const val LOW_LUX = 8f
+        private const val HIGH_LUX = 25f
 
         private fun idsOf(slides: List<Slide>): List<String> {
             val ids = ArrayList<String>(slides.size)
