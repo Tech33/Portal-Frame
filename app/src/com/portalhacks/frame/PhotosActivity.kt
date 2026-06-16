@@ -79,12 +79,15 @@ class PhotosActivity : Activity() {
     private var previewH = 0 // cached so we don't hit getParameters() per frame
     private var frameCount = 0
 
-    // Zoom sweep: cycle a few zoom levels so the AE auto-lands on the one that exposes the QR
-    // correctly for whatever phone screen is in front of the camera. Zoom is the only working
-    // exposure lever on this HAL (EV is ignored, AE can't be disabled), and the ideal level
-    // depends on the phone's screen brightness — so we sweep instead of betting one constant.
-    private var zoomLevels: IntArray = intArrayOf()
-    private var zoomIdx = 0
+    // Closed-loop exposure. This camera's AE can't be set directly (EV is ignored, AE can't be
+    // disabled), but ZOOM moves it: filling the frame with the bright phone screen makes the AE
+    // meter the screen and expose DOWN, out of clipping. So we measure each frame's central
+    // brightness and drive the zoom toward a target — blown out → zoom in (more fill → darker),
+    // too dark → zoom out. This self-tunes to any phone brightness, even when it can't be lowered.
+    private var maxZoomIdx = 0
+    private var curZoom = 0
+    private var zoomSettle = 0 // frames to let the AE settle after a zoom change before re-judging
+    private var autoExpZoom = true // false when a fixed `zoompct` override pins the level
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -663,22 +666,22 @@ class PhotosActivity : Activity() {
             // exposure: at low zoom the dark room fills most of this ultra-wide frame, so the AE
             // brightens for the room and blows the screen out. Zoom in hard and the bright screen
             // *fills the frame*, so the AE meters the screen and exposes down — the one lever that
-            // actually moves exposure on this HAL (EV is ignored). zoompct is tunable for testing.
+            // actually moves exposure on this HAL (EV is ignored). The previewCb runs a closed loop
+            // on top of this; here we just set the starting zoom. zoompct pins it (testing).
             if (pr.isZoomSupported) {
-                // A fixed `zoompct` override pins one level (for on-device testing); otherwise
-                // sweep a few levels at runtime so the scanner self-tunes the exposure to the
-                // phone in front of it rather than relying on a single hardcoded guess.
-                // Span wide→tight so the sweep self-tunes across mounts: the high steps (80/100)
-                // fill the frame for the close-held Go (exposure), the lower steps (20/50) keep an
-                // arm's-length QR in frame on the Portal+ where the lens is fixed at infinity.
+                maxZoomIdx = pr.maxZoom
                 val fixed = intent?.getIntExtra("zoompct", 0) ?: 0
-                val pcts = if (fixed > 0) intArrayOf(fixed) else intArrayOf(20, 50, 80, 100)
-                zoomLevels = pcts
-                    .map { Math.max(1, Math.min(pr.maxZoom, pr.maxZoom * it / 100)) }
-                    .distinct()
-                    .toIntArray()
-                zoomIdx = 0
-                pr.zoom = zoomLevels.first()
+                if (fixed > 0) {
+                    autoExpZoom = false // pin one level for testing
+                    curZoom = Math.max(0, Math.min(maxZoomIdx, maxZoomIdx * fixed / 100))
+                } else {
+                    autoExpZoom = true
+                    // Start fairly tight: a bright screen needs heavy fill to expose down, and the
+                    // loop backs the zoom off again if that overshoots too dark.
+                    curZoom = Math.max(0, Math.min(maxZoomIdx, maxZoomIdx * 70 / 100))
+                }
+                pr.zoom = curZoom
+                zoomSettle = AE_SETTLE_FRAMES
             }
             // Force the highest fixed frame rate the camera offers. A fixed high FPS caps the
             // exposure *time* the AE is allowed to integrate, so it physically can't over-expose
@@ -836,11 +839,31 @@ class PhotosActivity : Activity() {
                         " bytes=" + data.size,
                 )
             }
-            // Step the zoom sweep periodically, holding each level long enough for the AE to
-            // settle before we judge it (zoom is this HAL's only exposure control).
-            if (zoomLevels.size > 1 && frameCount % ZOOM_STEP_FRAMES == 0) {
-                zoomIdx = (zoomIdx + 1) % zoomLevels.size
-                applyZoom(zoomLevels[zoomIdx])
+            // Closed-loop exposure: nudge the zoom toward a target brightness so the AE exposes the
+            // bright screen down out of clipping. Hold a few frames after each change for the AE to
+            // re-settle before judging again.
+            if (autoExpZoom) {
+                if (zoomSettle > 0) {
+                    zoomSettle--
+                } else {
+                    val luma = centerLuma(data, previewW, previewH)
+                    val moved = when {
+                        luma > EXP_BRIGHT && curZoom < maxZoomIdx -> {
+                            curZoom = Math.min(maxZoomIdx, curZoom + zoomStep()); true
+                        }
+                        luma < EXP_DARK && curZoom > 0 -> {
+                            curZoom = Math.max(0, curZoom - zoomStep()); true
+                        }
+                        else -> false
+                    }
+                    if (moved) {
+                        applyZoom(curZoom)
+                        zoomSettle = AE_SETTLE_FRAMES
+                    }
+                    if (frameCount % 30 == 1) {
+                        Log.i(TAG, "QR exp: centerLuma=$luma zoom=$curZoom/$maxZoomIdx")
+                    }
+                }
             }
             // Decode every frame: the Camera1 callback naturally drops frames while we're busy,
             // so this self-throttles to whatever the CPU sustains rather than fixed half-rate.
@@ -956,6 +979,35 @@ class PhotosActivity : Activity() {
         }
     }
 
+    /** One exposure-loop zoom step ≈ 10% of the zoom range. */
+    private fun zoomStep(): Int = Math.max(1, maxZoomIdx / 10)
+
+    /**
+     * Mean luma of the central half of the NV21 frame (where the centred QR/screen sits), sampled
+     * sparsely. Drives the exposure loop: this region tracks the screen, so a high value means the
+     * screen is blown out and the zoom should fill more to make the AE expose down.
+     */
+    private fun centerLuma(data: ByteArray, w: Int, h: Int): Int {
+        val x0 = w / 4
+        val x1 = w * 3 / 4
+        val y0 = h / 4
+        val y1 = h * 3 / 4
+        var sum = 0L
+        var n = 0
+        var y = y0
+        while (y < y1) {
+            val row = y * w
+            var x = x0
+            while (x < x1) {
+                sum += (data[row + x].toInt() and 0xFF)
+                n++
+                x += 8
+            }
+            y += 8
+        }
+        return if (n > 0) (sum / n).toInt() else 0
+    }
+
     private fun onQr(text: String?) {
         val url = text?.trim() ?: ""
         if (!isPhotosLink(url)) {
@@ -992,7 +1044,9 @@ class PhotosActivity : Activity() {
     companion object {
         private const val TAG = "PortalFrame"
         private const val REQ_CAMERA = 1
-        private const val ZOOM_STEP_FRAMES = 12 // frames held at each zoom level before stepping
+        private const val AE_SETTLE_FRAMES = 3 // frames to let the AE settle after a zoom change
+        private const val EXP_BRIGHT = 165 // center luma above this = blown out → zoom in (AE down)
+        private const val EXP_DARK = 95 // center luma below this = too dark → zoom out
         private const val DEFAULT_SCAN_HINT =
             "Point the QR at the camera and slowly move it back and forth a few times until it " +
                 "scans. Or paste the link below."
