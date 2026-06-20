@@ -18,6 +18,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import java.util.Calendar
 
 /**
  * The live slideshow screensaver, hosted in Jetpack Compose.
@@ -41,6 +42,8 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     private var currentAlbums: List<String> = emptyList()
     private var currentIds: List<String> = ArrayList()
+    private var lowLightClockOnly = false
+    private var scheduledClockOnly = false
 
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private val lightSensor: Sensor? by lazy { sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT) }
@@ -51,11 +54,24 @@ class SlideshowComposeActivity : ComponentActivity() {
         override fun onSensorChanged(e: SensorEvent) {
             val lux = e.values.firstOrNull() ?: return
             when {
-                lux <= LOW_LUX -> controller.setClockOnly(true)
-                lux >= HIGH_LUX -> controller.setClockOnly(false)
+                lux <= LOW_LUX -> {
+                    lowLightClockOnly = true
+                    applyClockOnlyMode()
+                }
+                lux >= HIGH_LUX -> {
+                    lowLightClockOnly = false
+                    applyClockOnlyMode()
+                }
             }
         }
         override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
+    }
+
+    private val scheduleTick = object : Runnable {
+        override fun run() {
+            updateScheduledClockOnly()
+            handler.postDelayed(this, 60000 - System.currentTimeMillis() % 60000)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,14 +147,19 @@ class SlideshowComposeActivity : ComponentActivity() {
 
         // "Only show clock in low light": watch the ambient light sensor when enabled.
         sensorManager.unregisterListener(lightListener)
+        lowLightClockOnly = false
         val low = lightSensor
         if (prefs.getBoolean(ConfigReceiver.KEY_CLOCK_LOW_LIGHT, ConfigReceiver.DEFAULT_CLOCK_LOW_LIGHT) &&
             low != null
         ) {
             sensorManager.registerListener(lightListener, low, SensorManager.SENSOR_DELAY_NORMAL)
-        } else {
-            controller.setClockOnly(false)
         }
+        updateScheduledClockOnly()
+        handler.removeCallbacks(scheduleTick)
+        if (prefs.getBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, ConfigReceiver.DEFAULT_NIGHT_CLOCK)) {
+            handler.postDelayed(scheduleTick, 60000 - System.currentTimeMillis() % 60000)
+        }
+        applyClockOnlyMode()
 
         currentAlbums = Albums.enabled(prefs)
 
@@ -151,7 +172,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         // Albums configured: start straight from their merged caches if we have them
         // (disk-cached images make the first photo appear near-instantly); otherwise
         // show a black "Loading…" screen — never the samples.
-        val cached = currentAlbums.flatMap { AlbumCache.read(prefs, it) ?: emptyList() }
+        val cached = mergedSlides(prefs, currentAlbums)
         if (cached.isNotEmpty()) {
             currentIds = idsOf(cached)
             controller.setItems(cached)
@@ -170,7 +191,33 @@ class SlideshowComposeActivity : ComponentActivity() {
         super.onPause()
         sensorManager.unregisterListener(lightListener)
         handler.removeCallbacks(refreshTick)
+        handler.removeCallbacks(scheduleTick)
         controller.stop()
+    }
+
+    private fun applyClockOnlyMode() {
+        controller.setClockOnly(lowLightClockOnly || scheduledClockOnly)
+    }
+
+    private fun updateScheduledClockOnly() {
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
+        if (!prefs.getBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, ConfigReceiver.DEFAULT_NIGHT_CLOCK)) {
+            scheduledClockOnly = false
+            applyClockOnlyMode()
+            return
+        }
+        val start = prefs.getInt(
+            ConfigReceiver.KEY_NIGHT_CLOCK_START_MIN,
+            ConfigReceiver.DEFAULT_NIGHT_CLOCK_START_MIN,
+        )
+        val end = prefs.getInt(
+            ConfigReceiver.KEY_NIGHT_CLOCK_END_MIN,
+            ConfigReceiver.DEFAULT_NIGHT_CLOCK_END_MIN,
+        )
+        val now = Calendar.getInstance()
+        val minute = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+        scheduledClockOnly = isMinuteInRange(minute, start, end)
+        applyClockOnlyMode()
     }
 
     private val refreshTick = object : Runnable {
@@ -214,7 +261,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         if (currentAlbums != Albums.enabled(prefs)) {
             return // the playing album set changed while fetching
         }
-        val merged = currentAlbums.flatMap { AlbumCache.read(prefs, it) ?: emptyList() }
+        val merged = mergedSlides(prefs, currentAlbums)
         if (merged.isEmpty()) {
             if (showHint) controller.setStatusHint("Couldn't load photos — retrying later")
             return
@@ -226,6 +273,25 @@ class SlideshowComposeActivity : ComponentActivity() {
         }
     }
 
+    private fun mergedSlides(
+        prefs: android.content.SharedPreferences,
+        albums: List<String>,
+    ): List<Slide> {
+        val buckets = ArrayList<List<Slide>>(albums.size)
+        for (url in albums) {
+            buckets.add(AlbumCache.read(prefs, url) ?: emptyList())
+        }
+        return when (
+            prefs.getString(
+                ConfigReceiver.KEY_ALBUM_PLAYBACK,
+                ConfigReceiver.DEFAULT_ALBUM_PLAYBACK,
+            ) ?: ConfigReceiver.DEFAULT_ALBUM_PLAYBACK
+        ) {
+            "album_priority" -> buckets.flatten()
+            else -> interleaveSlides(buckets)
+        }
+    }
+
     companion object {
         private const val TAG = "PortalFrame"
         private const val REFRESH_INTERVAL_MS = 20 * 60 * 1000L // 20 min
@@ -234,12 +300,34 @@ class SlideshowComposeActivity : ComponentActivity() {
         private const val LOW_LUX = 8f
         private const val HIGH_LUX = 25f
 
+        private fun isMinuteInRange(minute: Int, start: Int, end: Int): Boolean {
+            if (start == end) return true
+            return if (start < end) minute in start until end else minute >= start || minute < end
+        }
+
         private fun idsOf(slides: List<Slide>): List<String> {
             val ids = ArrayList<String>(slides.size)
             for (s in slides) {
                 ids.add(s.id)
             }
             return ids
+        }
+
+        private fun interleaveSlides(groups: List<List<Slide>>): List<Slide> {
+            val merged = ArrayList<Slide>(groups.sumOf { it.size })
+            var added: Boolean
+            var idx = 0
+            do {
+                added = false
+                for (group in groups) {
+                    if (idx < group.size) {
+                        merged.add(group[idx])
+                        added = true
+                    }
+                }
+                idx++
+            } while (added)
+            return merged
         }
     }
 }

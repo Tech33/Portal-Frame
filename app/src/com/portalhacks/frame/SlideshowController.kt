@@ -9,6 +9,7 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -68,16 +69,19 @@ class SlideshowController(
     private val info: TextView
     private val clock: TextView
     private val clockBox: LinearLayout
-    private val bigClock: TextView // centered, larger clock for low-light mode
+    private val bigClock: FlipClockView // centered, animated flip clock for low-light mode
     private val bigDate: TextView
     private val clockOnlyBox: LinearLayout
+    private val clockExit: TextView
     private val dateLine: TextView
     private val clockEditHint: TextView // "drag/pinch/tap" hint shown while editing the clock
     private val shimmer: ShimmerView
     private val timeFmt: DateFormat
+    private val bigTimeFmt: DateFormat
     private val dateFmt = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
+    private val bigDateFmt = SimpleDateFormat("EEE, d MMM", Locale.getDefault())
     private val monthYearFmt = SimpleDateFormat("MMM yyyy", Locale.getDefault())
-    private val fahrenheit = "US" == Locale.getDefault().country
+    private val fahrenheit: Boolean
     private val nightTint: View // warm overlay that fades in at night (Ambient-EQ-lite)
     private val ambientGlow: View // edge vignette tinted to the photo's mood color
     private var weather: Weather.Now? = null // current reading; null until loaded
@@ -95,7 +99,9 @@ class SlideshowController(
 
     // User-tunable settings (read from prefs in the constructor; see PhotosActivity).
     private val intervalMs: Long // time each slide is held
-    private val autoFadeMs: Long // auto crossfade duration
+    private val transitionDurationMs: Long // transition animation duration
+    private val transitionMode: String // single selected slideshow transition mode
+    private val use24Hour: Boolean
     private val shuffle: Boolean // play photos in random order
     private val pairs: Boolean // pair two photos to fill the screen (side-by-side or stacked)
     private val kenBurns: Boolean // cinematic slow pan + zoom while held
@@ -120,6 +126,7 @@ class SlideshowController(
     private var index = 0
     private var curIsPair = false // current frame shows a paired (two-photo) composite
     private var running = false
+    private var slideshowPaused = false
     private var animGen = 0L
     private var onDismiss: Runnable? = null
     private var onSettings: Runnable? = null
@@ -131,6 +138,16 @@ class SlideshowController(
     private var clockDx = 0f
     private var clockDy = 0f
     private var clockScale = 1f
+    private var editingDate = false  // editing date/weather overlay
+    private var dateDx = 0f
+    private var dateDy = 0f
+    private var dateScale = 1f
+    private val actionMenuBackdrop: View
+    private val actionMenuCard: LinearLayout
+    private val actionMenuTitle: TextView
+    private val actionMenuPauseResume: TextView
+    private val actionMenuSettings: TextView
+    private val actionMenuClose: TextView
 
     init {
         val dm = context.resources.displayMetrics
@@ -140,11 +157,22 @@ class SlideshowController(
 
         val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         intervalMs = prefs.getLong(ConfigReceiver.KEY_DELAY_MS, ConfigReceiver.DEFAULT_DELAY_MS)
-        autoFadeMs = prefs.getLong(ConfigReceiver.KEY_FADE_MS, ConfigReceiver.DEFAULT_FADE_MS)
+        transitionDurationMs = prefs.getLong(ConfigReceiver.KEY_FADE_MS, ConfigReceiver.DEFAULT_FADE_MS)
+        transitionMode = prefs.getString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
+            ?: ConfigReceiver.DEFAULT_TRANSITION
+        use24Hour = if (prefs.contains(ConfigReceiver.KEY_CLOCK_24H)) {
+            prefs.getBoolean(ConfigReceiver.KEY_CLOCK_24H, ConfigReceiver.DEFAULT_CLOCK_24H)
+        } else {
+            android.text.format.DateFormat.is24HourFormat(context)
+        }
         shuffle = prefs.getBoolean(ConfigReceiver.KEY_SHUFFLE, false)
         pairs = prefs.getBoolean(ConfigReceiver.KEY_PAIRS, ConfigReceiver.DEFAULT_PAIRS)
         kenBurns = prefs.getBoolean(ConfigReceiver.KEY_KEN_BURNS, ConfigReceiver.DEFAULT_KEN_BURNS)
         showClock = prefs.getBoolean(ConfigReceiver.KEY_CLOCK, ConfigReceiver.DEFAULT_CLOCK)
+        fahrenheit = prefs.getBoolean(
+            ConfigReceiver.KEY_WEATHER_FAHRENHEIT,
+            ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT,
+        )
         nightMode = prefs.getBoolean(ConfigReceiver.KEY_NIGHT, ConfigReceiver.DEFAULT_NIGHT)
         onThisDay = prefs.getBoolean(ConfigReceiver.KEY_ON_THIS_DAY, ConfigReceiver.DEFAULT_ON_THIS_DAY)
         captions = prefs.getBoolean(ConfigReceiver.KEY_CAPTIONS, ConfigReceiver.DEFAULT_CAPTIONS)
@@ -155,9 +183,15 @@ class SlideshowController(
         clockDx = prefs.getFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
         clockDy = prefs.getFloat(ConfigReceiver.KEY_CLOCK_DY, ConfigReceiver.DEFAULT_CLOCK_DY)
         clockScale = prefs.getFloat(ConfigReceiver.KEY_CLOCK_SCALE, ConfigReceiver.DEFAULT_CLOCK_SCALE)
+        dateDx = prefs.getFloat(ConfigReceiver.KEY_DATE_DX, ConfigReceiver.DEFAULT_DATE_DX)
+        dateDy = prefs.getFloat(ConfigReceiver.KEY_DATE_DY, ConfigReceiver.DEFAULT_DATE_DY)
+        dateScale = prefs.getFloat(ConfigReceiver.KEY_DATE_SCALE, ConfigReceiver.DEFAULT_DATE_SCALE)
         monthYearFmt.timeZone = TimeZone.getTimeZone("UTC")
 
         root.setBackgroundColor(Color.BLACK)
+        // Pinch-resize and per-line transforms draw outside layout bounds; don't clip the overlay.
+        root.clipChildren = false
+        root.clipToPadding = false
         back = newImageView()
         front = newImageView()
         front.alpha = 0f
@@ -224,9 +258,10 @@ class SlideshowController(
         // Bottom-left: a large clock with a "day, date · weather" line beneath it
         // (Nest/Portal photo-frame style). Time uses a clean, AM/PM-free format.
         timeFmt = SimpleDateFormat(
-            if (android.text.format.DateFormat.is24HourFormat(context)) "H:mm" else "h:mm",
+            if (use24Hour) "H:mm" else "h:mm",
             Locale.getDefault(),
         )
+        bigTimeFmt = SimpleDateFormat(if (use24Hour) "HH:mm" else "h:mm a", Locale.getDefault())
         clock = TextView(context)
         clock.setTextColor(Color.WHITE)
         clock.typeface = Ui.clockFace(context) // match the Portal native clock
@@ -244,6 +279,8 @@ class SlideshowController(
         dateLine.setShadowLayer(8f, 0f, 1f, Color.BLACK)
         clockBox = LinearLayout(context)
         clockBox.orientation = LinearLayout.VERTICAL
+        clockBox.clipChildren = false
+        clockBox.clipToPadding = false
         clockBox.addView(clock)
         clockBox.addView(dateLine)
         val cbp = FrameLayout.LayoutParams(
@@ -300,22 +337,19 @@ class SlideshowController(
 
         // Centered, larger, weather-less clock for low-light "clock only" mode — a touch
         // dimmer than the overlay clock. Hidden until setClockOnly(true).
-        bigClock = TextView(context)
-        bigClock.setTextColor(0xFFCFCFCF.toInt())
-        bigClock.typeface = Ui.clockFace(context)
-        bigClock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 150f)
-        bigClock.includeFontPadding = false
-        bigClock.gravity = Gravity.CENTER_HORIZONTAL
-        bigClock.setShadowLayer(16f, 0f, 2f, Color.BLACK)
+        bigClock = FlipClockView(context, Ui.clockFace(context), Ui.medium(context))
         bigDate = TextView(context)
         bigDate.setTextColor(0xFF9AA0AE.toInt())
         bigDate.typeface = Ui.medium(context)
         bigDate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
         bigDate.gravity = Gravity.CENTER_HORIZONTAL
         bigDate.setShadowLayer(8f, 0f, 1f, Color.BLACK)
-        bigClock.setSingleLine(true)
+        bigDate.setSingleLine(true)
         clockOnlyBox = LinearLayout(context)
         clockOnlyBox.orientation = LinearLayout.VERTICAL
+        clockOnlyBox.gravity = Gravity.CENTER_HORIZONTAL
+        clockOnlyBox.clipChildren = false
+        clockOnlyBox.clipToPadding = false
         clockOnlyBox.addView(
             bigClock,
             LinearLayout.LayoutParams(
@@ -335,12 +369,81 @@ class SlideshowController(
         clockOnlyBox.layoutParams = colp
         clockOnlyBox.visibility = View.GONE
 
+        clockExit = TextView(context)
+        clockExit.text = "Exit"
+        clockExit.setTextColor(Color.WHITE)
+        clockExit.typeface = Ui.medium(context)
+        clockExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        clockExit.gravity = Gravity.CENTER
+        clockExit.background = Ui.roundRect(0x33000000, Ui.dp(context, 14f)).apply {
+            setStroke(Ui.dp(context, 1f), 0x55FFFFFF)
+        }
+        clockExit.setPadding(Ui.dp(context, 18f), Ui.dp(context, 10f), Ui.dp(context, 18f), Ui.dp(context, 10f))
+        clockExit.visibility = View.GONE
+        clockExit.setOnClickListener { onDismiss?.run() }
+        val exp = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+        )
+        exp.gravity = Gravity.TOP or Gravity.END
+        exp.topMargin = Ui.dp(context, 28f)
+        exp.rightMargin = Ui.dp(context, 28f)
+        clockExit.layoutParams = exp
+
         if (!showClock) {
             clockBox.visibility = View.GONE
         }
         if (!captions) {
             info.visibility = View.GONE
         }
+
+        actionMenuBackdrop = View(context).apply {
+            setBackgroundColor(0xA0000000.toInt())
+            visibility = View.GONE
+            isClickable = true
+            setOnClickListener { hideActionMenu() }
+        }
+        actionMenuCard = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Ui.dp(context, 24f), Ui.dp(context, 22f), Ui.dp(context, 24f), Ui.dp(context, 22f))
+            background = Ui.roundRect(0xFF12161E.toInt(), Ui.dp(context, 24f)).apply {
+                setStroke(Ui.dp(context, 1f), 0x2FFFFFFF)
+            }
+            visibility = View.GONE
+        }
+        actionMenuTitle = TextView(context).apply {
+            text = "Slideshow menu"
+            setTextColor(0xFFF0F0F0.toInt())
+            typeface = Ui.medium(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        }
+        actionMenuPauseResume = menuActionButton()
+        actionMenuSettings = menuActionButton()
+        actionMenuClose = menuActionButton()
+        actionMenuPauseResume.setOnClickListener {
+            if (slideshowPaused) resumeSlideshow() else pauseSlideshow()
+            hideActionMenu()
+        }
+        actionMenuSettings.setOnClickListener {
+            hideActionMenu()
+            onSettings?.run()
+        }
+        actionMenuClose.setOnClickListener { hideActionMenu() }
+        refreshActionMenuLabels()
+        actionMenuCard.addView(actionMenuTitle)
+        actionMenuCard.addView(menuSpacer(12))
+        actionMenuCard.addView(actionMenuPauseResume)
+        actionMenuCard.addView(menuSpacer(8))
+        actionMenuCard.addView(actionMenuSettings)
+        actionMenuCard.addView(menuSpacer(8))
+        actionMenuCard.addView(actionMenuClose)
+        val menuLp = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+        actionMenuCard.layoutParams = menuLp
 
         root.addView(back)
         root.addView(front)
@@ -355,14 +458,16 @@ class SlideshowController(
         root.addView(clockOnlyBox)
         root.addView(clockEditHint)
         root.addView(buildTouchOverlay())
+        root.addView(clockExit)
+        root.addView(actionMenuBackdrop)
+        root.addView(actionMenuCard)
         clockBox.post { applyClockTransformNow() } // apply saved position/size once laid out
+        dateLine.post { applyDateTransformNow() } // apply saved date position/size once laid out
 
         // Run clock/night + weather + shimmer from the start so they're alive even
         // during the initial "Loading…" wait before the first photo arrives.
         startClock()
-        if (showClock) {
-            startWeather()
-        }
+        startWeather()
         shimmer.startSweep()
     }
 
@@ -377,6 +482,67 @@ class SlideshowController(
 
     fun setStatusHint(text: String?) {
         status.text = text
+    }
+
+    fun pauseSlideshow() {
+        if (slideshowPaused) {
+            return
+        }
+        slideshowPaused = true
+        handler.removeCallbacks(autoTick)
+        refreshActionMenuLabels()
+        if (running && items.isNotEmpty()) {
+            status.text = "Paused on current photo"
+        }
+    }
+
+    fun resumeSlideshow() {
+        if (!slideshowPaused) {
+            return
+        }
+        slideshowPaused = false
+        refreshActionMenuLabels()
+        if (running && items.isNotEmpty()) {
+            status.text = ""
+            scheduleAuto()
+        }
+    }
+
+    private fun showActionMenu() {
+        if (editingClock || clockOnly) {
+            return
+        }
+        refreshActionMenuLabels()
+        actionMenuBackdrop.visibility = View.VISIBLE
+        actionMenuCard.visibility = View.VISIBLE
+    }
+
+    private fun hideActionMenu() {
+        actionMenuBackdrop.visibility = View.GONE
+        actionMenuCard.visibility = View.GONE
+    }
+
+    private fun refreshActionMenuLabels() {
+        actionMenuPauseResume.text = if (slideshowPaused) "Resume slideshow" else "Pause on current photo"
+        actionMenuSettings.text = "Settings"
+        actionMenuClose.text = "Close"
+    }
+
+    private fun menuActionButton(): TextView = TextView(context).apply {
+        setTextColor(Color.WHITE)
+        typeface = Ui.medium(context)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+        setPadding(Ui.dp(context, 18f), Ui.dp(context, 14f), Ui.dp(context, 18f), Ui.dp(context, 14f))
+        background = Ui.roundRect(0xFF1E2530.toInt(), Ui.dp(context, 16f)).apply {
+            setStroke(Ui.dp(context, 1f), 0x44FFFFFF)
+        }
+    }
+
+    private fun menuSpacer(h: Int): View = View(context).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            Ui.dp(context, h.toFloat()),
+        )
     }
 
     // ------------------------------------------------ clock move/resize
@@ -407,6 +573,31 @@ class SlideshowController(
             .apply()
     }
 
+    fun applyDateTransform() {
+        val p = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        dateDx = p.getFloat(ConfigReceiver.KEY_DATE_DX, ConfigReceiver.DEFAULT_DATE_DX)
+        dateDy = p.getFloat(ConfigReceiver.KEY_DATE_DY, ConfigReceiver.DEFAULT_DATE_DY)
+        dateScale = p.getFloat(ConfigReceiver.KEY_DATE_SCALE, ConfigReceiver.DEFAULT_DATE_SCALE)
+        dateLine.post { applyDateTransformNow() }
+    }
+
+    private fun applyDateTransformNow() {
+        dateLine.pivotX = dateLine.width / 2f
+        dateLine.pivotY = dateLine.height / 2f
+        dateLine.scaleX = dateScale
+        dateLine.scaleY = dateScale
+        dateLine.translationX = dateDx * reqW
+        dateLine.translationY = dateDy * reqH
+    }
+
+    private fun persistDateTransform() {
+        context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE).edit()
+            .putFloat(ConfigReceiver.KEY_DATE_DX, dateDx)
+            .putFloat(ConfigReceiver.KEY_DATE_DY, dateDy)
+            .putFloat(ConfigReceiver.KEY_DATE_SCALE, dateScale)
+            .apply()
+    }
+
     /** True if (x,y) in root coords falls on the clock (its scaled bounds, padded for easy grab). */
     private fun isOnClock(x: Float, y: Float): Boolean {
         if (clockBox.width == 0) return false
@@ -415,6 +606,23 @@ class SlideshowController(
         val cy = clockBox.top + clockBox.translationY + clockBox.height / 2f
         val halfW = clockBox.width / 2f * clockScale + pad
         val halfH = clockBox.height / 2f * clockScale + pad
+        return x >= cx - halfW && x <= cx + halfW && y >= cy - halfH && y <= cy + halfH
+    }
+
+    /** True if (x,y) in root coords falls on the date/weather line. */
+    private fun isOnDate(x: Float, y: Float): Boolean {
+        if (dateLine.width == 0) return false
+        val pad = Ui.dp(context, 16f)
+        // dateLine is a child of clockBox, so account for clockBox's transform when converting to root coords
+        val boxCx = clockBox.left + clockBox.translationX + clockBox.width / 2f
+        val boxCy = clockBox.top + clockBox.translationY + clockBox.height / 2f
+        val dateLocalCx = dateLine.left + dateLine.translationX + dateLine.width / 2f
+        val dateLocalCy = dateLine.top + dateLine.translationY + dateLine.height / 2f
+        // Scale and translate from parent box space to root space
+        val cx = boxCx + (dateLocalCx - clockBox.width / 2f) * clockScale
+        val cy = boxCy + (dateLocalCy - clockBox.height / 2f) * clockScale
+        val halfW = dateLine.width / 2f * dateScale * clockScale + pad
+        val halfH = dateLine.height / 2f * dateScale * clockScale + pad
         return x >= cx - halfW && x <= cx + halfW && y >= cy - halfH && y <= cy + halfH
     }
 
@@ -431,6 +639,41 @@ class SlideshowController(
         clockBox.background = null
         clockEditHint.visibility = View.GONE
         persistClockTransform()
+    }
+
+    private fun enterDateEdit() {
+        editingDate = true
+        dateLine.background = Ui.roundRect(0x33000000, Ui.dp(context, 8f)).apply {
+            setStroke(Ui.dp(context, 1f), Ui.BLUE)
+        }
+    }
+
+    private fun exitDateEdit() {
+        editingDate = false
+        dateLine.background = null
+        persistDateTransform()
+    }
+
+    /** Move the date line by a touch delta, clamped so its centre stays on screen. */
+    private fun dragDateBy(dx: Float, dy: Float) {
+        val baseCx = dateLine.left + dateLine.width / 2f
+        val baseCy = dateLine.top + dateLine.height / 2f
+        val edge = Ui.dp(context, 8f).toFloat()
+        val w = if (reqW > 0) reqW.toFloat() else dateLine.rootView.width.toFloat()
+        val h = if (reqH > 0) reqH.toFloat() else dateLine.rootView.height.toFloat()
+        val tx = (dateLine.translationX + dx).coerceIn(edge - baseCx, w - edge - baseCx)
+        val ty = (dateLine.translationY + dy).coerceIn(edge - baseCy, h - edge - baseCy)
+        dateLine.translationX = tx
+        dateLine.translationY = ty
+        if (w > 0) dateDx = tx / w
+        if (h > 0) dateDy = ty / h
+    }
+
+    private fun applyDateScale() {
+        dateLine.pivotX = dateLine.width / 2f
+        dateLine.pivotY = dateLine.height / 2f
+        dateLine.scaleX = dateScale
+        dateLine.scaleY = dateScale
     }
 
     /** Move the clock by a touch delta, clamped so its centre stays on screen. */
@@ -485,6 +728,9 @@ class SlideshowController(
             private var pinchStartDist = 0f
             private var pinchBaseScale = 1f
             private var pendingLong: Runnable? = null
+            private var datePinching = false  // track pinch on date layer
+            private var datePinchStartDist = 0f
+            private var datePinchBaseScale = 1f
 
             private fun cancelLong() {
                 pendingLong?.let {
@@ -510,14 +756,15 @@ class SlideshowController(
                         pinching = false
                         v.parent?.requestDisallowInterceptTouchEvent(true)
                         cancelLong()
-                        if (!editingClock) {
-                            // Long-press ON the clock → grab it for edit; elsewhere → settings.
+                        if (!editingClock && !editingDate) {
+                            // Long-press ON the clock → grab it for edit; ON date → edit date; elsewhere → settings.
                             val onClock = isOnClock(e.x, e.y)
-                            if (onClock || onSettings != null) {
+                            val onDate = isOnDate(e.x, e.y)
+                            if (onClock || onDate || onSettings != null) {
                                 val pl = Runnable {
                                     pendingLong = null
                                     handled = true // suppress the tap-dismiss on release
-                                    if (onClock) enterClockEdit() else onSettings?.run()
+                                    if (onClock) enterClockEdit() else if (onDate) enterDateEdit() else showActionMenu()
                                 }
                                 pendingLong = pl
                                 handler.postDelayed(pl, LONG_PRESS_MS)
@@ -531,6 +778,11 @@ class SlideshowController(
                             pinching = true
                             pinchStartDist = twoPointerDist(e)
                             pinchBaseScale = clockScale
+                        } else if (editingDate) {
+                            cancelLong()
+                            datePinching = true
+                            datePinchStartDist = twoPointerDist(e)
+                            datePinchBaseScale = dateScale
                         }
                         return true
                     }
@@ -545,6 +797,19 @@ class SlideshowController(
                                 }
                             } else {
                                 dragClockBy(e.x - lastX, e.y - lastY)
+                                lastX = e.x; lastY = e.y
+                                if (abs(e.x - downX) > TAP_SLOP || abs(e.y - downY) > TAP_SLOP) moved = true
+                            }
+                        } else if (editingDate) {
+                            if (datePinching && e.pointerCount >= 2) {
+                                val d = twoPointerDist(e)
+                                if (datePinchStartDist > 0f) {
+                                    dateScale = (datePinchBaseScale * d / datePinchStartDist)
+                                        .coerceIn(CLOCK_SCALE_MIN, CLOCK_SCALE_MAX)
+                                    applyDateScale()
+                                }
+                            } else {
+                                dragDateBy(e.x - lastX, e.y - lastY)
                                 lastX = e.x; lastY = e.y
                                 if (abs(e.x - downX) > TAP_SLOP || abs(e.y - downY) > TAP_SLOP) moved = true
                             }
@@ -569,6 +834,12 @@ class SlideshowController(
                             val rem = if (e.actionIndex == 0) 1 else 0
                             if (e.pointerCount > rem) { lastX = e.getX(rem); lastY = e.getY(rem) }
                             moved = true
+                        } else if (editingDate && datePinching) {
+                            persistDateTransform()
+                            datePinching = false
+                            val rem = if (e.actionIndex == 0) 1 else 0
+                            if (e.pointerCount > rem) { lastX = e.getX(rem); lastY = e.getY(rem) }
+                            moved = true
                         }
                         return true
                     }
@@ -584,6 +855,16 @@ class SlideshowController(
                                 persistClockTransform() // a drag/pinch ended — stay in edit mode
                             }
                             pinching = false
+                        } else if (editingDate) {
+                            val dt = e.eventTime - downTime
+                            if (!moved && !datePinching && abs(e.x - downX) < TAP_SLOP &&
+                                abs(e.y - downY) < TAP_SLOP && dt < TAP_TIMEOUT_MS
+                            ) {
+                                exitDateEdit() // a clean tap finishes editing
+                            } else {
+                                persistDateTransform() // a drag/pinch ended — stay in edit mode
+                            }
+                            datePinching = false
                         } else if (!handled) {
                             val dx = e.x - downX
                             val dy = e.y - downY
@@ -601,6 +882,7 @@ class SlideshowController(
                     MotionEvent.ACTION_CANCEL -> {
                         cancelLong()
                         if (editingClock) { pinching = false; persistClockTransform() }
+                        else if (editingDate) { datePinching = false; persistDateTransform() }
                         return true
                     }
                     else -> return true
@@ -613,9 +895,8 @@ class SlideshowController(
     fun start() {
         running = true
         startClock()
-        if (showClock) {
-            startWeather()
-        }
+        applyDateTransform()  // apply saved date overlay transform
+        startWeather()
         if (!shimmerHidden) {
             shimmer.startSweep()
         }
@@ -640,6 +921,10 @@ class SlideshowController(
             "Slideshow started with " + items.size +
                 (if (remote) " album photos" else " bundled slides"),
         )
+        if (clockOnly) {
+            startClock()
+            return
+        }
         showImmediate(0)
     }
 
@@ -691,6 +976,7 @@ class SlideshowController(
             kbAnim = null
         }
         front.animate().cancel()
+        back.animate().cancel()
         front.setImageDrawable(null)
         front.alpha = 0f
         front.scaleX = 1f
@@ -698,6 +984,7 @@ class SlideshowController(
         front.translationX = 0f
         front.translationY = 0f
         back.setImageDrawable(null)
+        back.alpha = 1f
         back.scaleX = 1f
         back.scaleY = 1f
         back.translationX = 0f
@@ -724,9 +1011,11 @@ class SlideshowController(
             blank() // photos -> black
             clockBox.visibility = View.GONE // hide the bottom overlay clock
             clockOnlyBox.visibility = View.VISIBLE // big centered clock instead
+            clockExit.visibility = View.VISIBLE
             startClock() // ensure ticking + populate the big clock now
         } else {
             clockOnlyBox.visibility = View.GONE
+            clockExit.visibility = View.GONE
             if (!shimmerHidden) {
                 shimmer.startSweep()
             }
@@ -771,19 +1060,19 @@ class SlideshowController(
 
     fun showNext() {
         if (items.isNotEmpty()) {
-            transitionTo(nextStart(index, curIsPair), SWIPE_FADE_MS)
+            transitionTo(nextStart(index, curIsPair), transitionDurationMs)
         }
     }
 
     fun showPrevious() {
         if (items.isNotEmpty()) {
-            transitionTo((index - 1 + items.size) % items.size, SWIPE_FADE_MS)
+            transitionTo((index - 1 + items.size) % items.size, transitionDurationMs)
         }
     }
 
     private fun scheduleAuto() {
         handler.removeCallbacks(autoTick)
-        if (running && items.size > 1) {
+        if (running && !slideshowPaused && items.size > 1) {
             handler.postDelayed(autoTick, intervalMs)
         }
     }
@@ -802,7 +1091,7 @@ class SlideshowController(
             } else {
                 next = index + step
             }
-            transitionTo(next, autoFadeMs)
+            transitionTo(next, transitionDurationMs)
         }
     }
 
@@ -845,8 +1134,8 @@ class SlideshowController(
         }
     }
 
-    /** Crossfade to start item [next]; loads async, safe to call mid-fade. */
-    private fun transitionTo(next: Int, fadeMs: Long) {
+    /** Transition to start item [next]; loads async, safe to call mid-animation. */
+    private fun transitionTo(next: Int, durationMs: Long) {
         if (items.isEmpty()) {
             return
         }
@@ -865,8 +1154,8 @@ class SlideshowController(
                 return@Callback
             }
             front.animate().cancel()
+            back.animate().cancel()
             front.setImageBitmap(bmp)
-            front.alpha = 0f
             index = next
             curIsPair = isPair
             status.text = ""
@@ -882,14 +1171,24 @@ class SlideshowController(
             applyKenBurnsStart(front, kbPath)
             enhanceFilter = if (enhance) makeEnhance(bmp) else null
             front.colorFilter = enhanceFilter
-            front.animate().alpha(1f).setDuration(fadeMs).withEndAction {
+            prepareTransitionStart(durationMs)
+            runTransition(durationMs) {
                 if (gen != animGen) {
-                    return@withEndAction
+                    return@runTransition
                 }
                 back.setImageBitmap(bmp)
                 applyKenBurnsStart(back, kbPath)
                 back.colorFilter = enhanceFilter
+                back.alpha = 1f
+                back.translationX = 0f
+                back.translationY = 0f
+                back.scaleX = 1f
+                back.scaleY = 1f
                 front.alpha = 0f
+                front.translationX = 0f
+                front.translationY = 0f
+                front.scaleX = 1f
+                front.scaleY = 1f
                 applyKenBurnsStart(front, null) // reset incoming view for reuse
                 front.colorFilter = null
                 startKenBurnsOnBack(gen)
@@ -903,6 +1202,49 @@ class SlideshowController(
         } else {
             loader.load(items[next].id, reqW, reqH, zoomFill, cb)
         }
+    }
+
+    private fun prepareTransitionStart(durationMs: Long) {
+        front.alpha = if (transitionMode == TRANSITION_INSTANT || transitionMode == TRANSITION_ZOOM) 1f else 0f
+        front.translationX = 0f
+        front.translationY = 0f
+        front.scaleX = 1f
+        front.scaleY = 1f
+        back.alpha = 1f
+        back.translationX = 0f
+        back.translationY = 0f
+        when (transitionMode) {
+            TRANSITION_SLIDE, TRANSITION_PUSH -> front.translationX = reqW.toFloat()
+            TRANSITION_ZOOM, TRANSITION_ZOOM_FADE -> {
+                front.scaleX = ZOOM_START_SCALE
+                front.scaleY = ZOOM_START_SCALE
+            }
+        }
+        if (durationMs <= 0L) {
+            front.alpha = 1f
+            front.translationX = 0f
+            front.scaleX = 1f
+            front.scaleY = 1f
+        }
+    }
+
+    private fun runTransition(durationMs: Long, onEnd: () -> Unit) {
+        if (transitionMode == TRANSITION_INSTANT || durationMs <= 0L) {
+            onEnd()
+            return
+        }
+        val anim = front.animate().setDuration(durationMs)
+        when (transitionMode) {
+            TRANSITION_SLIDE -> anim.alpha(1f).translationX(0f)
+            TRANSITION_PUSH -> {
+                back.animate().translationX(-reqW.toFloat()).setDuration(durationMs)
+                anim.alpha(1f).translationX(0f)
+            }
+            TRANSITION_ZOOM -> anim.alpha(1f).scaleX(1f).scaleY(1f)
+            TRANSITION_ZOOM_FADE -> anim.alpha(1f).scaleX(1f).scaleY(1f)
+            else -> anim.alpha(1f)
+        }
+        anim.withEndAction(onEnd)
     }
 
     /**
@@ -992,7 +1334,7 @@ class SlideshowController(
         // Run the pan/zoom over the hold (+ the outgoing fade), but cap it: with long "time per
         // photo" values (up to a day) an uncapped animator would run a multi-hour ValueAnimator at
         // ~60fps. Past the cap the motion has finished and the image simply holds at its end frame.
-        a.duration = min(max(intervalMs, 1200L) + autoFadeMs, KEN_BURNS_MAX_MS)
+        a.duration = min(max(intervalMs, 1200L) + transitionDurationMs, KEN_BURNS_MAX_MS)
         a.interpolator = LinearInterpolator()
         a.addUpdateListener { va ->
             if (gen != animGen) {
@@ -1205,7 +1547,13 @@ class SlideshowController(
 
     private val clockTick = object : Runnable {
         override fun run() {
+            // Briefly pause Ken Burns to smooth the clock update visual
+            val wasAnimating = kbAnim?.isRunning ?: false
+            kbAnim?.pause()
             updateClock()
+            if (wasAnimating) {
+                kbAnim?.resume()
+            }
             handler.postDelayed(this, 60000 - System.currentTimeMillis() % 60000)
         }
     }
@@ -1226,8 +1574,12 @@ class SlideshowController(
         val time = timeFmt.format(c.time)
         val date = dateFmt.format(c.time)
         // Centered low-light clock (no weather) — kept current even when the overlay is off.
-        bigClock.text = time
-        bigDate.text = date
+        bigClock.setTime(
+            c.get(Calendar.HOUR_OF_DAY),
+            c.get(Calendar.MINUTE),
+            use24Hour,
+        )
+        bigDate.text = buildBigDateLine(c, weather)
         if (!showClock) {
             return // night tint still updates above; the overlay clock/weather text is off
         }
@@ -1251,6 +1603,11 @@ class SlideshowController(
             dateLine.text = date + "   " + w.label()
         }
         trimLeftBearing(dateLine)
+    }
+
+    private fun buildBigDateLine(c: Calendar, w: Weather.Now?): String {
+        val date = bigDateFmt.format(c.time)
+        return if (w == null) date else "$date  ${w.temp}°  ${w.summary()}"
     }
 
     /**
@@ -1350,6 +1707,270 @@ class SlideshowController(
         }
     }
 
+    private class FlipClockView(
+        c: Context,
+        digitTypeface: android.graphics.Typeface,
+        labelTypeface: android.graphics.Typeface,
+    ) : View(c) {
+        private val minCardW = Ui.dp(c, 126f).toFloat()
+        private val minCardH = Ui.dp(c, 146f).toFloat()
+        private val minGroupGap = Ui.dp(c, 40f).toFloat()
+        private val minLabelGap = Ui.dp(c, 34f).toFloat()
+        private val groupBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF0F1419.toInt() }
+        private val groupStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x1CFFFFFF
+            style = Paint.Style.STROKE
+            strokeWidth = Ui.dp(c, 1.5f).toFloat()
+        }
+        private val cardBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1A1E27.toInt() }
+        private val cardTop = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF252A34.toInt() }
+        private val cardBottom = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1A1E27.toInt() }
+        private val cardStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x2CFFFFFF
+            style = Paint.Style.STROKE
+            strokeWidth = Ui.dp(c, 1.2f).toFloat()
+        }
+        private val splitLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x3CFFFFFF
+            strokeWidth = Ui.dp(c, 2f).toFloat()
+        }
+        private val flapShade = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x4A000000 }
+        private val digitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFAFBFC.toInt()
+            textAlign = Paint.Align.CENTER
+            typeface = digitTypeface
+            setShadowLayer(14f, 0f, 4f, 0xFF000000.toInt())
+        }
+        private val ampmPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF9AA0AE.toInt()
+            textAlign = Paint.Align.CENTER
+            typeface = labelTypeface
+            textSize = Ui.dp(c, 18f).toFloat()
+        }
+        private val currentDigits = charArrayOf('0', '0', '0', '0')
+        private val oldDigits = charArrayOf('0', '0', '0', '0')
+        private val nextDigits = charArrayOf('0', '0', '0', '0')
+        private val progress = FloatArray(4)
+        private val animators = arrayOfNulls<ValueAnimator>(4)
+        private var lastRendered = ""
+        private var ampm = ""
+        private var showAmPm = true
+        private var cardRadius = Ui.dp(c, 15f).toFloat()
+        private var groupRadius = Ui.dp(c, 26f).toFloat()
+        private var cardGap = Ui.dp(c, 14f).toFloat()
+        private var groupGap = Ui.dp(c, 56f).toFloat()
+        private var groupPadH = Ui.dp(c, 24f).toFloat()
+        private var groupPadV = Ui.dp(c, 22f).toFloat()
+        private var cardW = minCardW
+        private var cardH = minCardH
+        private var panelW = 0f
+        private var panelH = 0f
+        private var labelGap = minLabelGap
+
+        init {
+            setLayerType(LAYER_TYPE_HARDWARE, null)
+        }
+
+        fun setTime(hour24: Int, minute: Int, use24Hour: Boolean) {
+            showAmPm = !use24Hour
+            ampm = if (use24Hour) "" else if (hour24 < 12) "AM" else "PM"
+            val hour = if (use24Hour) hour24 else ((hour24 + 11) % 12) + 1
+            val digits = String.format(Locale.US, "%02d%02d", hour, minute)
+            if (lastRendered.isEmpty()) {
+                for (i in currentDigits.indices) {
+                    currentDigits[i] = digits[i]
+                    oldDigits[i] = digits[i]
+                    nextDigits[i] = digits[i]
+                    progress[i] = 1f
+                }
+                lastRendered = digits
+                invalidate()
+                return
+            }
+            if (digits == lastRendered) return
+            for (i in currentDigits.indices) {
+                val next = digits[i]
+                if (currentDigits[i] != next) {
+                    animators[i]?.cancel()
+                    oldDigits[i] = currentDigits[i]
+                    nextDigits[i] = next
+                    progress[i] = 0f
+                    animators[i] = ValueAnimator.ofFloat(0f, 1f).apply {
+                        duration = 380L  // smooth flip animation
+                        interpolator = LinearInterpolator()
+                        addUpdateListener {
+                            progress[i] = it.animatedValue as Float
+                            invalidate()
+                        }
+                        start()
+                    }
+                } else {
+                    oldDigits[i] = currentDigits[i]
+                    nextDigits[i] = currentDigits[i]
+                    progress[i] = 1f
+                }
+            }
+            lastRendered = digits
+        }
+
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow()
+            for (i in animators.indices) {
+                animators[i]?.cancel()
+                animators[i] = null
+            }
+        }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val widthMode = MeasureSpec.getMode(widthMeasureSpec)
+            val widthSize = MeasureSpec.getSize(widthMeasureSpec)
+            val heightMode = MeasureSpec.getMode(heightMeasureSpec)
+            val heightSize = MeasureSpec.getSize(heightMeasureSpec)
+
+            val availW = when (widthMode) {
+                MeasureSpec.UNSPECIFIED -> (minCardW * 4f + minGroupGap + Ui.dp(context, 96f)).toInt()
+                else -> widthSize
+            }.toFloat()
+            val availH = when (heightMode) {
+                MeasureSpec.UNSPECIFIED -> (availW * 0.46f).toInt()
+                else -> heightSize
+            }.toFloat()
+
+            updateGeometry(availW, availH)
+            val wantedH = (panelH + if (showAmPm) labelGap + ampmPaint.textSize else 0f).toInt()
+            val finalH = when (heightMode) {
+                MeasureSpec.EXACTLY -> heightSize
+                MeasureSpec.AT_MOST -> minOf(wantedH, heightSize)
+                else -> wantedH
+            }
+            setMeasuredDimension(availW.toInt(), finalH)
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            updateGeometry(width.toFloat(), height.toFloat())
+            val contentW = panelW * 2f + groupGap
+            val contentH = panelH + if (showAmPm && ampm.isNotEmpty()) labelGap + ampmPaint.textSize else 0f
+            val left = (width - contentW) / 2f
+            val top = (height - contentH) / 2f
+            val hourGroup = RectF(left, top, left + panelW, top + panelH)
+            val minuteGroup = RectF(
+                hourGroup.right + groupGap,
+                top,
+                hourGroup.right + groupGap + panelW,
+                top + panelH,
+            )
+            drawGroup(canvas, hourGroup, 0)
+            drawGroup(canvas, minuteGroup, 2)
+            if (showAmPm && ampm.isNotEmpty()) {
+                val baseY = hourGroup.bottom + labelGap
+                canvas.drawText(ampm, minuteGroup.centerX(), baseY, ampmPaint)
+            }
+        }
+
+        private fun updateGeometry(availW: Float, availH: Float) {
+            val contentW = (availW - paddingLeft - paddingRight).coerceAtLeast(minCardW * 4f)
+            val contentH = (availH - paddingTop - paddingBottom).coerceAtLeast(minCardH + minLabelGap)
+            val usableW = contentW * 0.92f
+            val usableH = if (showAmPm) contentH * 0.78f else contentH * 0.86f
+            val widthScale = usableW / (minCardW * 4f + minGroupGap + Ui.dp(context, 96f))
+            val heightScale = usableH / (minCardH + Ui.dp(context, 44f))
+            val scale = max(1f, min(widthScale, heightScale))
+
+            cardW = minCardW * scale
+            cardH = minCardH * scale
+            cardGap = Ui.dp(context, 14f) * scale
+            groupGap = max(minGroupGap, Ui.dp(context, 56f) * scale)
+            groupPadH = Ui.dp(context, 24f) * scale
+            groupPadV = Ui.dp(context, 22f) * scale
+            cardRadius = Ui.dp(context, 15f) * scale
+            groupRadius = Ui.dp(context, 26f) * scale
+            labelGap = max(minLabelGap, Ui.dp(context, 24f) * scale)
+            panelW = groupPadH * 2f + cardW * 2f + cardGap
+            panelH = groupPadV * 2f + cardH
+            digitPaint.textSize = cardH * 0.7f
+            ampmPaint.textSize = max(Ui.dp(context, 18f).toFloat(), Ui.dp(context, 18f) * scale * 0.9f)
+        }
+
+        private fun drawGroup(canvas: Canvas, group: RectF, startIdx: Int) {
+            canvas.drawRoundRect(group, groupRadius, groupRadius, groupBg)
+            canvas.drawRoundRect(group, groupRadius, groupRadius, groupStroke)
+            val cardTopY = group.top + groupPadV
+            val first = RectF(
+                group.left + groupPadH,
+                cardTopY,
+                group.left + groupPadH + cardW,
+                cardTopY + cardH,
+            )
+            val second = RectF(
+                first.right + cardGap,
+                cardTopY,
+                first.right + cardGap + cardW,
+                cardTopY + cardH,
+            )
+            drawCard(canvas, first, startIdx)
+            drawCard(canvas, second, startIdx + 1)
+        }
+
+        private fun drawCard(canvas: Canvas, rect: RectF, idx: Int) {
+            val mid = rect.centerY()
+            canvas.drawRoundRect(rect, cardRadius, cardRadius, cardBg)
+            val topRect = RectF(rect.left, rect.top, rect.right, mid)
+            val bottomRect = RectF(rect.left, mid, rect.right, rect.bottom)
+            canvas.drawRoundRect(topRect, cardRadius, cardRadius, cardTop)
+            canvas.drawRoundRect(bottomRect, cardRadius, cardRadius, cardBottom)
+            canvas.drawRoundRect(rect, cardRadius, cardRadius, cardStroke)
+            canvas.drawLine(rect.left, mid, rect.right, mid, splitLine)
+
+            val p = progress[idx]
+            if (p >= 1f) {
+                currentDigits[idx] = nextDigits[idx]
+                drawDigitHalf(canvas, rect, currentDigits[idx], true)
+                drawDigitHalf(canvas, rect, currentDigits[idx], false)
+                return
+            }
+
+            val oldChar = oldDigits[idx]
+            val newChar = nextDigits[idx]
+            if (p < 0.5f) {
+                drawDigitHalf(canvas, rect, oldChar, true)
+                drawDigitHalf(canvas, rect, oldChar, false)
+                val flap = 1f - (p / 0.5f)
+                drawAnimatedHalf(canvas, rect, oldChar, true, flap)
+            } else {
+                drawDigitHalf(canvas, rect, newChar, true)
+                drawDigitHalf(canvas, rect, oldChar, false)
+                val flap = (p - 0.5f) / 0.5f
+                drawAnimatedHalf(canvas, rect, newChar, false, flap)
+            }
+        }
+
+        private fun drawAnimatedHalf(canvas: Canvas, rect: RectF, ch: Char, topHalf: Boolean, scaleY: Float) {
+            val mid = rect.centerY()
+            val half = if (topHalf) RectF(rect.left, rect.top, rect.right, mid) else RectF(rect.left, mid, rect.right, rect.bottom)
+            canvas.save()
+            canvas.clipRect(half)
+            canvas.scale(1f, scaleY.coerceAtLeast(0.02f), rect.centerX(), mid)
+            drawDigitHalf(canvas, rect, ch, topHalf)
+            canvas.drawRect(half, flapShade)
+            canvas.restore()
+        }
+
+        private fun drawDigitHalf(canvas: Canvas, rect: RectF, ch: Char, topHalf: Boolean) {
+            val mid = rect.centerY()
+            canvas.save()
+            if (topHalf) {
+                canvas.clipRect(rect.left, rect.top, rect.right, mid)
+            } else {
+                canvas.clipRect(rect.left, mid, rect.right, rect.bottom)
+            }
+            val fm = digitPaint.fontMetrics
+            val baseline = rect.centerY() - (fm.ascent + fm.descent) / 2f
+            canvas.drawText(ch.toString(), rect.centerX(), baseline, digitPaint)
+            canvas.restore()
+        }
+    }
+
     private fun assetItems(): MutableList<Slide> {
         val names = ArrayList<String>()
         try {
@@ -1390,6 +2011,13 @@ class SlideshowController(
         private const val TAP_TIMEOUT_MS = 350L
         private const val LONG_PRESS_MS = 700L // hold to open Photos setup
         private const val WEATHER_INTERVAL_MS = 30 * 60 * 1000L // refresh weather
+        private const val ZOOM_START_SCALE = 1.08f
+        private const val TRANSITION_CROSSFADE = "crossfade"
+        private const val TRANSITION_SLIDE = "slide"
+        private const val TRANSITION_ZOOM = "zoom"
+        private const val TRANSITION_ZOOM_FADE = "zoom_fade"
+        private const val TRANSITION_INSTANT = "instant"
+        private const val TRANSITION_PUSH = "push"
 
         /**
          * Warm-overlay strength by time of day (Ambient-EQ-lite): none in daylight,

@@ -76,6 +76,19 @@ internal object Albums {
         }
     }
 
+    /** Move [url] one slot earlier/later in the configured order. */
+    @JvmStatic
+    fun move(prefs: SharedPreferences, url: String, delta: Int) {
+        val cur = list(prefs).toMutableList()
+        val from = cur.indexOf(url)
+        if (from < 0) return
+        val to = (from + delta).coerceIn(0, cur.lastIndex)
+        if (to == from) return
+        val item = cur.removeAt(from)
+        cur.add(to, item)
+        save(prefs, cur)
+    }
+
     /** Remove all albums (revert to the bundled samples). */
     @JvmStatic
     fun clear(prefs: SharedPreferences) {

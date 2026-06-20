@@ -15,7 +15,15 @@ That link always serves the newest signed release. Prefer to pick a version (or 
 `.sha256`)? Browse all builds on the **[Releases page](https://github.com/Ishtiaqhossain/Portal-Frame/releases/latest)**.
 
 Then follow the **[Install & User Guide](INSTALL.md)** (install the APK, add your album, turn it on
-as the screensaver).
+as the screensaver). After that, open **Frame → Updates** on the Portal to check for wireless
+updates — no computer required.
+
+## Version tracker
+
+Each release publishes a **`version.json`** on GitHub (repo root and attached to the release) with
+`versionCode`, `versionName`, `apkUrl`, and `sha256`. The app reads it from:
+
+`https://github.com/Ishtiaqhossain/Portal-Frame/releases/latest/download/version.json`
 
 ## Screenshots
 

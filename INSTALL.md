@@ -63,6 +63,20 @@ Installing uses a free Google tool called **ADB** (Android Debug Bridge).
 > Updating later? Download the newer `Frame-*.apk` from Releases and run
 > `adb install -r ~/Downloads/Frame-vX.Y.Z.apk` (the `-r` keeps your settings and album).
 
+### Wireless update (on the Portal, no computer)
+
+Once Frame is installed, you can update from **Settings → Updates**:
+
+1. Open the **Frame** app on the Portal (tap its home-screen icon).
+2. In the **Updates** section, tap **Check for updates**. Frame reads `version.json` from
+   GitHub Releases and compares it to the installed build.
+3. If an update is available, tap **Download and install**, then confirm when Android prompts you.
+4. The first time, Android may ask you to **allow Frame to install unknown apps** — turn that on
+   for Frame, then tap **Download and install** again.
+
+Updates are signed with the same release key as the APK on GitHub, so they install over your
+existing copy and keep your albums and settings.
+
 ---
 
 ## Part 2 — First-time setup (on the Portal)

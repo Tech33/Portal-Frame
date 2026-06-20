@@ -21,11 +21,15 @@ internal object Weather {
     /** A current reading: a weather emoji plus a rounded temperature in degrees. */
     class Now(
         @JvmField val emoji: String,
+        @JvmField val description: String,
         @JvmField val temp: Int,
         @JvmField val moon: Boolean, // clear/mainly-clear at night → draw a blue crescent
     ) {
         /** e.g. "☀️ 72°" */
         fun label(): String = "$emoji $temp°"
+
+        /** e.g. "☁️ Cloudy" */
+        fun summary(): String = "$emoji $description"
     }
 
     @JvmStatic
@@ -46,7 +50,7 @@ internal object Weather {
             val code = cur.optInt("weather_code", 0)
             val day = cur.optInt("is_day", 1) == 1
             val moon = !day && (code == 0 || code == 1) // clear / mainly-clear night
-            Now(emojiFor(code, day), t.roundToInt(), moon)
+            Now(emojiFor(code, day), descriptionFor(code, day), t.roundToInt(), moon)
         } catch (e: Exception) {
             Log.w(TAG, "weather fetch failed", e)
             null
@@ -67,6 +71,21 @@ internal object Weather {
         if (c == 85 || c == 86) return "🌨️"  // snow showers
         if (c >= 95) return "⛈️"                   // thunderstorm
         return "🌡️"                          // fallback: thermometer
+    }
+
+    private fun descriptionFor(c: Int, day: Boolean): String {
+        if (c == 0) return if (day) "Sunny" else "Clear"
+        if (c == 1) return if (day) "Mostly clear" else "Clear"
+        if (c == 2) return "Partly cloudy"
+        if (c == 3) return "Cloudy"
+        if (c == 45 || c == 48) return "Foggy"
+        if (c in 51..57) return "Drizzle"
+        if (c in 61..67) return "Rain"
+        if (c in 71..77) return "Snow"
+        if (c in 80..82) return "Showers"
+        if (c == 85 || c == 86) return "Snow showers"
+        if (c >= 95) return "Thunderstorm"
+        return "Weather"
     }
 
     @Throws(Exception::class)

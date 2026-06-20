@@ -25,8 +25,8 @@ android {
         applicationId = "com.portalhacks.frame"
         minSdk = 28
         targetSdk = 29
-        versionCode = 11
-        versionName = "1.1.9"
+        versionCode = 12
+        versionName = "1.2.0"
     }
 
     compileOptions {
@@ -92,6 +92,7 @@ kotlin {
 
 dependencies {
     implementation(files("libs/zxing-core-3.5.3.jar"))
+    implementation("androidx.core:core-ktx:1.15.0")
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

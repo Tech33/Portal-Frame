@@ -11,11 +11,19 @@ project — but reports are appreciated and will be looked at.
 
 ## Trust model & hardening
 
-- **Network.** The app only talks to the photo providers' hosts (Google Photos / iCloud and their
-  image CDNs), always over **HTTPS**. Cleartext traffic is disabled via
-  `res/xml/network_security_config.xml`, and the album fetch (`PhotoSources` → `GooglePhotosSource`
-  / `ApplePhotosSource`) and image download (`ImageLoader`) both refuse non-HTTPS URLs and cap
-  response sizes to avoid memory/disk exhaustion from a hostile or oversized response.
+- **Network.** The app talks to photo providers' hosts (Google Photos / iCloud and their image
+  CDNs), weather lookup endpoints (GeoJS, Open-Meteo), and **GitHub Releases** for optional
+  in-app updates — always over **HTTPS**. Cleartext traffic is disabled via
+  `res/xml/network_security_config.xml`. Album fetch, image download, and OTA download all refuse
+  non-HTTPS URLs and cap response sizes.
+
+- **In-app updates (GitHub).** Settings → **Check for updates** fetches
+  `version.json` from `github.com/Ishtiaqhossain/Portal-Frame/releases/latest/download/version.json`,
+  compares `versionCode` to the installed build, and optionally downloads `Frame.apk` from the same
+  release. Download URLs must be on `github.com` or `githubusercontent.com`; APK size is capped at
+  80 MB; when `sha256` is present in the manifest the download is verified before install. The user
+  must grant **Install unknown apps** for Frame (Android 8+). Updates only succeed when signed with
+  the same release key as the installed build.
 
 - **Public shared albums only.** Providers read **public, link-shared** albums via their public
   share endpoints — Google Photos by scraping the share page (the Library API was deprecated
@@ -33,8 +41,9 @@ project — but reports are appreciated and will be looked at.
   launched for testing (`am start`) and by the screensaver trampoline. It displays photos only
   and takes no untrusted parameters.
 
-- **Permissions.** `INTERNET`, `ACCESS_NETWORK_STATE`, and `CAMERA` (camera is used only for the
-  on-device QR scan, and is optional). `android:allowBackup="false"`.
+- **Permissions.** `INTERNET`, `ACCESS_NETWORK_STATE`, `REQUEST_INSTALL_PACKAGES` (in-app updates),
+  and `CAMERA` (camera is used only for the on-device QR scan, and is optional).
+  `android:allowBackup="false"`.
 
 ## Supported versions
 

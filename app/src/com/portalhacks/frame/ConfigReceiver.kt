@@ -92,15 +92,22 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_ALBUMS = "album_urls" // JSON array of configured album URLs
         const val KEY_ALBUMS_DISABLED = "album_urls_disabled" // JSON array of stopped album URLs
         const val KEY_GUARD = "screensaver_guard" // boolean: keep re-asserting Frame as the dream
+        const val KEY_ALBUM_PLAYBACK = "album_playback" // string: shuffled merge or album priority
 
         // Slideshow settings (written by PhotosActivity, read by SlideshowController).
         const val KEY_DELAY_MS = "delay_ms"     // ms each photo is held
         const val KEY_SHUFFLE = "shuffle"       // boolean: random order
         const val KEY_FADE_MS = "fade_ms"       // ms auto crossfade duration
+        const val KEY_TRANSITION = "transition" // string: slideshow transition mode
         const val KEY_PAIRS = "pairs"           // boolean: pair two photos to fill the screen
         const val KEY_KEN_BURNS = "ken_burns"   // boolean: cinematic pan/zoom
         const val KEY_CLOCK = "clock"           // boolean: clock + weather overlay
+        const val KEY_WEATHER_FAHRENHEIT = "weather_fahrenheit" // boolean: weather temp unit
+        const val KEY_CLOCK_24H = "clock_24h"   // boolean: explicit 24-hour clock mode
         const val KEY_CLOCK_LOW_LIGHT = "clock_low_light" // boolean: clock-only in low light
+        const val KEY_NIGHT_CLOCK = "night_clock" // boolean: show full-screen clock on schedule
+        const val KEY_NIGHT_CLOCK_START_MIN = "night_clock_start_min" // minutes after midnight
+        const val KEY_NIGHT_CLOCK_END_MIN = "night_clock_end_min" // minutes after midnight
         const val KEY_NIGHT = "night"           // boolean: warm night dimming
         const val KEY_ON_THIS_DAY = "on_this_day" // boolean: surface memories
         const val KEY_CAPTIONS = "captions"     // boolean: photo date captions
@@ -115,12 +122,29 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_CLOCK_DX = "clock_dx"
         const val KEY_CLOCK_DY = "clock_dy"
         const val KEY_CLOCK_SCALE = "clock_scale"
+        // Date/weather overlay transform (similar to clock: dx/dy as fractions, scale as multiplier).
+        const val KEY_DATE_DX = "date_dx"
+        const val KEY_DATE_DY = "date_dy"
+        const val KEY_DATE_SCALE = "date_scale"
+        const val KEY_UPDATE_AUTO_CHECK = "update_auto_check" // check GitHub on Settings open
+        const val KEY_LAST_UPDATE_CHECK_MS = "last_update_check_ms"
+
+        /** Stable URL — always serves the latest release's version.json asset. */
+        const val UPDATE_MANIFEST_URL =
+            "https://github.com/Tech33/Portal-Frame/releases/latest/download/version.json"
         const val DEFAULT_DELAY_MS = 6000L
         const val DEFAULT_FADE_MS = 1200L
+        const val DEFAULT_TRANSITION = "crossfade"
+        const val DEFAULT_ALBUM_PLAYBACK = "shuffled_merge"
         const val DEFAULT_PAIRS = false
         const val DEFAULT_KEN_BURNS = true
         const val DEFAULT_CLOCK = true
+        const val DEFAULT_WEATHER_FAHRENHEIT = false
+        const val DEFAULT_CLOCK_24H = false
         const val DEFAULT_CLOCK_LOW_LIGHT = true
+        const val DEFAULT_NIGHT_CLOCK = false
+        const val DEFAULT_NIGHT_CLOCK_START_MIN = 22 * 60
+        const val DEFAULT_NIGHT_CLOCK_END_MIN = 7 * 60
         const val DEFAULT_NIGHT = true
         const val DEFAULT_ON_THIS_DAY = true
         const val DEFAULT_CAPTIONS = true
@@ -131,12 +155,17 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_CLOCK_DX = 0f
         const val DEFAULT_CLOCK_DY = 0f
         const val DEFAULT_CLOCK_SCALE = 1f
+        const val DEFAULT_DATE_DX = 0f
+        const val DEFAULT_DATE_DY = 0f
+        const val DEFAULT_DATE_SCALE = 1f
+        const val DEFAULT_UPDATE_AUTO_CHECK = true
 
         // ADB-settable boolean extras (extra name -> pref key) for quick testing, e.g.
         //   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --ez ken_burns false
         private val BOOL_EXTRAS = arrayOf(
             arrayOf("shuffle", KEY_SHUFFLE), arrayOf("pairs", KEY_PAIRS), arrayOf("ken_burns", KEY_KEN_BURNS),
-            arrayOf("clock", KEY_CLOCK), arrayOf("clock_low_light", KEY_CLOCK_LOW_LIGHT),
+            arrayOf("clock", KEY_CLOCK), arrayOf("weather_fahrenheit", KEY_WEATHER_FAHRENHEIT),
+            arrayOf("clock_low_light", KEY_CLOCK_LOW_LIGHT), arrayOf("night_clock", KEY_NIGHT_CLOCK),
             arrayOf("night", KEY_NIGHT), arrayOf("on_this_day", KEY_ON_THIS_DAY),
             arrayOf("captions", KEY_CAPTIONS), arrayOf("face_framing", KEY_FACE), arrayOf("ambient_color", KEY_AMBIENT),
             arrayOf("auto_enhance", KEY_ENHANCE), arrayOf("zoom_fill", KEY_ZOOM_FILL),

@@ -79,7 +79,10 @@ base64 -i frame-release.jks | pbcopy      # macOS (clipboard)
    git push origin v1.1.0
    ```
 3. The **Release APK** workflow builds the signed APK and publishes a GitHub Release with
-   `Frame-v1.1.0.apk` (and its `.sha256`) attached, plus auto-generated notes.
+   `Frame-v1.1.0.apk` (and its `.sha256`) attached, plus auto-generated notes. It also generates
+   **`version.json`** (with `versionCode`, `versionName`, `apkUrl`, and `sha256`) and attaches it
+   to the release — Frame uses that file for in-app wireless updates. The workflow commits the
+   updated `version.json` to `main` after each tagged release.
 
 You can also trigger the workflow manually (Actions → *Release APK* → *Run workflow*); manual
 runs build and upload a workflow artifact but only **tag pushes** publish a public Release.

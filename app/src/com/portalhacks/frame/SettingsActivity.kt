@@ -29,6 +29,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -44,7 +46,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -53,6 +57,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
@@ -123,6 +131,100 @@ class SettingsActivity : ComponentActivity() {
         startActivity(Intent(this, PhotosActivity::class.java).putExtra("goto", goto))
     }
 
+    private fun startScreensaverNow() {
+        startActivity(Intent(this, SlideshowComposeActivity::class.java))
+    }
+
+    private fun refreshAlbumsNow(
+        urls: List<String>,
+        onStatus: (String) -> Unit,
+        onFinished: () -> Unit,
+    ) {
+        if (urls.isEmpty()) {
+            onStatus("No albums to refresh.")
+            onFinished()
+            return
+        }
+        val remaining = java.util.concurrent.atomic.AtomicInteger(urls.size)
+        val refreshed = java.util.concurrent.atomic.AtomicInteger(0)
+        val failed = java.util.concurrent.atomic.AtomicInteger(0)
+        onStatus("Refreshing ${urls.size} album" + if (urls.size == 1) "" else "s" + "…")
+        for (url in urls) {
+            loader.executor().execute {
+                try {
+                    val album = PhotoSources.fetch(url)
+                    AlbumCache.write(prefs, url, album.slides, album.title)
+                    refreshed.incrementAndGet()
+                } catch (_: Exception) {
+                    failed.incrementAndGet()
+                } finally {
+                    if (remaining.decrementAndGet() == 0) {
+                        runOnUiThread {
+                            val ok = refreshed.get()
+                            val bad = failed.get()
+                            onStatus(
+                                when {
+                                    bad == 0 -> "Refreshed $ok album" + if (ok == 1) "" else "s" + "."
+                                    ok == 0 -> "Couldn't refresh albums right now."
+                                    else -> "Refreshed $ok album" + if (ok == 1) "" else "s" +
+                                        "; $bad failed."
+                                },
+                            )
+                            onFinished()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun checkForUpdates(
+        onResult: (UpdateChecker.UpdateManifest?, String) -> Unit,
+    ) {
+        loader.executor().execute {
+            val manifest = UpdateChecker.fetchManifest()
+            val current = UpdateChecker.currentVersionCode(this)
+            runOnUiThread {
+                when {
+                    manifest == null ->
+                        onResult(null, "Couldn't reach GitHub — try again later.")
+                    manifest.versionCode <= current ->
+                        onResult(null, "You're on the latest version (${UpdateChecker.currentVersionName(this)}).")
+                    else ->
+                        onResult(
+                            manifest,
+                            "Version ${manifest.versionName} is available (you have " +
+                                "${UpdateChecker.currentVersionName(this)}).",
+                        )
+                }
+            }
+        }
+    }
+
+    private fun downloadAndInstallUpdate(
+        manifest: UpdateChecker.UpdateManifest,
+        onStatus: (String) -> Unit,
+        onFinished: () -> Unit,
+    ) {
+        loader.executor().execute {
+            runOnUiThread { onStatus("Downloading update…") }
+            when (val result = UpdateInstaller.download(this, manifest)) {
+                is UpdateInstaller.Result.Ready -> runOnUiThread {
+                    if (UpdateInstaller.promptInstall(this, result.file)) {
+                        onStatus("Follow the system prompt to install.")
+                    } else {
+                        onStatus("Allow Frame to install updates, then tap Download again.")
+                    }
+                    onFinished()
+                }
+                is UpdateInstaller.Result.Error -> runOnUiThread {
+                    onStatus(result.message)
+                    onFinished()
+                }
+            }
+        }
+    }
+
     private fun isOurScreensaver(): Boolean = try {
         val enabled = Settings.Secure.getInt(contentResolver, "screensaver_enabled", 0) == 1
         val comp = Settings.Secure.getString(contentResolver, "screensaver_components")
@@ -137,10 +239,45 @@ class SettingsActivity : ComponentActivity() {
     private fun SettingsScreen() {
         val ctx = LocalContext.current
         var tick by remember { mutableIntStateOf(0) } // bump to recompose after pref writes
+        var refreshingAlbums by remember { mutableStateOf(false) }
+        var albumRefreshStatus by remember { mutableStateOf("") }
+        var checkingUpdate by remember { mutableStateOf(false) }
+        var downloadingUpdate by remember { mutableStateOf(false) }
+        var updateStatus by remember { mutableStateOf("") }
+        var pendingUpdate by remember { mutableStateOf<UpdateChecker.UpdateManifest?>(null) }
+        val installedVersion = remember(tick, resumeTick.intValue) {
+            UpdateChecker.currentVersionName(ctx) +
+                " (${UpdateChecker.currentVersionCode(ctx)})"
+        }
         resumeTick.intValue // read so returning from the scanner re-reads albums below
         tick // read so writes that bump it recompose
         val albums = Albums.list(prefs)
         val hasAlbum = albums.isNotEmpty()
+        val autoCheckUpdates = prefs.getBoolean(
+            ConfigReceiver.KEY_UPDATE_AUTO_CHECK,
+            ConfigReceiver.DEFAULT_UPDATE_AUTO_CHECK,
+        )
+
+        LaunchedEffect(resumeTick.intValue, autoCheckUpdates) {
+            if (!autoCheckUpdates || checkingUpdate || downloadingUpdate) {
+                return@LaunchedEffect
+            }
+            val last = prefs.getLong(ConfigReceiver.KEY_LAST_UPDATE_CHECK_MS, 0L)
+            if (System.currentTimeMillis() - last < UPDATE_CHECK_INTERVAL_MS) {
+                return@LaunchedEffect
+            }
+            checkingUpdate = true
+            checkForUpdates { manifest, status ->
+                checkingUpdate = false
+                prefs.edit()
+                    .putLong(ConfigReceiver.KEY_LAST_UPDATE_CHECK_MS, System.currentTimeMillis())
+                    .apply()
+                if (manifest != null) {
+                    pendingUpdate = manifest
+                    updateStatus = status
+                }
+            }
+        }
 
         // Card groups, so the layout can be one or two columns by available width.
         val sourceCards: @Composable () -> Unit = {
@@ -160,13 +297,113 @@ class SettingsActivity : ComponentActivity() {
                 Spacer(Modifier.height(12.dp))
                 if (active) PrimaryBtn("Change screensaver") { openScreensaver() }
                 else PrimaryBtn("Use as screensaver") { enableScreensaver(); tick++ }
+                Spacer(Modifier.height(10.dp))
+                SecondaryBtn("Start screensaver now") { startScreensaverNow() }
+            }
+            Card("Updates") {
+                Body("Installed: $installedVersion")
+                Spacer(Modifier.height(8.dp))
+                Body(
+                    "Frame checks GitHub for a newer signed APK. You'll need to allow " +
+                        "Frame to install updates once (Android will prompt you).",
+                )
+                if (updateStatus.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Body(updateStatus)
+                }
+                pendingUpdate?.releaseNotes?.let { notes ->
+                    Spacer(Modifier.height(8.dp))
+                    Body(notes)
+                }
+                Spacer(Modifier.height(12.dp))
+                SecondaryBtn(
+                    if (checkingUpdate) "Checking…" else "Check for updates",
+                    enabled = !checkingUpdate && !downloadingUpdate,
+                ) {
+                    checkingUpdate = true
+                    updateStatus = ""
+                    checkForUpdates { manifest, status ->
+                        checkingUpdate = false
+                        pendingUpdate = manifest
+                        updateStatus = status
+                        prefs.edit()
+                            .putLong(ConfigReceiver.KEY_LAST_UPDATE_CHECK_MS, System.currentTimeMillis())
+                            .apply()
+                    }
+                }
+                pendingUpdate?.let { manifest ->
+                    Spacer(Modifier.height(10.dp))
+                    PrimaryBtn(
+                        if (downloadingUpdate) "Downloading…" else "Download and install ${manifest.versionName}",
+                        enabled = !downloadingUpdate,
+                    ) {
+                        downloadingUpdate = true
+                        downloadAndInstallUpdate(
+                            manifest = manifest,
+                            onStatus = { updateStatus = it },
+                            onFinished = { downloadingUpdate = false },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                ToggleRow(
+                    "Check automatically",
+                    ConfigReceiver.KEY_UPDATE_AUTO_CHECK,
+                    ConfigReceiver.DEFAULT_UPDATE_AUTO_CHECK,
+                    subtitle = "When you open Settings (at most once every 6 hours).",
+                ) { tick++ }
             }
             Card(if (hasAlbum) "Albums" else "No albums yet") {
                 if (hasAlbum) {
+                    if (albumRefreshStatus.isNotEmpty()) {
+                        Body(albumRefreshStatus)
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    SecondaryBtn(
+                        if (refreshingAlbums) "Refreshing albums…" else "Refresh albums now",
+                        enabled = !refreshingAlbums,
+                    ) {
+                        refreshingAlbums = true
+                        refreshAlbumsNow(
+                            urls = albums,
+                            onStatus = { albumRefreshStatus = it },
+                            onFinished = {
+                                refreshingAlbums = false
+                                tick++
+                            },
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    CycleRow(
+                        "Album playback",
+                        albumPlaybackLabel(
+                            prefs.getString(
+                                ConfigReceiver.KEY_ALBUM_PLAYBACK,
+                                ConfigReceiver.DEFAULT_ALBUM_PLAYBACK,
+                            ) ?: ConfigReceiver.DEFAULT_ALBUM_PLAYBACK,
+                        ),
+                    ) {
+                        val next = if (
+                            prefs.getString(
+                                ConfigReceiver.KEY_ALBUM_PLAYBACK,
+                                ConfigReceiver.DEFAULT_ALBUM_PLAYBACK,
+                            ) == "album_priority"
+                        ) "shuffled_merge" else "album_priority"
+                        prefs.edit().putString(ConfigReceiver.KEY_ALBUM_PLAYBACK, next).apply()
+                        tick++
+                    }
+                    Divider()
                     // One removable row per album; the slideshow plays them all merged.
                     albums.forEachIndexed { i, url ->
                         if (i > 0) Divider()
-                        AlbumRow(url) { Albums.remove(prefs, url); tick++ }
+                        AlbumRow(
+                            url = url,
+                            index = i,
+                            count = albums.size,
+                            onMoveUp = { Albums.move(prefs, url, -1); tick++ },
+                            onMoveDown = { Albums.move(prefs, url, 1); tick++ },
+                            onRemove = { Albums.remove(prefs, url); tick++ },
+                        )
                     }
                     Spacer(Modifier.height(14.dp))
                 } else {
@@ -178,15 +415,13 @@ class SettingsActivity : ComponentActivity() {
             }
         }
         val settingsCards: @Composable () -> Unit = {
+            LivePreviewCard()
             Card("Slideshow") {
                 DurationSliderRow { tick++ }
                 Divider()
                 ToggleRow("Shuffle photos", ConfigReceiver.KEY_SHUFFLE, false) { tick++ }
                 Divider()
-                CycleRow("Transition", fadeLabel(getLong(ConfigReceiver.KEY_FADE_MS, 1200))) {
-                    val next = cycle(FADE_CHOICES, getLong(ConfigReceiver.KEY_FADE_MS, 1200), 1)
-                    setLong(ConfigReceiver.KEY_FADE_MS, next); tick++
-                }
+                TransitionSelectorRow { tick++ }
                 Divider()
                 ToggleRow("Pair photos to fill the screen", ConfigReceiver.KEY_PAIRS, false) { tick++ }
                 Divider()
@@ -214,6 +449,29 @@ class SettingsActivity : ComponentActivity() {
                     subtitle = "Long-press the clock on the screensaver to move or resize it.",
                 ) { tick++ }
                 Divider()
+                CycleRow(
+                    "Temperature unit",
+                    if (prefs.getBoolean(
+                            ConfigReceiver.KEY_WEATHER_FAHRENHEIT,
+                            ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT,
+                        )
+                    ) "Fahrenheit" else "Celsius",
+                    // Clarify ordering and default for users
+                    // (Celsius is now the default)
+                ) {
+                    val next = !prefs.getBoolean(
+                        ConfigReceiver.KEY_WEATHER_FAHRENHEIT,
+                        ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT,
+                    )
+                    prefs.edit().putBoolean(ConfigReceiver.KEY_WEATHER_FAHRENHEIT, next).apply()
+                    tick++
+                }
+                Divider()
+                CycleRow("Clock format", if (clock24HourEnabled()) "24-hour" else "12-hour") {
+                    prefs.edit().putBoolean(ConfigReceiver.KEY_CLOCK_24H, !clock24HourEnabled()).apply()
+                    tick++
+                }
+                Divider()
                 CycleRow("Clock position & size", "Reset") {
                     prefs.edit()
                         .putFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
@@ -224,6 +482,25 @@ class SettingsActivity : ComponentActivity() {
                 }
                 Divider()
                 ToggleRow("Only clock in low light", ConfigReceiver.KEY_CLOCK_LOW_LIGHT, ConfigReceiver.DEFAULT_CLOCK_LOW_LIGHT) { tick++ }
+                Divider()
+                ToggleRow(
+                    "Scheduled full-screen night clock",
+                    ConfigReceiver.KEY_NIGHT_CLOCK,
+                    ConfigReceiver.DEFAULT_NIGHT_CLOCK,
+                    subtitle = "Show a full-screen clock with AM/PM, an Exit button, and a line like Fri, 19 Jun 14°  ☁️ Cloudy instead of photos.",
+                ) { tick++ }
+                Divider()
+                TimeSliderRow(
+                    "Night clock starts",
+                    ConfigReceiver.KEY_NIGHT_CLOCK_START_MIN,
+                    ConfigReceiver.DEFAULT_NIGHT_CLOCK_START_MIN,
+                ) { tick++ }
+                Divider()
+                TimeSliderRow(
+                    "Night clock ends",
+                    ConfigReceiver.KEY_NIGHT_CLOCK_END_MIN,
+                    ConfigReceiver.DEFAULT_NIGHT_CLOCK_END_MIN,
+                ) { tick++ }
                 Divider()
                 ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true) { tick++ }
                 Divider()
@@ -291,17 +568,26 @@ class SettingsActivity : ComponentActivity() {
      * fetched once in the background, persisted, then shown.
      */
     @Composable
-    private fun AlbumRow(url: String, onRemove: () -> Unit) {
+    private fun AlbumRow(
+        url: String,
+        index: Int,
+        count: Int,
+        onMoveUp: () -> Unit,
+        onMoveDown: () -> Unit,
+        onRemove: () -> Unit,
+    ) {
         var bmp by remember(url) { mutableStateOf<android.graphics.Bitmap?>(null) }
         var title by remember(url) { mutableStateOf("") }
         var failed by remember(url) { mutableStateOf(false) }
         var armed by remember(url) { mutableStateOf(false) }
+        var cachedCount by remember(url) { mutableIntStateOf(AlbumCache.read(prefs, url)?.size ?: 0) }
 
         // Show the photo, or fall back to the error state (don't hang on "Loading…").
         val onBitmap = ImageLoader.Callback { b -> if (b != null) bmp = b else failed = true }
 
         LaunchedEffect(url) {
             AlbumCache.title(prefs, url)?.let { title = it }
+            cachedCount = AlbumCache.read(prefs, url)?.size ?: 0
             val firstId = AlbumCache.firstId(prefs, url)
             val zoomFill = prefs.getBoolean(ConfigReceiver.KEY_ZOOM_FILL, ConfigReceiver.DEFAULT_ZOOM_FILL)
             if (firstId != null) {
@@ -320,6 +606,7 @@ class SettingsActivity : ComponentActivity() {
                         runOnUiThread {
                             if (Albums.list(prefs).contains(url)) {
                                 title = a.title ?: ""
+                                cachedCount = a.slides.size
                                 loader.load(id, PREVIEW_W, PREVIEW_H, zoomFill, onBitmap)
                             }
                         }
@@ -370,6 +657,21 @@ class SettingsActivity : ComponentActivity() {
                     color = PortalColors.TextMuted, fontSize = 13.sp,
                     maxLines = 1, overflow = TextOverflow.MiddleEllipsis,
                 )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (cachedCount > 0) "Cached $cachedCount photo" + if (cachedCount == 1) "" else "s"
+                    else if (failed) "Cache unavailable"
+                    else "Not cached yet",
+                    color = PortalColors.Text.copy(alpha = 0.68f), fontSize = 13.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SmallAction("Up", enabled = index > 0, onClick = onMoveUp)
+                    Spacer(Modifier.width(8.dp))
+                    SmallAction("Down", enabled = index < count - 1, onClick = onMoveDown)
+                    Spacer(Modifier.width(10.dp))
+                    Text("${index + 1} of $count", color = PortalColors.TextMuted, fontSize = 13.sp)
+                }
                 Spacer(Modifier.height(8.dp))
                 // Stop/resume (keeps the album, just pauses it) + Remove (two-tap).
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -411,11 +713,38 @@ class SettingsActivity : ComponentActivity() {
     )
 
     @Composable
-    private fun PrimaryBtn(label: String, onClick: () -> Unit) = Button(
+    private fun PrimaryBtn(label: String, enabled: Boolean = true, onClick: () -> Unit) = Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth().height(64.dp),
         colors = ButtonDefaults.buttonColors(containerColor = PortalColors.Blue),
     ) { Text(label, color = PortalColors.OnPrimary, fontSize = 18.sp) }
+
+    @Composable
+    private fun SecondaryBtn(label: String, enabled: Boolean = true, onClick: () -> Unit) = Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth().height(56.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = PortalColors.Surface,
+            contentColor = PortalColors.Text,
+        ),
+    ) { Text(label, color = PortalColors.Text, fontSize = 17.sp) }
+
+    @Composable
+    private fun SmallAction(label: String, enabled: Boolean, onClick: () -> Unit) {
+        Text(
+            label,
+            color = if (enabled) PortalColors.Blue else PortalColors.TextMuted,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .alpha(if (enabled) 1f else 0.5f)
+                .clickable(enabled = enabled) { onClick() }
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+        )
+    }
 
     @Composable
     private fun ToggleRow(
@@ -457,6 +786,119 @@ class SettingsActivity : ComponentActivity() {
             Text(label, color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
             Text("$value  ›", color = PortalColors.Blue, fontSize = 18.sp)
         }
+    }
+
+    @Composable
+    private fun TransitionSelectorRow(onChanged: () -> Unit) {
+        var selected by remember {
+            mutableStateOf(
+                prefs.getString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
+                    ?: ConfigReceiver.DEFAULT_TRANSITION,
+            )
+        }
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Text("Transition", color = PortalColors.Text, fontSize = 18.sp)
+            Spacer(Modifier.height(8.dp))
+            TRANSITION_OPTIONS.forEachIndexed { i, option ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            if (selected != option.id) {
+                                selected = option.id
+                                prefs.edit().putString(ConfigReceiver.KEY_TRANSITION, option.id).apply()
+                                onChanged()
+                            }
+                        }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = selected == option.id,
+                        onClick = null,
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = PortalColors.Blue,
+                            unselectedColor = PortalColors.TextMuted,
+                        ),
+                    )
+                    Text(option.label, color = PortalColors.Text, fontSize = 16.sp)
+                }
+                if (i < TRANSITION_OPTIONS.lastIndex) {
+                    Spacer(Modifier.height(2.dp))
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun LivePreviewCard() {
+        var now by remember { mutableStateOf(System.currentTimeMillis()) }
+        val transition = prefs.getString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
+            ?: ConfigReceiver.DEFAULT_TRANSITION
+        val use24Hour = clock24HourEnabled()
+        val temp = if (
+            prefs.getBoolean(
+                ConfigReceiver.KEY_WEATHER_FAHRENHEIT,
+                ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT,
+            )
+        ) "72°F" else "22°C"
+        val timeFmt = remember(use24Hour) {
+            SimpleDateFormat(if (use24Hour) "HH:mm" else "h:mm a", Locale.getDefault())
+        }
+        val dateFmt = remember { SimpleDateFormat("EEE, d MMM", Locale.getDefault()) }
+        LaunchedEffect(use24Hour) {
+            while (true) {
+                now = System.currentTimeMillis()
+                delay(1000)
+            }
+        }
+        Card("Live preview") {
+            Box(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFF151515), Color(0xFF28364A), Color(0xFF171717)),
+                        ),
+                    )
+                    .padding(horizontal = 22.dp, vertical = 24.dp),
+            ) {
+                Column {
+                    Text(
+                        timeFmt.format(Date(now)),
+                        color = Color.White,
+                        fontSize = 46.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "${dateFmt.format(Date(now))}  $temp  ☁️ Cloudy",
+                        color = PortalColors.Text.copy(alpha = 0.86f),
+                        fontSize = 17.sp,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PreviewChip("Transition: ${transitionLabel(transition)}")
+                        PreviewChip(if (use24Hour) "24-hour clock" else "12-hour clock")
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Body("A quick look at the clock style, weather line, and current transition before you leave setup.")
+        }
+    }
+
+    @Composable
+    private fun PreviewChip(label: String) {
+        Text(
+            label,
+            color = PortalColors.Text,
+            fontSize = 13.sp,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0x2AFFFFFF))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+        )
     }
 
     /**
@@ -509,10 +951,54 @@ class SettingsActivity : ComponentActivity() {
 
     private fun getLong(key: String, def: Long) = prefs.getLong(key, def)
     private fun setLong(key: String, v: Long) = prefs.edit().putLong(key, v).apply()
+    private fun getInt(key: String, def: Int) = prefs.getInt(key, def)
+    private fun setInt(key: String, v: Int) = prefs.edit().putInt(key, v).apply()
+    private fun clock24HourEnabled(): Boolean =
+        if (prefs.contains(ConfigReceiver.KEY_CLOCK_24H)) {
+            prefs.getBoolean(ConfigReceiver.KEY_CLOCK_24H, ConfigReceiver.DEFAULT_CLOCK_24H)
+        } else {
+            android.text.format.DateFormat.is24HourFormat(this)
+        }
+
+    @Composable
+    private fun TimeSliderRow(label: String, key: String, def: Int, onChanged: () -> Unit) {
+        var minute by remember(key) { mutableIntStateOf(getInt(key, def)) }
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(label, color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                Text(
+                    fmtTimeOfDay(minute),
+                    color = PortalColors.Blue, fontSize = 18.sp, fontWeight = FontWeight.Medium,
+                )
+            }
+            Slider(
+                value = (minute / TIME_STEP_MINUTES).toFloat(),
+                onValueChange = { minute = it.roundToInt() * TIME_STEP_MINUTES },
+                valueRange = 0f..((24 * 60 / TIME_STEP_MINUTES) - 1).toFloat(),
+                steps = (24 * 60 / TIME_STEP_MINUTES) - 2,
+                onValueChangeFinished = {
+                    setInt(key, minute); onChanged()
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = PortalColors.Blue,
+                    activeTrackColor = PortalColors.Blue,
+                    inactiveTrackColor = PortalColors.Text.copy(alpha = 0.18f),
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent,
+                ),
+            )
+            Row(Modifier.fillMaxWidth()) {
+                Text("12:00 AM", color = PortalColors.TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("11:45 PM", color = PortalColors.TextMuted, fontSize = 12.sp)
+            }
+        }
+    }
 
     companion object {
         private const val PREVIEW_W = 720 // 16:9 thumbnail decode size for the album preview
         private const val PREVIEW_H = 405
+        private const val UPDATE_CHECK_INTERVAL_MS = 6L * 60 * 60 * 1000
+        private const val TIME_STEP_MINUTES = 15
 
         // "Time per photo" presets the slider snaps across (4 sec … 1 day, ms). Keeps the old
         // values (4s/6s/10s/30s/60s) so previously-saved delays still land on a stop.
@@ -524,6 +1010,14 @@ class SettingsActivity : ComponentActivity() {
         )
         private val FADE_CHOICES = longArrayOf(2000, 1200, 500)
         private val FADE_LABELS = arrayOf("Slow", "Normal", "Fast")
+        private val TRANSITION_OPTIONS = listOf(
+            TransitionOption("crossfade", "Crossfade"),
+            TransitionOption("slide", "Slide"),
+            TransitionOption("zoom", "Zoom"),
+            TransitionOption("zoom_fade", "Zoom fade"),
+            TransitionOption("instant", "Instant"),
+            TransitionOption("push", "Push"),
+        )
 
         private fun cycle(choices: LongArray, cur: Long, fallback: Int): Long {
             for (i in choices.indices) if (choices[i] == cur) return choices[(i + 1) % choices.size]
@@ -551,6 +1045,28 @@ class SettingsActivity : ComponentActivity() {
             else -> "${ms / 1000} sec"
         }
 
+        private fun fmtTimeOfDay(minute: Int): String {
+            val normalized = ((minute % (24 * 60)) + (24 * 60)) % (24 * 60)
+            val hour24 = normalized / 60
+            val mins = normalized % 60
+            val hour12 = when (val h = hour24 % 12) {
+                0 -> 12
+                else -> h
+            }
+            val ampm = if (hour24 < 12) "AM" else "PM"
+            return String.format(java.util.Locale.getDefault(), "%d:%02d %s", hour12, mins, ampm)
+        }
+
         private fun plural(n: Long, unit: String): String = "$n $unit" + if (n == 1L) "" else "s"
+
+        private fun transitionLabel(id: String): String =
+            TRANSITION_OPTIONS.firstOrNull { it.id == id }?.label ?: "Crossfade"
+
+        private fun albumPlaybackLabel(id: String): String = when (id) {
+            "album_priority" -> "Album priority"
+            else -> "Shuffled merge"
+        }
+
+        private data class TransitionOption(val id: String, val label: String)
     }
 }
