@@ -21,3 +21,4 @@ keystore.properties
 
 # IDEs
 .vscode/
+keystore_base64.txt
