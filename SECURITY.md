@@ -18,7 +18,7 @@ project — but reports are appreciated and will be looked at.
   non-HTTPS URLs and cap response sizes.
 
 - **In-app updates (GitHub).** Settings → **Check for updates** fetches
-  `version.json` from `github.com/Ishtiaqhossain/Portal-Frame/releases/latest/download/version.json`,
+  `version.json` from `github.com/Tech33/Portal-Frame/releases/latest/download/version.json`,
   compares `versionCode` to the installed build, and optionally downloads `Frame.apk` from the same
   release. Download URLs must be on `github.com` or `githubusercontent.com`; APK size is capped at
   80 MB; when `sha256` is present in the manifest the download is verified before install. The user

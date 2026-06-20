@@ -13,7 +13,7 @@ need to build anything.
 
 Download the latest **`Frame-vX.Y.Z.apk`** from the project's **Releases** page:
 
-- **<https://github.com/Ishtiaqhossain/Portal-Frame/releases/latest>**
+- **<https://github.com/Tech33/Portal-Frame/releases/latest>**
 
 Grab the `.apk` asset under **Assets** (the `.apk.sha256` file next to it is an optional checksum
 to verify the download). Save it to the computer you'll use in Part 1.

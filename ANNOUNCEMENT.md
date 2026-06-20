@@ -6,6 +6,6 @@ While I was at it I added some stuff the original didn't have: pull from several
 
 It's open source (MIT), written in Kotlin, no third-party dependencies, no backend. If you've got a Portal collecting dust since the update, the code and setup steps are here:
 
-https://github.com/Ishtiaqhossain/Portal-Frame
+https://github.com/Tech33/Portal-Frame
 
 Happy to take feedback or PRs if anyone wants to poke at it.
