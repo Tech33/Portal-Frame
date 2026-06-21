@@ -42,7 +42,9 @@ object Screensaver {
     fun isOurs(ctx: Context): Boolean = try {
         val enabled = Settings.Secure.getInt(ctx.contentResolver, ENABLED, 0) == 1
         val comp = Settings.Secure.getString(ctx.contentResolver, COMPONENTS)
-        enabled && comp != null && comp.contains(ctx.packageName)
+        val onDock = Settings.Secure.getInt(ctx.contentResolver, "screensaver_activate_on_dock", 0) == 1
+        val onSleep = Settings.Secure.getInt(ctx.contentResolver, "screensaver_activate_on_sleep", 0) == 1
+        enabled && comp != null && comp.contains(ctx.packageName) && onDock && onSleep
     } catch (_: Exception) {
         false
     }
@@ -61,6 +63,8 @@ object Screensaver {
         return try {
             Settings.Secure.putString(ctx.contentResolver, COMPONENTS, COMPONENT)
             Settings.Secure.putInt(ctx.contentResolver, ENABLED, 1)
+            Settings.Secure.putInt(ctx.contentResolver, "screensaver_activate_on_dock", 1)
+            Settings.Secure.putInt(ctx.contentResolver, "screensaver_activate_on_sleep", 1)
             true
         } catch (e: Exception) {
             Log.w(TAG, "screensaver claim failed", e)
@@ -83,6 +87,18 @@ class ScreensaverGuardService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var observer: ContentObserver? = null
 
+    private val checkRunnable = object : Runnable {
+        override fun run() {
+            val ctx = this@ScreensaverGuardService
+            if (!Screensaver.isOurs(ctx)) {
+                if (Screensaver.claim(ctx)) {
+                    Log.i(TAG, "guard periodic: reclaimed screensaver settings")
+                }
+            }
+            handler.postDelayed(this, 60000)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         startForeground(NOTIF_ID, buildNotification())
@@ -96,12 +112,27 @@ class ScreensaverGuardService : Service() {
             }
         }
         contentResolver.registerContentObserver(
-            Settings.Secure.getUriFor("screensaver_components"), false, obs,
+            Settings.Secure.getUriFor("screensaver_components"), false, obs
+        )
+        contentResolver.registerContentObserver(
+            Settings.Secure.getUriFor("screensaver_enabled"), false, obs
+        )
+        contentResolver.registerContentObserver(
+            Settings.Secure.getUriFor("screensaver_activate_on_dock"), false, obs
+        )
+        contentResolver.registerContentObserver(
+            Settings.Secure.getUriFor("screensaver_activate_on_sleep"), false, obs
         )
         observer = obs
 
         // Claim immediately in case the slot was already taken before we started.
         Screensaver.claim(this)
+
+        // Start periodic check loop
+        handler.post(checkRunnable)
+
+        // Schedule periodic alarm tick
+        scheduleAlarm(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -111,6 +142,7 @@ class ScreensaverGuardService : Service() {
 
     override fun onDestroy() {
         observer?.let { contentResolver.unregisterContentObserver(it) }
+        handler.removeCallbacks(checkRunnable)
         super.onDestroy()
     }
 
@@ -156,6 +188,47 @@ class ScreensaverGuardService : Service() {
         /** Stop the guard (the launcher may then reclaim the dream slot). */
         fun stop(ctx: Context) {
             ctx.stopService(Intent(ctx, ScreensaverGuardService::class.java))
+            cancelAlarm(ctx)
+        }
+
+        fun scheduleAlarm(ctx: Context) {
+            try {
+                val alarmMgr = ctx.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+                val alarmIntent = Intent(ctx, BootReceiver::class.java).apply {
+                    action = "com.portalhacks.frame.ACTION_GUARD_TICK"
+                }
+                val pendingIntent = android.app.PendingIntent.getBroadcast(
+                    ctx, 0, alarmIntent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+                alarmMgr.setInexactRepeating(
+                    android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    android.os.SystemClock.elapsedRealtime() + 15 * 60 * 1000,
+                    15 * 60 * 1000,
+                    pendingIntent
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "failed to schedule alarm", e)
+            }
+        }
+
+        fun cancelAlarm(ctx: Context) {
+            try {
+                val alarmMgr = ctx.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+                val alarmIntent = Intent(ctx, BootReceiver::class.java).apply {
+                    action = "com.portalhacks.frame.ACTION_GUARD_TICK"
+                }
+                val pendingIntent = android.app.PendingIntent.getBroadcast(
+                    ctx, 0, alarmIntent,
+                    android.app.PendingIntent.FLAG_NO_CREATE or android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+                if (pendingIntent != null) {
+                    alarmMgr.cancel(pendingIntent)
+                    pendingIntent.cancel()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "failed to cancel alarm", e)
+            }
         }
     }
 }

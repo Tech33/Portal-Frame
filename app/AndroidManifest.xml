@@ -79,12 +79,14 @@
             android:name=".ScreensaverGuardService"
             android:exported="false" />
 
-        <!-- Restarts the guard after a reboot if the user opted in. -->
+        <!-- Restarts the guard after a reboot, screen unlock, or alarm tick if opted in. -->
         <receiver
             android:name=".BootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+                <action android:name="com.portalhacks.frame.ACTION_GUARD_TICK" />
             </intent-filter>
         </receiver>
 

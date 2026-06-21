@@ -31,6 +31,9 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import java.net.NetworkInterface
 import java.util.Collections
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class PhotosActivity : Activity() {
 
@@ -41,6 +44,7 @@ class PhotosActivity : Activity() {
     private var scanHint: TextView? = null
     private var showingStatus = false
     private var stopArmed = false
+    private var cloudPollRunnable: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,6 +72,8 @@ class PhotosActivity : Activity() {
     override fun onPause() {
         super.onPause()
         stopServer()
+        cloudPollRunnable?.let { main.removeCallbacks(it) }
+        cloudPollRunnable = null
         restoreBrightness()
     }
 
@@ -361,6 +367,78 @@ class PhotosActivity : Activity() {
         imm?.hideSoftInputFromWindow(v.windowToken, 0)
     }
 
+    private fun hexToString(hex: String): String {
+        return try {
+            val bytes = ByteArray(hex.length / 2)
+            for (i in bytes.indices) {
+                bytes[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+            }
+            String(bytes, Charsets.UTF_8)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private fun decryptData(hexStr: String, keyStr: String): String {
+        return try {
+            val data = ByteArray(hexStr.length / 2)
+            for (i in data.indices) {
+                data[i] = hexStr.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+            }
+            
+            val iv = data.copyOfRange(0, 16)
+            val ciphertext = data.copyOfRange(16, data.size)
+            
+            val keySpec = SecretKeySpec(keyStr.toByteArray(Charsets.UTF_8), "AES")
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, IvParameterSpec(iv))
+            
+            val decryptedBytes = cipher.doFinal(ciphertext)
+            String(decryptedBytes, Charsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e(TAG, "Decryption failed", e)
+            ""
+        }
+    }
+
+    private fun checkCloudAlbumLink(code: String, aesKey: String) {
+        val exe = ImageLoader(this).executor()
+        exe.execute {
+            try {
+                val connection = java.net.URL("https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/$code").openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
+                if (connection.responseCode == 200) {
+                    val reader = java.io.BufferedReader(java.io.InputStreamReader(connection.inputStream))
+                    var response = reader.readLine()?.trim() ?: ""
+                    reader.close()
+                    
+                    if (response.startsWith("\"") && response.endsWith("\"")) {
+                        response = response.substring(1, response.length - 1)
+                    }
+                    
+                    if (response.isNotEmpty() && response != "null") {
+                        val decodedUrl = decryptData(response, aesKey).trim()
+                        if (isPhotosLink(decodedUrl)) {
+                            runOnUiThread {
+                                Albums.add(prefs(), decodedUrl)
+                                Log.i(TAG, "album added via cloud pairing code $code: $decodedUrl")
+                                toast("Album added ✓")
+                                cloudPollRunnable?.let { main.removeCallbacks(it) }
+                                cloudPollRunnable = null
+                                finish()
+                            }
+                        }
+                    }
+                }
+                connection.disconnect()
+            } catch (e: Exception) {
+                Log.w(TAG, "cloud polling check failed", e)
+            }
+        }
+    }
+
     // ------------------------------------------------------ QR / Web Server Flow
 
     private fun startScan() {
@@ -368,15 +446,29 @@ class PhotosActivity : Activity() {
         showingStatus = false
         root.removeAllViews()
 
-        val ip = getLocalIpAddress()
-        if (ip == null) {
-            showNoWifiScreen()
-            return
-        }
+        val code = (100000..999999).random().toString()
+        val chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        val aesKey = (1..16).map { chars.random() }.joinToString("")
+        val cloudUrl = "https://tech33.github.io/Portal-Frame/add.html?code=$code&key=$aesKey"
+        val formattedCode = "${code.substring(0, 3)} ${code.substring(3, 6)}"
 
-        val url = "http://$ip:8080"
-        startServer(url)
+        val ip = getLocalIpAddress()
+        if (ip != null) {
+            val url = "http://$ip:8080"
+            startServer(url)
+        }
         overrideBrightness()
+
+        // Start cloud polling
+        cloudPollRunnable?.let { main.removeCallbacks(it) }
+        val poll = object : Runnable {
+            override fun run() {
+                checkCloudAlbumLink(code, aesKey)
+                main.postDelayed(this, 3000)
+            }
+        }
+        cloudPollRunnable = poll
+        main.post(poll)
 
         val f = FrameLayout(this)
         f.setBackgroundColor(Color.BLACK)
@@ -392,7 +484,7 @@ class PhotosActivity : Activity() {
         val pad = Ui.dp(this, 16f)
         qrImage.setPadding(pad, pad, pad, pad)
 
-        val qrBitmap = generateQrCode(url, 300)
+        val qrBitmap = generateQrCode(cloudUrl, 300)
         if (qrBitmap != null) {
             qrImage.setImageBitmap(qrBitmap)
         }
@@ -424,7 +516,11 @@ class PhotosActivity : Activity() {
 
         val subtitle = TextView(this)
         this.scanHint = subtitle
-        subtitle.text = "Scan the QR code to open the setup helper on your phone, or visit:\n$url"
+        var helperText = "Scan the QR code to open the setup helper on your phone, or visit:\ntech33.github.io/Portal-Frame\nPairing Code: $formattedCode"
+        if (ip != null) {
+            helperText += "\n\nOffline backup: visit http://$ip:8080 on the same Wi-Fi"
+        }
+        subtitle.text = helperText
         subtitle.setTextColor(0xFFD2D2D2.toInt())
         subtitle.typeface = Ui.medium(this)
         subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
@@ -437,7 +533,7 @@ class PhotosActivity : Activity() {
 
         val manualHeading = sectionHeading("Or enter the link manually")
         val manualHeadingLp = LinearLayout.LayoutParams(MATCH, WRAP)
-        manualHeadingLp.topMargin = Ui.dp(this, 56f)
+        manualHeadingLp.topMargin = Ui.dp(this, 36f)
         belowBox.addView(manualHeading, manualHeadingLp)
 
         val edit = Ui.field(this, "Paste a Google Photos or iCloud link")
@@ -545,6 +641,8 @@ class PhotosActivity : Activity() {
                 Log.i(TAG, "Album added via local server: $inputUrl")
                 main.post {
                     toast("Album added ✓")
+                    cloudPollRunnable?.let { main.removeCallbacks(it) }
+                    cloudPollRunnable = null
                     finish()
                 }
                 success = true

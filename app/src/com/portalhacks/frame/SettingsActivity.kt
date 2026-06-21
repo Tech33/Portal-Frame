@@ -333,6 +333,7 @@ class SettingsActivity : ComponentActivity() {
     private fun SettingsScreen() {
         val ctx = LocalContext.current
         var showNightClockDialog by remember { mutableStateOf(false) }
+        var showAdbDialog by remember { mutableStateOf(false) }
         var refreshingAlbums by remember { mutableStateOf(false) }
         var albumRefreshStatus by remember { mutableStateOf("") }
         var checkingUpdate by remember { mutableStateOf(false) }
@@ -389,18 +390,59 @@ class SettingsActivity : ComponentActivity() {
                 Body(
                     when {
                         active && protectedMode ->
-                            "✓ Frame is your screensaver — and Frame keeps it that way, even after a rotation."
+                            "✓ Frame is locked as your screensaver and protected against overrides."
                         active ->
-                            "✓ Frame is your screensaver. Your photos appear when the Portal is idle."
+                            "✓ Frame is set as your screensaver. Other apps can still override it."
                         else ->
                             "Tap below so your photos show when the Portal is idle."
                     },
                 )
                 Spacer(Modifier.height(12.dp))
-                if (active) PrimaryBtn("Change screensaver") { openScreensaver() }
-                else PrimaryBtn("Use as screensaver") { enableScreensaver(); isScreensaverActive = isOurScreensaver() }
+                if (active) {
+                    PrimaryBtn("Re-assert screensaver") {
+                        enableScreensaver()
+                        isScreensaverActive = isOurScreensaver()
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    SecondaryBtn("Change screensaver") { openScreensaver() }
+                } else {
+                    PrimaryBtn("Use as screensaver") {
+                        enableScreensaver()
+                        isScreensaverActive = isOurScreensaver()
+                    }
+                }
                 Spacer(Modifier.height(10.dp))
                 SecondaryBtn("Start screensaver now") { startScreensaverNow() }
+
+                if (!protectedMode) {
+                    Spacer(Modifier.height(16.dp))
+                    Divider()
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "🔒 Protected Mode Inactive",
+                        color = PortalColors.Text,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Other apps can override your screensaver choice. Grant Frame secure settings permission via ADB to enable Protected Mode.",
+                        color = PortalColors.Text.copy(alpha = 0.6f),
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    SecondaryBtn("How to enable Protected Mode") {
+                        showAdbDialog = true
+                    }
+                } else {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "✓ Protected Mode Active (Immortal)",
+                        color = PortalColors.Blue,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
             Card("Updates") {
                 Body("Installed: $installedVersion")
@@ -679,6 +721,14 @@ class SettingsActivity : ComponentActivity() {
                 },
                 onDismiss = {
                     showNightClockDialog = false
+                }
+            )
+        }
+
+        if (showAdbDialog) {
+            AdbConfirmDialog(
+                onDismiss = {
+                    showAdbDialog = false
                 }
             )
         }
@@ -964,6 +1014,55 @@ class SettingsActivity : ComponentActivity() {
                 colors = SwitchDefaults.colors(checkedTrackColor = PortalColors.Blue),
             )
         }
+    }
+
+    @Composable
+    private fun AdbConfirmDialog(
+        onDismiss: () -> Unit
+    ) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Text("Enable Protected Mode", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text(
+                        "To prevent other apps (like Aloha launcher or custom reapers) from changing your screensaver, connect your Portal to a computer with ADB and run:",
+                        color = PortalColors.Text.copy(alpha = 0.8f),
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(PortalColors.Field, RoundedCornerShape(8.dp))
+                            .border(1.dp, PortalColors.Hairline, RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            "adb shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS",
+                            color = PortalColors.Blue,
+                            fontSize = 12.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "This grants Frame the ability to write secure system settings and lock itself as the active screensaver.",
+                        color = PortalColors.Text.copy(alpha = 0.6f),
+                        fontSize = 12.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Got it", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = PortalColors.Surface,
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 
     @Composable

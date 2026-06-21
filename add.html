@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Album to Frame</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0A0A0C;
+      color: #E0E0E0;
+      margin: 0;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .card {
+      background-color: #1C1C1E;
+      border-radius: 22px;
+      padding: 32px 24px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+      box-sizing: border-box;
+      border: 1px solid #2C2C2E;
+    }
+    h1 {
+      font-size: 24px;
+      margin: 0 0 8px 0;
+      color: #FFFFFF;
+      font-weight: 700;
+      text-align: center;
+      background: linear-gradient(135deg, #007AFF, #5856D6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p {
+      font-size: 14px;
+      color: #8E8E93;
+      margin: 0 0 28px 0;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .field-group {
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    label {
+      font-size: 13px;
+      color: #8E8E93;
+      margin-bottom: 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 16px;
+      border: 1px solid #2C2C2E;
+      background-color: #121216;
+      color: #FFFFFF;
+      border-radius: 12px;
+      font-size: 16px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input[type="text"]:focus {
+      border-color: #007AFF;
+      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+    }
+    input[disabled] {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #007AFF, #5856D6);
+      color: #FFFFFF;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(88, 86, 214, 0.2);
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      text-align: center;
+      display: none;
+    }
+    .status.success {
+      background-color: rgba(48, 209, 88, 0.15);
+      color: #30D158;
+      border: 1px solid rgba(48, 209, 88, 0.2);
+      display: block;
+    }
+    .status.error {
+      background-color: rgba(255, 69, 58, 0.15);
+      color: #FF453A;
+      border: 1px solid rgba(255, 69, 58, 0.2);
+      display: block;
+    }
+    .footer {
+      margin-top: 32px;
+      font-size: 12px;
+      color: #48484A;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Add Album to Frame</h1>
+    <p>Enter the pairing code shown on your Portal, paste your shared album link, and tap Send.</p>
+    
+    <div class="field-group">
+      <label for="code">Pairing Code</label>
+      <input type="text" id="code" placeholder="e.g. 123456" pattern="[0-9]*" inputmode="numeric" maxlength="6" autocomplete="off">
+    </div>
+
+    <div class="field-group">
+      <label for="url">Shared Album Link</label>
+      <input type="text" id="url" placeholder="https://photos.app.goo.gl/..." autocomplete="off">
+    </div>
+
+    <button id="send-btn" onclick="sendUrl()">Send to Frame</button>
+    <div id="status-box" class="status"></div>
+  </div>
+  <div class="footer">Portal Frame Screensaver</div>
+
+  <script>
+    // Autofill parameters if present in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const codeParam = urlParams.get('code');
+    const keyParam = urlParams.get('key'); // 16-character AES key
+    
+    if (codeParam) {
+      const codeInput = document.getElementById('code');
+      codeInput.value = codeParam;
+      codeInput.disabled = true;
+    }
+
+    async function importKey(keyStr) {
+      const enc = new TextEncoder();
+      const keyBuf = enc.encode(keyStr);
+      return await window.crypto.subtle.importKey(
+        "raw", keyBuf, { name: "AES-CBC" }, false, ["encrypt"]
+      );
+    }
+
+    async function encryptData(plaintext, keyStr) {
+      try {
+        const enc = new TextEncoder();
+        const cryptoKey = await importKey(keyStr);
+        const iv = window.crypto.getRandomValues(new Uint8Array(16));
+        const encrypted = await window.crypto.subtle.encrypt(
+          { name: "AES-CBC", iv: iv }, cryptoKey, enc.encode(plaintext)
+        );
+        
+        // Concatenate IV + Ciphertext
+        const res = new Uint8Array(iv.length + encrypted.byteLength);
+        res.set(iv, 0);
+        res.set(new Uint8Array(encrypted), iv.length);
+        
+        // Convert to hex string
+        return Array.from(res)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      } catch (e) {
+        console.error("Encryption failed:", e);
+        return '';
+      }
+    }
+
+    async function sendUrl() {
+      const codeInput = document.getElementById('code');
+      const urlInput = document.getElementById('url');
+      const btn = document.getElementById('send-btn');
+      const statusBox = document.getElementById('status-box');
+
+      statusBox.className = 'status';
+      statusBox.style.display = 'none';
+
+      const code = codeInput.value.trim();
+      const url = urlInput.value.trim();
+      const aesKey = keyParam || '';
+
+      if (!code || code.length !== 6 || isNaN(code)) {
+        statusBox.innerText = 'Please enter a valid 6-digit pairing code.';
+        statusBox.classList.add('error');
+        return;
+      }
+
+      if (!url || (!url.startsWith('https://photos.app.goo.gl/') && !url.includes('icloud.com/sharedalbum/'))) {
+        statusBox.innerText = 'Please enter a valid Google Photos or iCloud shared album link.';
+        statusBox.classList.add('error');
+        return;
+      }
+
+      if (!aesKey || aesKey.length !== 16) {
+        statusBox.innerText = 'Pairing key is missing or invalid. Please re-scan the QR code from your Portal screen.';
+        statusBox.classList.add('error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = 'Encrypting & Sending...';
+
+      const hex = await encryptData(url, aesKey);
+      if (!hex) {
+        statusBox.innerText = 'Encryption failed locally. Please try again.';
+        statusBox.classList.add('error');
+        btn.disabled = false;
+        btn.innerText = 'Send to Frame';
+        return;
+      }
+
+      try {
+        // keyvalue.immanuel.co uses a public AppKey "cs79vqdm" for Portal Frame
+        const response = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${code}/${hex}`, {
+          method: 'POST',
+          headers: {
+            'Content-Length': '0'
+          }
+        });
+        
+        const result = await response.text();
+        
+        if (result === 'true') {
+          statusBox.innerText = 'Success! Your encrypted album link has been sent. Check your Portal screen.';
+          statusBox.classList.add('success');
+          urlInput.value = '';
+        } else {
+          statusBox.innerText = 'Failed to send. Please check your pairing code and try again.';
+          statusBox.classList.add('error');
+        }
+      } catch (error) {
+        console.error(error);
+        statusBox.innerText = 'Network error. Please check your internet connection.';
+        statusBox.classList.add('error');
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Send to Frame';
+      }
+    }
+  </script>
+</body>
+</html>
