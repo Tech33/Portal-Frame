@@ -449,7 +449,7 @@ class PhotosActivity : Activity() {
         val code = (100000..999999).random().toString()
         val chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         val aesKey = (1..16).map { chars.random() }.joinToString("")
-        val cloudUrl = "https://tech33.github.io/Portal-Frame/add.html?code=$code&key=$aesKey"
+        val cloudUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/add.html?code=$code&key=$aesKey"
         val formattedCode = "${code.substring(0, 3)} ${code.substring(3, 6)}"
 
         val ip = getLocalIpAddress()
@@ -516,7 +516,7 @@ class PhotosActivity : Activity() {
 
         val subtitle = TextView(this)
         this.scanHint = subtitle
-        var helperText = "Scan the QR code to open the setup helper on your phone, or visit:\ntech33.github.io/Portal-Frame\nPairing Code: $formattedCode"
+        var helperText = "Scan the QR code to open the setup helper on your phone, or visit:\nraw.githack.com/Tech33/Portal-Frame/main/add.html\nPairing Code: $formattedCode"
         if (ip != null) {
             helperText += "\n\nOffline backup: visit http://$ip:8080 on the same Wi-Fi"
         }
