@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.Date
+import android.widget.Toast
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -595,6 +596,13 @@ class SettingsActivity : ComponentActivity() {
                     iconBg = Color(0xFF007AFF),
                 )
                 Divider()
+                ToggleRow(
+                    "Show battery percentage", ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY,
+                    subtitle = "Appends the battery level and status to the date overlay on Portal Go.",
+                    iconRes = R.drawable.ic_battery,
+                    iconBg = Color(0xFF34C759),
+                )
+                Divider()
                 
                 val tempFahrenheitState = rememberPrefBoolean(ConfigReceiver.KEY_WEATHER_FAHRENHEIT, ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT)
                 CycleRow(
@@ -612,7 +620,13 @@ class SettingsActivity : ComponentActivity() {
                     prefs.edit().putBoolean(ConfigReceiver.KEY_CLOCK_24H, !clock24hState.value).apply()
                 }
                 Divider()
-                CycleRow("Clock position & size", "Reset", iconRes = R.drawable.ic_reset, iconBg = Color(0xFFFF3B30)) {
+                CycleRow(
+                    label = "Clock position & size",
+                    value = "Reset",
+                    iconRes = R.drawable.ic_reset,
+                    iconBg = Color(0xFFFF3B30),
+                    subtitle = "Reset the clock drag/pinch transformations to default bottom-left.",
+                ) {
                     prefs.edit()
                         .putFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
                         .putFloat(ConfigReceiver.KEY_CLOCK_DY, ConfigReceiver.DEFAULT_CLOCK_DY)
@@ -1020,6 +1034,10 @@ class SettingsActivity : ComponentActivity() {
     private fun AdbConfirmDialog(
         onDismiss: () -> Unit
     ) {
+        val context = LocalContext.current
+        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+        val command = "adb shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS"
+
         AlertDialog(
             onDismissRequest = onDismiss,
             title = {
@@ -1028,30 +1046,57 @@ class SettingsActivity : ComponentActivity() {
             text = {
                 Column {
                     Text(
-                        "To prevent other apps (like Aloha launcher or custom reapers) from changing your screensaver, connect your Portal to a computer with ADB and run:",
+                        "To prevent other apps (like Aloha launcher or custom reapers) from changing your screensaver, connect your Portal to a computer with ADB and run this command:",
                         color = PortalColors.Text.copy(alpha = 0.8f),
-                        fontSize = 14.sp
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Box(
+                    Spacer(Modifier.height(16.dp))
+                    Column(
                         Modifier
                             .fillMaxWidth()
-                            .background(PortalColors.Field, RoundedCornerShape(8.dp))
-                            .border(1.dp, PortalColors.Hairline, RoundedCornerShape(8.dp))
-                            .padding(12.dp)
+                            .background(PortalColors.Field, RoundedCornerShape(12.dp))
+                            .border(1.dp, PortalColors.Hairline, RoundedCornerShape(12.dp))
+                            .clickable {
+                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(command))
+                                Toast.makeText(context, "Command copied to clipboard", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(16.dp)
                     ) {
                         Text(
-                            "adb shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS",
+                            command,
                             color = PortalColors.Blue,
-                            fontSize = 12.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            fontSize = 14.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            lineHeight = 20.sp,
+                            modifier = Modifier.fillMaxWidth()
                         )
+                        Spacer(Modifier.height(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(PortalColors.Blue)
+                                .clickable {
+                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(command))
+                                    Toast.makeText(context, "Command copied to clipboard", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                "Copy Command",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(16.dp))
                     Text(
                         "This grants Frame the ability to write secure system settings and lock itself as the active screensaver.",
                         color = PortalColors.Text.copy(alpha = 0.6f),
-                        fontSize = 12.sp
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
                     )
                 }
             },
@@ -1145,6 +1190,7 @@ class SettingsActivity : ComponentActivity() {
         value: String,
         iconRes: Int = 0,
         iconBg: Color = Color.Gray,
+        subtitle: String? = null,
         onClick: () -> Unit
     ) {
         Row(
@@ -1152,7 +1198,13 @@ class SettingsActivity : ComponentActivity() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RowIcon(iconRes, iconBg)
-            Text(label, color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, color = PortalColors.Text, fontSize = 18.sp)
+                if (subtitle != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(subtitle, color = PortalColors.Text.copy(alpha = 0.5f), fontSize = 14.sp, lineHeight = 18.sp)
+                }
+            }
             Text("$value  ›", color = PortalColors.Blue, fontSize = 18.sp)
         }
     }

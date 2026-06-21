@@ -1,8 +1,12 @@
 package com.portalhacks.frame
 
 import android.animation.ValueAnimator
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.os.BatteryManager
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrixColorFilter
@@ -143,6 +147,25 @@ class SlideshowController(
     private var dateDy = 0f
     private var dateScale = 1f
     private val actionMenuBackdrop: View
+
+    // Battery status state.
+    private var batteryLevel = -1
+    private var batteryIsCharging = false
+    private var batteryReceiverRegistered = false
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+            batteryLevel = if (level >= 0 && scale > 0) (level * 100 / scale) else -1
+            val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            batteryIsCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                                status == BatteryManager.BATTERY_STATUS_FULL
+            updateClock()
+        }
+    }
+
+    // Play/Pause Overlay View
+    private lateinit var playButtonOverlay: FrameLayout
     private val actionMenuCard: LinearLayout
     private val actionMenuTitle: TextView
     private val actionMenuPauseResume: TextView
@@ -458,6 +481,8 @@ class SlideshowController(
         root.addView(clockOnlyBox)
         root.addView(clockEditHint)
         root.addView(buildTouchOverlay())
+        initPlayButton()
+        root.addView(playButtonOverlay)
         root.addView(clockExit)
         root.addView(actionMenuBackdrop)
         root.addView(actionMenuCard)
@@ -494,6 +519,7 @@ class SlideshowController(
         if (running && items.isNotEmpty()) {
             status.text = "Paused on current photo"
         }
+        showPlayButtonOverlay()
     }
 
     fun resumeSlideshow() {
@@ -506,6 +532,7 @@ class SlideshowController(
             status.text = ""
             scheduleAuto()
         }
+        hidePlayButtonOverlay()
     }
 
     private fun showActionMenu() {
@@ -631,14 +658,72 @@ class SlideshowController(
         clockBox.background = Ui.roundRect(0x33000000, Ui.dp(context, 14f)).apply {
             setStroke(Ui.dp(context, 2f), Ui.BLUE)
         }
+        clockEditHint.animate().cancel()
+        clockEditHint.text = "Drag to move · pinch to resize · tap to finish"
+        clockEditHint.alpha = 1f
         clockEditHint.visibility = View.VISIBLE
     }
 
     private fun exitClockEdit() {
         editingClock = false
         clockBox.background = null
+        clockEditHint.animate().cancel()
         clockEditHint.visibility = View.GONE
+        clockEditHint.alpha = 1f
         persistClockTransform()
+    }
+
+    private fun initPlayButton() {
+        playButtonOverlay = FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            )
+            visibility = View.GONE
+            setOnClickListener {
+                onDismiss?.run()
+            }
+        }
+
+        val size = Ui.dp(context, 96f)
+        val button = FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                gravity = Gravity.CENTER
+            }
+            background = Ui.roundRect(0x66000000, size / 2).apply {
+                setStroke(Ui.dp(context, 2f), 0x99FFFFFF.toInt())
+            }
+            isClickable = true
+            isFocusable = true
+        }
+
+        val icon = ImageView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(Ui.dp(context, 36f), Ui.dp(context, 36f)).apply {
+                gravity = Gravity.CENTER
+                leftMargin = Ui.dp(context, 4f)
+            }
+            setImageResource(R.drawable.ic_play)
+        }
+        button.addView(icon)
+        playButtonOverlay.addView(button)
+
+        button.setOnClickListener {
+            resumeSlideshow()
+        }
+    }
+
+    private fun showPlayButtonOverlay() {
+        playButtonOverlay.animate().cancel()
+        playButtonOverlay.alpha = 0f
+        playButtonOverlay.visibility = View.VISIBLE
+        playButtonOverlay.animate().alpha(1f).setDuration(300).start()
+    }
+
+    private fun hidePlayButtonOverlay() {
+        playButtonOverlay.animate().cancel()
+        playButtonOverlay.animate().alpha(0f).setDuration(200).withEndAction {
+            playButtonOverlay.visibility = View.GONE
+        }.start()
     }
 
     private fun enterDateEdit() {
@@ -872,9 +957,13 @@ class SlideshowController(
                             if (abs(dx) > SWIPE_MIN_DISTANCE && abs(dx) > abs(dy)) {
                                 if (dx < 0) showNext() else showPrevious()
                             } else if (abs(dx) < TAP_SLOP && abs(dy) < TAP_SLOP &&
-                                dt < TAP_TIMEOUT_MS && onDismiss != null
+                                dt < TAP_TIMEOUT_MS
                             ) {
-                                onDismiss?.run()
+                                if (slideshowPaused) {
+                                    onDismiss?.run()
+                                } else {
+                                    pauseSlideshow()
+                                }
                             }
                         }
                         return true
@@ -926,6 +1015,31 @@ class SlideshowController(
             return
         }
         showImmediate(0)
+
+        // Show discoverability hint for the clock if at default transform
+        if (clockDx == 0f && clockDy == 0f && clockScale == 1f) {
+            clockEditHint.text = "💡 Long-press the clock to move or resize it"
+            clockEditHint.animate().cancel()
+            clockEditHint.alpha = 0f
+            clockEditHint.visibility = View.VISIBLE
+            clockEditHint.animate().alpha(1f).setDuration(500).withEndAction {
+                clockEditHint.animate().alpha(0f).setStartDelay(8000).setDuration(1000).withEndAction {
+                    clockEditHint.visibility = View.GONE
+                    clockEditHint.alpha = 1f
+                }.start()
+            }.start()
+        }
+
+        val showBattery = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+            .getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
+        if (showBattery && !batteryReceiverRegistered) {
+            try {
+                context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                batteryReceiverRegistered = true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to register battery receiver", e)
+            }
+        }
     }
 
     fun stop() {
@@ -939,6 +1053,15 @@ class SlideshowController(
             it.cancel()
             kbAnim = null
         }
+        if (batteryReceiverRegistered) {
+            try {
+                context.unregisterReceiver(batteryReceiver)
+            } catch (e: Exception) {
+                // ignore
+            }
+            batteryReceiverRegistered = false
+        }
+        hidePlayButtonOverlay()
     }
 
     /**
@@ -1564,6 +1687,14 @@ class SlideshowController(
         handler.postDelayed(clockTick, 60000 - System.currentTimeMillis() % 60000)
     }
 
+    private fun getBatterySuffix(): String {
+        val showBattery = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+            .getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
+        if (!showBattery || batteryLevel < 0) return ""
+        val icon = if (batteryIsCharging) "⚡" else "🔋"
+        return "  ·  $batteryLevel% $icon"
+    }
+
     private fun updateClock() {
         val c = Calendar.getInstance()
         nightTint.alpha = if (nightMode) {
@@ -1587,7 +1718,7 @@ class SlideshowController(
         trimLeftBearing(clock)
         val w = weather
         if (w == null) {
-            dateLine.text = date
+            dateLine.text = date + getBatterySuffix()
         } else if (w.moon) {
             // Clear night: draw a blue crescent (color emoji can't be tinted) + temp.
             val sb = SpannableStringBuilder("$date   ")
@@ -1598,16 +1729,18 @@ class SlideshowController(
                 s, s + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
             )
             sb.append("  ").append(w.temp.toString()).append("°")
+            sb.append(getBatterySuffix())
             dateLine.text = sb
         } else {
-            dateLine.text = date + "   " + w.label()
+            dateLine.text = date + "   " + w.label() + getBatterySuffix()
         }
         trimLeftBearing(dateLine)
     }
 
     private fun buildBigDateLine(c: Calendar, w: Weather.Now?): String {
         val date = bigDateFmt.format(c.time)
-        return if (w == null) date else "$date  ${w.temp}°  ${w.summary()}"
+        val base = if (w == null) date else "$date  ${w.temp}°  ${w.summary()}"
+        return base + getBatterySuffix()
     }
 
     /**

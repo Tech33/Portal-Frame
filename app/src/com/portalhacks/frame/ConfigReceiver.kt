@@ -106,6 +106,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_CLOCK_24H = "clock_24h"   // boolean: explicit 24-hour clock mode
         const val KEY_CLOCK_LOW_LIGHT = "clock_low_light" // boolean: clock-only in low light
         const val KEY_NIGHT_CLOCK = "night_clock" // boolean: show full-screen clock on schedule
+        const val KEY_BATTERY = "battery"       // boolean: show battery percentage widget
         const val KEY_NIGHT_CLOCK_START_MIN = "night_clock_start_min" // minutes after midnight
         const val KEY_NIGHT_CLOCK_END_MIN = "night_clock_end_min" // minutes after midnight
         const val KEY_NIGHT = "night"           // boolean: warm night dimming
@@ -143,6 +144,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_CLOCK_24H = false
         const val DEFAULT_CLOCK_LOW_LIGHT = false
         const val DEFAULT_NIGHT_CLOCK = false
+        const val DEFAULT_BATTERY = true
         const val DEFAULT_NIGHT_CLOCK_START_MIN = 22 * 60
         const val DEFAULT_NIGHT_CLOCK_END_MIN = 7 * 60
         const val DEFAULT_NIGHT = true
@@ -169,6 +171,7 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("night", KEY_NIGHT), arrayOf("on_this_day", KEY_ON_THIS_DAY),
             arrayOf("captions", KEY_CAPTIONS), arrayOf("face_framing", KEY_FACE), arrayOf("ambient_color", KEY_AMBIENT),
             arrayOf("auto_enhance", KEY_ENHANCE), arrayOf("zoom_fill", KEY_ZOOM_FILL),
+            arrayOf("battery", KEY_BATTERY),
         )
 
         // Per-album photo caches are managed by AlbumCache (keyed by album URL).
