@@ -14,18 +14,18 @@ import androidx.compose.ui.text.font.FontWeight
  * identical. Inter is loaded from assets (no GMS downloadable-font provider).
  */
 object PortalColors {
-    val Blue = Color(0xFF1990FF)
-    val BluePressed = Color(0xFF1877F2)
-    val Green = Color(0xFF6CD64F)
-    val Red = Color(0xFFFA484E)
-    val Bg = Color(0xFF1A1A1A)
-    val Surface = Color(0xFF2B2B2B)
-    val Field = Color(0xFF202020)
-    val OnPrimary = Color(0xFFF0F0F0)
-    val Text = Color(0xFFEDEDED)
-    val TextBody = Color(0xFFDADADA)
-    val TextMuted = Color(0xFFBEC6DC)
-    val Hairline = Color(0x22FFFFFF)
+    val Blue = Color(0xFF0A84FF)       // iOS System Blue
+    val BluePressed = Color(0xFF0056B3)
+    val Green = Color(0xFF30D158)      // iOS System Green
+    val Red = Color(0xFFFF453A)        // iOS System Red
+    val Bg = Color(0xFF000000)         // iOS Pure Black (OLED contrast)
+    val Surface = Color(0xFF1C1C1E)    // iOS Elevated Dark background (cards)
+    val Field = Color(0xFF2C2C2E)      // iOS secondary group background (fields/items)
+    val OnPrimary = Color(0xFFFFFFFF)
+    val Text = Color(0xFFFFFFFF)
+    val TextBody = Color(0xFFE5E5EA)
+    val TextMuted = Color(0xFF8E8E93)
+    val Hairline = Color(0xFF24242A)   // iOS subtle separator line
 }
 
 /** Inter font family loaded from bundled assets (cached). */

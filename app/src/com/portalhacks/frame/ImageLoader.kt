@@ -21,6 +21,7 @@ import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ThreadFactory
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -38,7 +39,19 @@ class ImageLoader(context: Context) {
     }
 
     private val ctx: Context = context.applicationContext
-    private val io: ExecutorService = Executors.newFixedThreadPool(2)
+    
+    private val ioLoad: ExecutorService = Executors.newFixedThreadPool(2, ThreadFactory { r ->
+        Thread(r, "image-loader-io-load").apply {
+            priority = Thread.MAX_PRIORITY
+        }
+    })
+    
+    private val ioPrefetch: ExecutorService = Executors.newFixedThreadPool(1, ThreadFactory { r ->
+        Thread(r, "image-loader-io-prefetch").apply {
+            priority = Thread.MIN_PRIORITY
+        }
+    })
+    
     private val main = Handler(Looper.getMainLooper())
     private val mem: LruCache<String, Bitmap>
     private val cacheDir: File
@@ -56,7 +69,7 @@ class ImageLoader(context: Context) {
 
     /** Shared background pool — reused for album fetches too. */
     fun executor(): ExecutorService {
-        return io
+        return ioPrefetch
     }
 
     fun load(id: String, reqW: Int, reqH: Int, zoomFill: Boolean, cb: Callback) {
@@ -66,7 +79,7 @@ class ImageLoader(context: Context) {
             cb.onLoaded(cached)
             return
         }
-        io.execute {
+        ioLoad.execute {
             val bmp = loadSync(id, reqW, reqH, zoomFill)
             if (bmp != null) {
                 mem.put(key, bmp)
@@ -81,7 +94,7 @@ class ImageLoader(context: Context) {
         if (mem.get(key) != null) {
             return
         }
-        io.execute {
+        ioPrefetch.execute {
             val b = loadSync(id, reqW, reqH, zoomFill)
             if (b != null) {
                 mem.put(key, b)
@@ -134,7 +147,7 @@ class ImageLoader(context: Context) {
             cb.onLoaded(cached)
             return
         }
-        io.execute {
+        ioLoad.execute {
             var out: Bitmap? = null
             var a: Bitmap? = null
             var b: Bitmap? = null
@@ -172,6 +185,7 @@ class ImageLoader(context: Context) {
         o.inJustDecodeBounds = true
         BitmapFactory.decodeFile(path, o)
         o.inSampleSize = sampleSize(o.outWidth, o.outHeight, reqW, reqH)
+        o.inPreferredConfig = Bitmap.Config.RGB_565
         o.inJustDecodeBounds = false
         return BitmapFactory.decodeFile(path, o)
     }
@@ -184,6 +198,7 @@ class ImageLoader(context: Context) {
         BitmapFactory.decodeStream(`in`, null, o)
         `in`.close()
         o.inSampleSize = sampleSize(o.outWidth, o.outHeight, reqW, reqH)
+        o.inPreferredConfig = Bitmap.Config.RGB_565
         o.inJustDecodeBounds = false
         `in` = ctx.assets.open(assetPath)
         val b = BitmapFactory.decodeStream(`in`, null, o)

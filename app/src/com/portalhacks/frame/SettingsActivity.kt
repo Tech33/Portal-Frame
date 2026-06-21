@@ -23,11 +23,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -36,11 +39,16 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.foundation.border
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,6 +60,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -233,30 +242,123 @@ class SettingsActivity : ComponentActivity() {
         false
     }
 
+    @Composable
+    private fun rememberPrefBoolean(key: String, defaultValue: Boolean): MutableState<Boolean> {
+        val state = remember(key) { mutableStateOf(prefs.getBoolean(key, defaultValue)) }
+        DisposableEffect(key) {
+            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+                if (changedKey == key) {
+                    state.value = prefs.getBoolean(key, defaultValue)
+                }
+            }
+            prefs.registerOnSharedPreferenceChangeListener(listener)
+            onDispose {
+                prefs.unregisterOnSharedPreferenceChangeListener(listener)
+            }
+        }
+        return state
+    }
+
+    @Composable
+    private fun rememberPrefInt(key: String, defaultValue: Int): MutableState<Int> {
+        val state = remember(key) { mutableIntStateOf(prefs.getInt(key, defaultValue)) }
+        DisposableEffect(key) {
+            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+                if (changedKey == key) {
+                    state.value = prefs.getInt(key, defaultValue)
+                }
+            }
+            prefs.registerOnSharedPreferenceChangeListener(listener)
+            onDispose {
+                prefs.unregisterOnSharedPreferenceChangeListener(listener)
+            }
+        }
+        return state
+    }
+
+    @Composable
+    private fun rememberPrefLong(key: String, defaultValue: Long): MutableState<Long> {
+        val state = remember(key) { mutableLongStateOf(prefs.getLong(key, defaultValue)) }
+        DisposableEffect(key) {
+            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+                if (changedKey == key) {
+                    state.value = prefs.getLong(key, defaultValue)
+                }
+            }
+            prefs.registerOnSharedPreferenceChangeListener(listener)
+            onDispose {
+                prefs.unregisterOnSharedPreferenceChangeListener(listener)
+            }
+        }
+        return state
+    }
+
+    @Composable
+    private fun rememberPrefString(key: String, defaultValue: String?): MutableState<String?> {
+        val state = remember(key) { mutableStateOf(prefs.getString(key, defaultValue)) }
+        DisposableEffect(key) {
+            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+                if (changedKey == key) {
+                    state.value = prefs.getString(key, defaultValue)
+                }
+            }
+            prefs.registerOnSharedPreferenceChangeListener(listener)
+            onDispose {
+                prefs.unregisterOnSharedPreferenceChangeListener(listener)
+            }
+        }
+        return state
+    }
+
+    @Composable
+    private fun rememberPrefAlbums(): MutableState<List<String>> {
+        val state = remember { mutableStateOf(Albums.list(prefs)) }
+        DisposableEffect(Unit) {
+            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+                if (changedKey == ConfigReceiver.KEY_ALBUMS) {
+                    state.value = Albums.list(prefs)
+                }
+            }
+            prefs.registerOnSharedPreferenceChangeListener(listener)
+            onDispose {
+                prefs.unregisterOnSharedPreferenceChangeListener(listener)
+            }
+        }
+        return state
+    }
+
     // ----------------------------------------------------------------- UI
 
     @Composable
     private fun SettingsScreen() {
         val ctx = LocalContext.current
-        var tick by remember { mutableIntStateOf(0) } // bump to recompose after pref writes
+        var showNightClockDialog by remember { mutableStateOf(false) }
         var refreshingAlbums by remember { mutableStateOf(false) }
         var albumRefreshStatus by remember { mutableStateOf("") }
         var checkingUpdate by remember { mutableStateOf(false) }
         var downloadingUpdate by remember { mutableStateOf(false) }
         var updateStatus by remember { mutableStateOf("") }
         var pendingUpdate by remember { mutableStateOf<UpdateChecker.UpdateManifest?>(null) }
-        val installedVersion = remember(tick, resumeTick.intValue) {
+        val installedVersion = remember(resumeTick.intValue) {
             UpdateChecker.currentVersionName(ctx) +
                 " (${UpdateChecker.currentVersionCode(ctx)})"
         }
-        resumeTick.intValue // read so returning from the scanner re-reads albums below
-        tick // read so writes that bump it recompose
-        val albums = Albums.list(prefs)
+        
+        // Observe fine-grained preference states
+        val albumsState = rememberPrefAlbums()
+        val albums = albumsState.value
         val hasAlbum = albums.isNotEmpty()
-        val autoCheckUpdates = prefs.getBoolean(
+        
+        val autoCheckUpdatesState = rememberPrefBoolean(
             ConfigReceiver.KEY_UPDATE_AUTO_CHECK,
             ConfigReceiver.DEFAULT_UPDATE_AUTO_CHECK,
         )
+        val autoCheckUpdates = autoCheckUpdatesState.value
+
+        var isScreensaverActive by remember { mutableStateOf(isOurScreensaver()) }
+        LaunchedEffect(resumeTick.intValue) {
+            isScreensaverActive = isOurScreensaver()
+        }
 
         LaunchedEffect(resumeTick.intValue, autoCheckUpdates) {
             if (!autoCheckUpdates || checkingUpdate || downloadingUpdate) {
@@ -282,7 +384,7 @@ class SettingsActivity : ComponentActivity() {
         // Card groups, so the layout can be one or two columns by available width.
         val sourceCards: @Composable () -> Unit = {
             Card("Screensaver") {
-                val active = isOurScreensaver()
+                val active = isScreensaverActive
                 val protectedMode = Screensaver.canWrite(ctx)
                 Body(
                     when {
@@ -296,7 +398,7 @@ class SettingsActivity : ComponentActivity() {
                 )
                 Spacer(Modifier.height(12.dp))
                 if (active) PrimaryBtn("Change screensaver") { openScreensaver() }
-                else PrimaryBtn("Use as screensaver") { enableScreensaver(); tick++ }
+                else PrimaryBtn("Use as screensaver") { enableScreensaver(); isScreensaverActive = isOurScreensaver() }
                 Spacer(Modifier.height(10.dp))
                 SecondaryBtn("Start screensaver now") { startScreensaverNow() }
             }
@@ -351,7 +453,9 @@ class SettingsActivity : ComponentActivity() {
                     ConfigReceiver.KEY_UPDATE_AUTO_CHECK,
                     ConfigReceiver.DEFAULT_UPDATE_AUTO_CHECK,
                     subtitle = "When you open Settings (at most once every 6 hours).",
-                ) { tick++ }
+                    iconRes = R.drawable.ic_reset,
+                    iconBg = Color(0xFF007AFF),
+                )
             }
             Card(if (hasAlbum) "Albums" else "No albums yet") {
                 if (hasAlbum) {
@@ -369,28 +473,24 @@ class SettingsActivity : ComponentActivity() {
                             onStatus = { albumRefreshStatus = it },
                             onFinished = {
                                 refreshingAlbums = false
-                                tick++
                             },
                         )
                     }
                     Spacer(Modifier.height(12.dp))
+                    
+                    val albumPlaybackState = rememberPrefString(ConfigReceiver.KEY_ALBUM_PLAYBACK, ConfigReceiver.DEFAULT_ALBUM_PLAYBACK)
                     CycleRow(
                         "Album playback",
                         albumPlaybackLabel(
-                            prefs.getString(
-                                ConfigReceiver.KEY_ALBUM_PLAYBACK,
-                                ConfigReceiver.DEFAULT_ALBUM_PLAYBACK,
-                            ) ?: ConfigReceiver.DEFAULT_ALBUM_PLAYBACK,
+                            albumPlaybackState.value ?: ConfigReceiver.DEFAULT_ALBUM_PLAYBACK,
                         ),
+                        iconRes = R.drawable.ic_transition,
+                        iconBg = Color(0xFF34C759),
                     ) {
                         val next = if (
-                            prefs.getString(
-                                ConfigReceiver.KEY_ALBUM_PLAYBACK,
-                                ConfigReceiver.DEFAULT_ALBUM_PLAYBACK,
-                            ) == "album_priority"
+                            albumPlaybackState.value == "album_priority"
                         ) "shuffled_merge" else "album_priority"
                         prefs.edit().putString(ConfigReceiver.KEY_ALBUM_PLAYBACK, next).apply()
-                        tick++
                     }
                     Divider()
                     // One removable row per album; the slideshow plays them all merged.
@@ -400,9 +500,9 @@ class SettingsActivity : ComponentActivity() {
                             url = url,
                             index = i,
                             count = albums.size,
-                            onMoveUp = { Albums.move(prefs, url, -1); tick++ },
-                            onMoveDown = { Albums.move(prefs, url, 1); tick++ },
-                            onRemove = { Albums.remove(prefs, url); tick++ },
+                            onMoveUp = { Albums.move(prefs, url, -1) },
+                            onMoveDown = { Albums.move(prefs, url, 1) },
+                            onRemove = { Albums.remove(prefs, url) },
                         )
                     }
                     Spacer(Modifier.height(14.dp))
@@ -417,13 +517,13 @@ class SettingsActivity : ComponentActivity() {
         val settingsCards: @Composable () -> Unit = {
             LivePreviewCard()
             Card("Slideshow") {
-                DurationSliderRow { tick++ }
+                DurationSliderRow(iconRes = R.drawable.ic_duration, iconBg = Color(0xFF5856D6))
                 Divider()
-                ToggleRow("Shuffle photos", ConfigReceiver.KEY_SHUFFLE, false) { tick++ }
+                ToggleRow("Shuffle photos", ConfigReceiver.KEY_SHUFFLE, false, iconRes = R.drawable.ic_shuffle, iconBg = Color(0xFF007AFF))
                 Divider()
-                TransitionSelectorRow { tick++ }
+                TransitionSelectorRow(iconRes = R.drawable.ic_transition, iconBg = Color(0xFF34C759))
                 Divider()
-                ToggleRow("Pair photos to fill the screen", ConfigReceiver.KEY_PAIRS, false) { tick++ }
+                ToggleRow("Pair photos to fill the screen", ConfigReceiver.KEY_PAIRS, false, iconRes = R.drawable.ic_pairs, iconBg = Color(0xFFFF9500))
                 Divider()
                 ToggleRow(
                     "Zoom single photos to fill",
@@ -431,85 +531,108 @@ class SettingsActivity : ComponentActivity() {
                     false,
                     subtitle = "Crop a single photo to fill the screen. Off: show the whole photo " +
                         "over a blurred fill. Paired photos always fill.",
-                ) { tick++ }
+                    iconRes = R.drawable.ic_zoom,
+                    iconBg = Color(0xFFAF52DE),
+                )
                 Divider()
-                ToggleRow("Cinematic motion", ConfigReceiver.KEY_KEN_BURNS, true) { tick++ }
+                ToggleRow("Cinematic motion", ConfigReceiver.KEY_KEN_BURNS, true, iconRes = R.drawable.ic_motion, iconBg = Color(0xFFFF2D55))
                 Divider()
-                ToggleRow("Photo captions", ConfigReceiver.KEY_CAPTIONS, true) { tick++ }
+                ToggleRow("Photo captions", ConfigReceiver.KEY_CAPTIONS, true, iconRes = R.drawable.ic_captions, iconBg = Color(0xFF5AC8FA))
             }
             Card("Ambient intelligence") {
-                ToggleRow("Face-aware framing", ConfigReceiver.KEY_FACE, true) { tick++ }
+                ToggleRow("Face-aware framing", ConfigReceiver.KEY_FACE, true, iconRes = R.drawable.ic_face, iconBg = Color(0xFFFF9500))
                 Divider()
-                ToggleRow("Auto-enhance photos", ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE) { tick++ }
+                ToggleRow("Auto-enhance photos", ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE, iconRes = R.drawable.ic_enhance, iconBg = Color(0xFFFFCC00))
                 Divider()
-                ToggleRow("Ambient color glow", ConfigReceiver.KEY_AMBIENT, true) { tick++ }
+                ToggleRow("Ambient color glow", ConfigReceiver.KEY_AMBIENT, true, iconRes = R.drawable.ic_ambient, iconBg = Color(0xFFFF2D55))
                 Divider()
                 ToggleRow(
                     "Clock & weather", ConfigReceiver.KEY_CLOCK, true,
                     subtitle = "Long-press the clock on the screensaver to move or resize it.",
-                ) { tick++ }
+                    iconRes = R.drawable.ic_clock,
+                    iconBg = Color(0xFF007AFF),
+                )
                 Divider()
+                
+                val tempFahrenheitState = rememberPrefBoolean(ConfigReceiver.KEY_WEATHER_FAHRENHEIT, ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT)
                 CycleRow(
                     "Temperature unit",
-                    if (prefs.getBoolean(
-                            ConfigReceiver.KEY_WEATHER_FAHRENHEIT,
-                            ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT,
-                        )
-                    ) "Fahrenheit" else "Celsius",
-                    // Clarify ordering and default for users
-                    // (Celsius is now the default)
+                    if (tempFahrenheitState.value) "Fahrenheit" else "Celsius",
+                    iconRes = R.drawable.ic_temperature,
+                    iconBg = Color(0xFF5856D6)
                 ) {
-                    val next = !prefs.getBoolean(
-                        ConfigReceiver.KEY_WEATHER_FAHRENHEIT,
-                        ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT,
-                    )
-                    prefs.edit().putBoolean(ConfigReceiver.KEY_WEATHER_FAHRENHEIT, next).apply()
-                    tick++
+                    prefs.edit().putBoolean(ConfigReceiver.KEY_WEATHER_FAHRENHEIT, !tempFahrenheitState.value).apply()
                 }
                 Divider()
-                CycleRow("Clock format", if (clock24HourEnabled()) "24-hour" else "12-hour") {
-                    prefs.edit().putBoolean(ConfigReceiver.KEY_CLOCK_24H, !clock24HourEnabled()).apply()
-                    tick++
+                
+                val clock24hState = rememberPrefBoolean(ConfigReceiver.KEY_CLOCK_24H, ConfigReceiver.DEFAULT_CLOCK_24H)
+                CycleRow("Clock format", if (clock24hState.value) "24-hour" else "12-hour", iconRes = R.drawable.ic_clock_format, iconBg = Color(0xFF8E8E93)) {
+                    prefs.edit().putBoolean(ConfigReceiver.KEY_CLOCK_24H, !clock24hState.value).apply()
                 }
                 Divider()
-                CycleRow("Clock position & size", "Reset") {
+                CycleRow("Clock position & size", "Reset", iconRes = R.drawable.ic_reset, iconBg = Color(0xFFFF3B30)) {
                     prefs.edit()
                         .putFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
                         .putFloat(ConfigReceiver.KEY_CLOCK_DY, ConfigReceiver.DEFAULT_CLOCK_DY)
                         .putFloat(ConfigReceiver.KEY_CLOCK_SCALE, ConfigReceiver.DEFAULT_CLOCK_SCALE)
                         .apply()
-                    tick++
                 }
                 Divider()
-                ToggleRow("Only clock in low light", ConfigReceiver.KEY_CLOCK_LOW_LIGHT, ConfigReceiver.DEFAULT_CLOCK_LOW_LIGHT) { tick++ }
+                ToggleRow(
+                    label = "Only clock in low light",
+                    key = ConfigReceiver.KEY_CLOCK_LOW_LIGHT,
+                    def = ConfigReceiver.DEFAULT_CLOCK_LOW_LIGHT,
+                    iconRes = R.drawable.ic_low_light,
+                    iconBg = Color(0xFF1D2E44),
+                )
                 Divider()
                 ToggleRow(
-                    "Scheduled full-screen night clock",
-                    ConfigReceiver.KEY_NIGHT_CLOCK,
-                    ConfigReceiver.DEFAULT_NIGHT_CLOCK,
+                    label = "Scheduled full-screen night clock",
+                    key = ConfigReceiver.KEY_NIGHT_CLOCK,
+                    def = ConfigReceiver.DEFAULT_NIGHT_CLOCK,
                     subtitle = "Show a full-screen clock with AM/PM, an Exit button, and a line like Fri, 19 Jun 14°  ☁️ Cloudy instead of photos.",
-                ) { tick++ }
+                    iconRes = R.drawable.ic_night_clock,
+                    iconBg = Color(0xFF5856D6),
+                    onClickOverride = { checked ->
+                        if (checked) {
+                            showNightClockDialog = true
+                        } else {
+                            prefs.edit().putBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, false).apply()
+                        }
+                    }
+                )
                 Divider()
                 TimeSliderRow(
                     "Night clock starts",
                     ConfigReceiver.KEY_NIGHT_CLOCK_START_MIN,
                     ConfigReceiver.DEFAULT_NIGHT_CLOCK_START_MIN,
-                ) { tick++ }
+                    iconRes = R.drawable.ic_duration,
+                    iconBg = Color(0xFF8E8E93),
+                )
                 Divider()
                 TimeSliderRow(
                     "Night clock ends",
                     ConfigReceiver.KEY_NIGHT_CLOCK_END_MIN,
                     ConfigReceiver.DEFAULT_NIGHT_CLOCK_END_MIN,
-                ) { tick++ }
+                    iconRes = R.drawable.ic_duration,
+                    iconBg = Color(0xFF8E8E93),
+                )
                 Divider()
-                ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true) { tick++ }
+                ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true, iconRes = R.drawable.ic_night_warmth, iconBg = Color(0xFFFF9500))
                 Divider()
-                ToggleRow("On This Day memories", ConfigReceiver.KEY_ON_THIS_DAY, true) { tick++ }
+                ToggleRow("On This Day memories", ConfigReceiver.KEY_ON_THIS_DAY, true, iconRes = R.drawable.ic_memories, iconBg = Color(0xFF34C759))
             }
         }
 
         BoxWithConstraints(
-            Modifier.fillMaxSize().background(PortalColors.Bg),
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF0A0A0C),
+                        Color(0xFF121216)
+                    )
+                )
+            ),
             contentAlignment = Alignment.TopCenter,
         ) {
             // Two columns only when there's room (Portal Go/+ landscape); one column
@@ -543,20 +666,38 @@ class SettingsActivity : ComponentActivity() {
                 Spacer(Modifier.height(24.dp))
             }
         }
+
+        if (showNightClockDialog) {
+            NightClockConfirmDialog(
+                onConfirm = { start, end ->
+                    prefs.edit()
+                        .putBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, true)
+                        .putInt(ConfigReceiver.KEY_NIGHT_CLOCK_START_MIN, start)
+                        .putInt(ConfigReceiver.KEY_NIGHT_CLOCK_END_MIN, end)
+                        .apply()
+                    showNightClockDialog = false
+                },
+                onDismiss = {
+                    showNightClockDialog = false
+                }
+            )
+        }
     }
 
     @Composable
     private fun Card(title: String, content: @Composable () -> Unit) {
         Column(
             Modifier.fillMaxWidth().padding(top = 16.dp)
-                .clip(RoundedCornerShape(20.dp)).background(PortalColors.Surface)
+                .clip(RoundedCornerShape(22.dp))
+                .background(PortalColors.Surface)
+                .border(1.dp, PortalColors.Hairline, RoundedCornerShape(22.dp))
                 .padding(horizontal = 24.dp, vertical = 20.dp),
         ) {
             Text(
-                title.uppercase(), color = PortalColors.TextMuted, fontSize = 13.sp,
-                fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp,
+                title.uppercase(), color = PortalColors.TextMuted, fontSize = 12.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp,
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             content()
         }
     }
@@ -713,23 +854,43 @@ class SettingsActivity : ComponentActivity() {
     )
 
     @Composable
-    private fun PrimaryBtn(label: String, enabled: Boolean = true, onClick: () -> Unit) = Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(64.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = PortalColors.Blue),
-    ) { Text(label, color = PortalColors.OnPrimary, fontSize = 18.sp) }
+    private fun PrimaryBtn(label: String, enabled: Boolean = true, onClick: () -> Unit) {
+        val alpha = if (enabled) 1f else 0.5f
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color(0xFF007AFF), Color(0xFF5856D6))
+                    )
+                )
+                .clickable(enabled = enabled, onClick = onClick)
+                .alpha(alpha),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(label, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+    }
 
     @Composable
-    private fun SecondaryBtn(label: String, enabled: Boolean = true, onClick: () -> Unit) = Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(56.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = PortalColors.Surface,
-            contentColor = PortalColors.Text,
-        ),
-    ) { Text(label, color = PortalColors.Text, fontSize = 17.sp) }
+    private fun SecondaryBtn(label: String, enabled: Boolean = true, onClick: () -> Unit) {
+        val alpha = if (enabled) 1f else 0.5f
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0x15FFFFFF))
+                .border(1.dp, Color(0x10FFFFFF), RoundedCornerShape(16.dp))
+                .clickable(enabled = enabled, onClick = onClick)
+                .alpha(alpha),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(label, color = PortalColors.Text, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+        }
+    }
 
     @Composable
     private fun SmallAction(label: String, enabled: Boolean, onClick: () -> Unit) {
@@ -747,18 +908,43 @@ class SettingsActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun RowIcon(iconRes: Int, backgroundColor: Color) {
+        if (iconRes == 0) return
+        Box(
+            modifier = Modifier
+                .padding(end = 16.dp)
+                .size(30.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(backgroundColor),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+
+    @Composable
     private fun ToggleRow(
         label: String,
         key: String,
         def: Boolean,
         subtitle: String? = null,
-        onChanged: () -> Unit,
+        iconRes: Int = 0,
+        iconBg: Color = Color.Gray,
+        onClickOverride: ((Boolean) -> Unit)? = null,
+        onChanged: (() -> Unit)? = null,
     ) {
-        var on by remember(key) { mutableStateOf(prefs.getBoolean(key, def)) }
+        val onState = rememberPrefBoolean(key, def)
+        val on = onState.value
         Row(
             Modifier.fillMaxWidth().padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            RowIcon(iconRes, iconBg)
             Column(Modifier.weight(1f)) {
                 Text(label, color = PortalColors.Text, fontSize = 18.sp)
                 if (subtitle != null) {
@@ -767,10 +953,13 @@ class SettingsActivity : ComponentActivity() {
             }
             Switch(
                 checked = on,
-                onCheckedChange = {
-                    on = it
-                    prefs.edit().putBoolean(key, it).apply()
-                    onChanged()
+                onCheckedChange = { checked ->
+                    if (onClickOverride != null) {
+                        onClickOverride(checked)
+                    } else {
+                        prefs.edit().putBoolean(key, checked).apply()
+                        onChanged?.invoke()
+                    }
                 },
                 colors = SwitchDefaults.colors(checkedTrackColor = PortalColors.Blue),
             )
@@ -778,43 +967,126 @@ class SettingsActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun CycleRow(label: String, value: String, onClick: () -> Unit) {
+    private fun NightClockConfirmDialog(
+        onConfirm: (startMin: Int, endMin: Int) -> Unit,
+        onDismiss: () -> Unit
+    ) {
+        var startMin by remember {
+            mutableIntStateOf(getInt(ConfigReceiver.KEY_NIGHT_CLOCK_START_MIN, ConfigReceiver.DEFAULT_NIGHT_CLOCK_START_MIN))
+        }
+        var endMin by remember {
+            mutableIntStateOf(getInt(ConfigReceiver.KEY_NIGHT_CLOCK_END_MIN, ConfigReceiver.DEFAULT_NIGHT_CLOCK_END_MIN))
+        }
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Text("Enable Scheduled Night Clock", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text(
+                        "This will display a full-screen flip clock during the selected hours instead of your slideshow.",
+                        color = PortalColors.Text.copy(alpha = 0.8f),
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Starts at", color = PortalColors.Text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                        Text(fmtTimeOfDay(startMin), color = PortalColors.Blue, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Slider(
+                        value = (startMin / TIME_STEP_MINUTES).toFloat(),
+                        onValueChange = { startMin = it.roundToInt() * TIME_STEP_MINUTES },
+                        valueRange = 0f..((24 * 60 / TIME_STEP_MINUTES) - 1).toFloat(),
+                        steps = (24 * 60 / TIME_STEP_MINUTES) - 2,
+                        colors = SliderDefaults.colors(
+                            thumbColor = PortalColors.Blue,
+                            activeTrackColor = PortalColors.Blue
+                        )
+                    )
+                    
+                    Spacer(Modifier.height(8.dp))
+                    
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Ends at", color = PortalColors.Text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                        Text(fmtTimeOfDay(endMin), color = PortalColors.Blue, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Slider(
+                        value = (endMin / TIME_STEP_MINUTES).toFloat(),
+                        onValueChange = { endMin = it.roundToInt() * TIME_STEP_MINUTES },
+                        valueRange = 0f..((24 * 60 / TIME_STEP_MINUTES) - 1).toFloat(),
+                        steps = (24 * 60 / TIME_STEP_MINUTES) - 2,
+                        colors = SliderDefaults.colors(
+                            thumbColor = PortalColors.Blue,
+                            activeTrackColor = PortalColors.Blue
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { onConfirm(startMin, endMin) }) {
+                    Text("Confirm", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = PortalColors.Text.copy(alpha = 0.6f))
+                }
+            },
+            containerColor = PortalColors.Surface,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    @Composable
+    private fun CycleRow(
+        label: String,
+        value: String,
+        iconRes: Int = 0,
+        iconBg: Color = Color.Gray,
+        onClick: () -> Unit
+    ) {
         Row(
             Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            RowIcon(iconRes, iconBg)
             Text(label, color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
             Text("$value  ›", color = PortalColors.Blue, fontSize = 18.sp)
         }
     }
 
     @Composable
-    private fun TransitionSelectorRow(onChanged: () -> Unit) {
-        var selected by remember {
-            mutableStateOf(
-                prefs.getString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
-                    ?: ConfigReceiver.DEFAULT_TRANSITION,
-            )
-        }
+    private fun TransitionSelectorRow(
+        iconRes: Int = 0,
+        iconBg: Color = Color.Gray,
+        onChanged: (() -> Unit)? = null
+    ) {
+        var selected by rememberPrefString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
+        val selectedVal = selected ?: ConfigReceiver.DEFAULT_TRANSITION
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-            Text("Transition", color = PortalColors.Text, fontSize = 18.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RowIcon(iconRes, iconBg)
+                Text("Transition", color = PortalColors.Text, fontSize = 18.sp)
+            }
             Spacer(Modifier.height(8.dp))
             TRANSITION_OPTIONS.forEachIndexed { i, option ->
                 Row(
                     Modifier.fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .clickable {
-                            if (selected != option.id) {
+                            if (selectedVal != option.id) {
                                 selected = option.id
-                                prefs.edit().putString(ConfigReceiver.KEY_TRANSITION, option.id).apply()
-                                onChanged()
+                                onChanged?.invoke()
                             }
                         }
                         .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     RadioButton(
-                        selected = selected == option.id,
+                        selected = selectedVal == option.id,
                         onClick = null,
                         colors = RadioButtonDefaults.colors(
                             selectedColor = PortalColors.Blue,
@@ -833,15 +1105,16 @@ class SettingsActivity : ComponentActivity() {
     @Composable
     private fun LivePreviewCard() {
         var now by remember { mutableStateOf(System.currentTimeMillis()) }
-        val transition = prefs.getString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
-            ?: ConfigReceiver.DEFAULT_TRANSITION
-        val use24Hour = clock24HourEnabled()
-        val temp = if (
-            prefs.getBoolean(
-                ConfigReceiver.KEY_WEATHER_FAHRENHEIT,
-                ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT,
-            )
-        ) "72°F" else "22°C"
+        val transitionState = rememberPrefString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
+        val transition = transitionState.value ?: ConfigReceiver.DEFAULT_TRANSITION
+        
+        val use24HourState = rememberPrefBoolean(ConfigReceiver.KEY_CLOCK_24H, false)
+        val ctx = LocalContext.current
+        val use24Hour = if (prefs.contains(ConfigReceiver.KEY_CLOCK_24H)) use24HourState.value else android.text.format.DateFormat.is24HourFormat(ctx)
+        
+        val tempFahrenheitState = rememberPrefBoolean(ConfigReceiver.KEY_WEATHER_FAHRENHEIT, ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT)
+        val temp = if (tempFahrenheitState.value) "72°F" else "22°C"
+        
         val timeFmt = remember(use24Hour) {
             SimpleDateFormat(if (use24Hour) "HH:mm" else "h:mm a", Locale.getDefault())
         }
@@ -857,9 +1130,10 @@ class SettingsActivity : ComponentActivity() {
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(18.dp))
                     .background(
-                        Brush.linearGradient(
-                            listOf(Color(0xFF151515), Color(0xFF28364A), Color(0xFF171717)),
-                        ),
+                        Brush.radialGradient(
+                            colors = listOf(Color(0xFF1D2E44), Color(0xFF0E131F)),
+                            center = androidx.compose.ui.geometry.Offset(0.2f, 0.2f)
+                        )
                     )
                     .padding(horizontal = 22.dp, vertical = 24.dp),
             ) {
@@ -907,12 +1181,18 @@ class SettingsActivity : ComponentActivity() {
      * while dragging; the pref is committed on release so we don't thrash prefs every tick.
      */
     @Composable
-    private fun DurationSliderRow(onChanged: () -> Unit) {
-        var idx by remember {
-            mutableStateOf(nearestPresetIndex(getLong(ConfigReceiver.KEY_DELAY_MS, ConfigReceiver.DEFAULT_DELAY_MS)))
+    private fun DurationSliderRow(
+        iconRes: Int = 0,
+        iconBg: Color = Color.Gray,
+        onChanged: (() -> Unit)? = null
+    ) {
+        var delayMs by rememberPrefLong(ConfigReceiver.KEY_DELAY_MS, ConfigReceiver.DEFAULT_DELAY_MS)
+        var idx by remember(delayMs) {
+            mutableIntStateOf(nearestPresetIndex(delayMs))
         }
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                RowIcon(iconRes, iconBg)
                 Text("Time per photo", color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
                 Text(
                     fmtDelay(DELAY_PRESETS[idx]),
@@ -925,13 +1205,13 @@ class SettingsActivity : ComponentActivity() {
                 valueRange = 0f..(DELAY_PRESETS.size - 1).toFloat(),
                 steps = DELAY_PRESETS.size - 2,
                 onValueChangeFinished = {
-                    setLong(ConfigReceiver.KEY_DELAY_MS, DELAY_PRESETS[idx]); onChanged()
+                    delayMs = DELAY_PRESETS[idx]
+                    onChanged?.invoke()
                 },
                 colors = SliderDefaults.colors(
                     thumbColor = PortalColors.Blue,
                     activeTrackColor = PortalColors.Blue,
                     inactiveTrackColor = PortalColors.Text.copy(alpha = 0.18f),
-                    // Hide the per-step tick dots — 13 of them clutter the track.
                     activeTickColor = Color.Transparent,
                     inactiveTickColor = Color.Transparent,
                 ),
@@ -961,10 +1241,18 @@ class SettingsActivity : ComponentActivity() {
         }
 
     @Composable
-    private fun TimeSliderRow(label: String, key: String, def: Int, onChanged: () -> Unit) {
-        var minute by remember(key) { mutableIntStateOf(getInt(key, def)) }
+    private fun TimeSliderRow(
+        label: String,
+        key: String,
+        def: Int,
+        iconRes: Int = 0,
+        iconBg: Color = Color.Gray,
+        onChanged: (() -> Unit)? = null
+    ) {
+        var minute by rememberPrefInt(key, def)
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                RowIcon(iconRes, iconBg)
                 Text(label, color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
                 Text(
                     fmtTimeOfDay(minute),
@@ -977,7 +1265,8 @@ class SettingsActivity : ComponentActivity() {
                 valueRange = 0f..((24 * 60 / TIME_STEP_MINUTES) - 1).toFloat(),
                 steps = (24 * 60 / TIME_STEP_MINUTES) - 2,
                 onValueChangeFinished = {
-                    setInt(key, minute); onChanged()
+                    setInt(key, minute)
+                    onChanged?.invoke()
                 },
                 colors = SliderDefaults.colors(
                     thumbColor = PortalColors.Blue,

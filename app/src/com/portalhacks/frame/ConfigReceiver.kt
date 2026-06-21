@@ -141,7 +141,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_CLOCK = true
         const val DEFAULT_WEATHER_FAHRENHEIT = false
         const val DEFAULT_CLOCK_24H = false
-        const val DEFAULT_CLOCK_LOW_LIGHT = true
+        const val DEFAULT_CLOCK_LOW_LIGHT = false
         const val DEFAULT_NIGHT_CLOCK = false
         const val DEFAULT_NIGHT_CLOCK_START_MIN = 22 * 60
         const val DEFAULT_NIGHT_CLOCK_END_MIN = 7 * 60
