@@ -73,20 +73,22 @@ class ConfigReceiver : BroadcastReceiver() {
 
         val ed = prefs.edit()
         var any = false
-        if (intent.hasExtra("clock_style")) {
-            val style = intent.getStringExtra("clock_style")?.trim()
-            if (!style.isNullOrEmpty()) {
-                ed.putString(KEY_CLOCK_STYLE, style)
-                Log.i("PortalFrame", "$KEY_CLOCK_STYLE set to: $style")
-                any = true
-            }
-        }
         for (e in BOOL_EXTRAS) {
             if (intent.hasExtra(e[0])) {
                 val value = intent.getBooleanExtra(e[0], true)
                 ed.putBoolean(e[1], value)
                 Log.i("PortalFrame", "${e[1]} set to: $value")
                 any = true
+            }
+        }
+        for (key in arrayOf(KEY_CHIME_START_MIN, KEY_CHIME_END_MIN)) {
+            if (intent.hasExtra(key)) {
+                val value = intent.getIntExtra(key, -1)
+                if (value >= 0) {
+                    ed.putInt(key, value)
+                    Log.i("PortalFrame", "$key set to: $value")
+                    any = true
+                }
             }
         }
         if (any) {
@@ -115,6 +117,9 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_CLOCK_LOW_LIGHT = "clock_low_light" // boolean: clock-only in low light
         const val KEY_NIGHT_CLOCK = "night_clock" // boolean: show full-screen clock on schedule
         const val KEY_BATTERY = "battery"       // boolean: show battery percentage widget
+        const val KEY_CHIME = "chime"           // boolean: hourly chime active
+        const val KEY_CHIME_START_MIN = "chime_start_min" // start minutes after midnight
+        const val KEY_CHIME_END_MIN = "chime_end_min"     // end minutes after midnight
         const val KEY_NIGHT_CLOCK_START_MIN = "night_clock_start_min" // minutes after midnight
         const val KEY_NIGHT_CLOCK_END_MIN = "night_clock_end_min" // minutes after midnight
         const val KEY_NIGHT = "night"           // boolean: warm night dimming
@@ -128,7 +133,6 @@ class ConfigReceiver : BroadcastReceiver() {
         // Clock widget transform (set by long-press-drag/pinch on the screensaver). dx/dy are the
         // translation from the default bottom-left anchor as a fraction of screen W/H; scale is a
         // size multiplier. Floats.
-        const val KEY_CLOCK_STYLE = "clock_style"
         const val KEY_CLOCK_DX = "clock_dx"
         const val KEY_CLOCK_DY = "clock_dy"
         const val KEY_CLOCK_SCALE = "clock_scale"
@@ -142,7 +146,9 @@ class ConfigReceiver : BroadcastReceiver() {
         /** Stable URL — always serves the latest release's version.json asset. */
         const val UPDATE_MANIFEST_URL =
             "https://github.com/Tech33/Portal-Frame/releases/latest/download/version.json"
-        const val DEFAULT_CLOCK_STYLE = "modern"
+        const val DEFAULT_CHIME = false
+        const val DEFAULT_CHIME_START_MIN = 8 * 60
+        const val DEFAULT_CHIME_END_MIN = 22 * 60
         const val DEFAULT_DELAY_MS = 6000L
         const val DEFAULT_FADE_MS = 1200L
         const val DEFAULT_TRANSITION = "crossfade"
@@ -182,6 +188,7 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("captions", KEY_CAPTIONS), arrayOf("face_framing", KEY_FACE), arrayOf("ambient_color", KEY_AMBIENT),
             arrayOf("auto_enhance", KEY_ENHANCE), arrayOf("zoom_fill", KEY_ZOOM_FILL),
             arrayOf("battery", KEY_BATTERY),
+            arrayOf("chime", KEY_CHIME),
         )
 
         // Per-album photo caches are managed by AlbumCache (keyed by album URL).

@@ -595,28 +595,30 @@ class SettingsActivity : ComponentActivity() {
                     iconBg = Color(0xFF007AFF),
                 )
                 Divider()
-                val clockStyleState = rememberPrefString(ConfigReceiver.KEY_CLOCK_STYLE, ConfigReceiver.DEFAULT_CLOCK_STYLE)
-                val clockStyleLabel = when (clockStyleState.value) {
-                    "modern" -> "Nest Hub Style"
-                    "glass" -> "Modern Glassmorphic"
-                    "flip" -> "Google Nest Flip"
-                    else -> "Stock Classic"
-                }
-                CycleRow(
-                    label = "Clock style",
-                    value = clockStyleLabel,
+                ToggleRow(
+                    label = "Hourly chime",
+                    key = ConfigReceiver.KEY_CHIME,
+                    def = ConfigReceiver.DEFAULT_CHIME,
+                    subtitle = "Plays a soft bell chime on the hour.",
                     iconRes = R.drawable.ic_clock_format,
-                    iconBg = Color(0xFF5856D6),
-                    subtitle = "Choose Nest Hub layout, glassmorphic panel, flip clock, or classic format."
-                ) {
-                    val next = when (clockStyleState.value) {
-                        "modern" -> "glass"
-                        "glass" -> "flip"
-                        "flip" -> "classic"
-                        else -> "modern"
-                    }
-                    prefs.edit().putString(ConfigReceiver.KEY_CLOCK_STYLE, next).apply()
-                }
+                    iconBg = Color(0xFFFF9500),
+                )
+                Divider()
+                TimeSliderRow(
+                    "Chime starts",
+                    ConfigReceiver.KEY_CHIME_START_MIN,
+                    ConfigReceiver.DEFAULT_CHIME_START_MIN,
+                    iconRes = R.drawable.ic_duration,
+                    iconBg = Color(0xFF8E8E93),
+                )
+                Divider()
+                TimeSliderRow(
+                    "Chime ends",
+                    ConfigReceiver.KEY_CHIME_END_MIN,
+                    ConfigReceiver.DEFAULT_CHIME_END_MIN,
+                    iconRes = R.drawable.ic_duration,
+                    iconBg = Color(0xFF8E8E93),
+                )
                 Divider()
                 ToggleRow(
                     "Show battery percentage", ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY,
