@@ -73,6 +73,14 @@ class ConfigReceiver : BroadcastReceiver() {
 
         val ed = prefs.edit()
         var any = false
+        if (intent.hasExtra("clock_style")) {
+            val style = intent.getStringExtra("clock_style")?.trim()
+            if (!style.isNullOrEmpty()) {
+                ed.putString(KEY_CLOCK_STYLE, style)
+                Log.i("PortalFrame", "$KEY_CLOCK_STYLE set to: $style")
+                any = true
+            }
+        }
         for (e in BOOL_EXTRAS) {
             if (intent.hasExtra(e[0])) {
                 val value = intent.getBooleanExtra(e[0], true)
@@ -120,6 +128,7 @@ class ConfigReceiver : BroadcastReceiver() {
         // Clock widget transform (set by long-press-drag/pinch on the screensaver). dx/dy are the
         // translation from the default bottom-left anchor as a fraction of screen W/H; scale is a
         // size multiplier. Floats.
+        const val KEY_CLOCK_STYLE = "clock_style"
         const val KEY_CLOCK_DX = "clock_dx"
         const val KEY_CLOCK_DY = "clock_dy"
         const val KEY_CLOCK_SCALE = "clock_scale"
@@ -133,6 +142,7 @@ class ConfigReceiver : BroadcastReceiver() {
         /** Stable URL — always serves the latest release's version.json asset. */
         const val UPDATE_MANIFEST_URL =
             "https://github.com/Tech33/Portal-Frame/releases/latest/download/version.json"
+        const val DEFAULT_CLOCK_STYLE = "modern"
         const val DEFAULT_DELAY_MS = 6000L
         const val DEFAULT_FADE_MS = 1200L
         const val DEFAULT_TRANSITION = "crossfade"

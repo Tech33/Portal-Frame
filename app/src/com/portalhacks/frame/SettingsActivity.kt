@@ -588,13 +588,35 @@ class SettingsActivity : ComponentActivity() {
                 ToggleRow("Auto-enhance photos", ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE, iconRes = R.drawable.ic_enhance, iconBg = Color(0xFFFFCC00))
                 Divider()
                 ToggleRow("Ambient color glow", ConfigReceiver.KEY_AMBIENT, true, iconRes = R.drawable.ic_ambient, iconBg = Color(0xFFFF2D55))
-                Divider()
                 ToggleRow(
                     "Clock & weather", ConfigReceiver.KEY_CLOCK, true,
                     subtitle = "Long-press the clock on the screensaver to move or resize it.",
                     iconRes = R.drawable.ic_clock,
                     iconBg = Color(0xFF007AFF),
                 )
+                Divider()
+                val clockStyleState = rememberPrefString(ConfigReceiver.KEY_CLOCK_STYLE, ConfigReceiver.DEFAULT_CLOCK_STYLE)
+                val clockStyleLabel = when (clockStyleState.value) {
+                    "modern" -> "Nest Hub Style"
+                    "glass" -> "Modern Glassmorphic"
+                    "flip" -> "Google Nest Flip"
+                    else -> "Stock Classic"
+                }
+                CycleRow(
+                    label = "Clock style",
+                    value = clockStyleLabel,
+                    iconRes = R.drawable.ic_clock_format,
+                    iconBg = Color(0xFF5856D6),
+                    subtitle = "Choose Nest Hub layout, glassmorphic panel, flip clock, or classic format."
+                ) {
+                    val next = when (clockStyleState.value) {
+                        "modern" -> "glass"
+                        "glass" -> "flip"
+                        "flip" -> "classic"
+                        else -> "modern"
+                    }
+                    prefs.edit().putString(ConfigReceiver.KEY_CLOCK_STYLE, next).apply()
+                }
                 Divider()
                 ToggleRow(
                     "Show battery percentage", ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY,

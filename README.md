@@ -44,10 +44,20 @@ Each release publishes a **`version.json`** on GitHub (repo root and attached to
 
 - Plays a **Google Photos or iCloud** shared album; new photos appear automatically.
 - On-device setup: **QR scan** or paste the link — no computer needed after install.
+- **Selectable Clock Styles**: Cycle between Google Nest styles:
+  - **Nest Hub Style**: Clean bold typography with a soft, tinted drop shadow.
+  - **Modern Glassmorphic**: Frosted glass container panel with a subtle border.
+  - **Google Nest Flip**: A realistic 2-card flip clock with physical crease lines and an integrated AM/PM layout.
+  - **Stock Classic**: The default Portal system typeface clock.
+- **Battery Widget**: Displays current charge level and power source icon directly on the clock's date line.
 - Clock & weather, photo date captions, shuffle, adjustable timing and transitions.
 - Side-by-side portraits, cinematic pan/zoom, auto-enhance, ambient color, night dimming,
   and "On This Day" memories — all toggleable.
-- Touch: **swipe** to change photo, **tap** to dismiss, **long-press** to open setup.
+- **Touch & Gesture Controls**:
+  - **Swipe** to go to the next or previous photo.
+  - **Tap photo / Long-press background** while playing to pause the slideshow and bring up the top-right **Settings** & **Exit** capsule buttons.
+  - **Tap background** while paused to resume the slideshow and hide the menu.
+  - **Long-press the clock** to reposition (drag to move) or resize (pinch to zoom) the widget dynamically.
 
 ## For developers
 

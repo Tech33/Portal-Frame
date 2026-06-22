@@ -135,6 +135,8 @@ class SlideshowController(
     private var onDismiss: Runnable? = null
     private var onSettings: Runnable? = null
     private var clockOnly = false // low-light mode: black screen, clock only
+    private val clockStyle: String
+    private val widgetFlipClock: FlipClockView
 
     // Clock widget transform (long-press the clock to edit; drag to move, pinch to resize). dx/dy
     // are translation as a fraction of screen W/H; scale is a size multiplier. Persisted to prefs.
@@ -203,6 +205,8 @@ class SlideshowController(
         ambientColor = prefs.getBoolean(ConfigReceiver.KEY_AMBIENT, ConfigReceiver.DEFAULT_AMBIENT)
         enhance = prefs.getBoolean(ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE)
         zoomFill = prefs.getBoolean(ConfigReceiver.KEY_ZOOM_FILL, ConfigReceiver.DEFAULT_ZOOM_FILL)
+        clockStyle = prefs.getString(ConfigReceiver.KEY_CLOCK_STYLE, ConfigReceiver.DEFAULT_CLOCK_STYLE)
+            ?: ConfigReceiver.DEFAULT_CLOCK_STYLE
         clockDx = prefs.getFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
         clockDy = prefs.getFloat(ConfigReceiver.KEY_CLOCK_DY, ConfigReceiver.DEFAULT_CLOCK_DY)
         clockScale = prefs.getFloat(ConfigReceiver.KEY_CLOCK_SCALE, ConfigReceiver.DEFAULT_CLOCK_SCALE)
@@ -300,10 +304,20 @@ class SlideshowController(
         dateLine.typeface = Ui.medium(context)
         dateLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
         dateLine.setShadowLayer(8f, 0f, 1f, Color.BLACK)
+        widgetFlipClock = FlipClockView(context, Ui.bold(context), Ui.medium(context))
+        widgetFlipClock.visibility = View.GONE
+
         clockBox = LinearLayout(context)
         clockBox.orientation = LinearLayout.VERTICAL
         clockBox.clipChildren = false
         clockBox.clipToPadding = false
+        val flipLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        clockBox.addView(widgetFlipClock, flipLp)
         clockBox.addView(clock)
         clockBox.addView(dateLine)
         val cbp = FrameLayout.LayoutParams(
@@ -360,7 +374,7 @@ class SlideshowController(
 
         // Centered, larger, weather-less clock for low-light "clock only" mode — a touch
         // dimmer than the overlay clock. Hidden until setClockOnly(true).
-        bigClock = FlipClockView(context, Ui.clockFace(context), Ui.medium(context))
+        bigClock = FlipClockView(context, Ui.bold(context), Ui.medium(context))
         bigDate = TextView(context)
         bigDate.setTextColor(0xFF9AA0AE.toInt())
         bigDate.typeface = Ui.medium(context)
@@ -681,35 +695,80 @@ class SlideshowController(
             )
             visibility = View.GONE
             setOnClickListener {
+                resumeSlideshow()
+            }
+        }
+
+        val menuContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                topMargin = Ui.dp(context, 24f)
+                rightMargin = Ui.dp(context, 24f)
+            }
+            clipChildren = false
+            clipToPadding = false
+        }
+
+        val settingsBtn = TextView(context).apply {
+            text = "Settings"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 16f
+            typeface = Ui.medium(context)
+            gravity = Gravity.CENTER
+            val paddingH = Ui.dp(context, 20f)
+            val paddingV = Ui.dp(context, 10f)
+            setPadding(paddingH, paddingV, paddingH, paddingV)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x55000000)
+                cornerRadius = Ui.dp(context, 22f).toFloat()
+                setStroke(Ui.dp(context, 1f), 0x80FFFFFF.toInt())
+            }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                onSettings?.run()
+            }
+        }
+
+        val exitBtn = TextView(context).apply {
+            text = "Exit"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 16f
+            typeface = Ui.medium(context)
+            gravity = Gravity.CENTER
+            val paddingH = Ui.dp(context, 24f)
+            val paddingV = Ui.dp(context, 10f)
+            setPadding(paddingH, paddingV, paddingH, paddingV)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x55FF3B30.toInt())
+                cornerRadius = Ui.dp(context, 22f).toFloat()
+                setStroke(Ui.dp(context, 1f), 0x80FF3B30.toInt())
+            }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
                 onDismiss?.run()
             }
         }
 
-        val size = Ui.dp(context, 96f)
-        val button = FrameLayout(context).apply {
-            layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                gravity = Gravity.CENTER
-            }
-            background = Ui.roundRect(0x66000000, size / 2).apply {
-                setStroke(Ui.dp(context, 2f), 0x99FFFFFF.toInt())
-            }
-            isClickable = true
-            isFocusable = true
+        val lpSettings = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        )
+        val lpExit = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            leftMargin = Ui.dp(context, 12f)
         }
 
-        val icon = ImageView(context).apply {
-            layoutParams = FrameLayout.LayoutParams(Ui.dp(context, 36f), Ui.dp(context, 36f)).apply {
-                gravity = Gravity.CENTER
-                leftMargin = Ui.dp(context, 4f)
-            }
-            setImageResource(R.drawable.ic_play)
-        }
-        button.addView(icon)
-        playButtonOverlay.addView(button)
-
-        button.setOnClickListener {
-            resumeSlideshow()
-        }
+        menuContainer.addView(settingsBtn, lpSettings)
+        menuContainer.addView(exitBtn, lpExit)
+        playButtonOverlay.addView(menuContainer)
     }
 
     private fun showPlayButtonOverlay() {
@@ -849,7 +908,7 @@ class SlideshowController(
                                 val pl = Runnable {
                                     pendingLong = null
                                     handled = true // suppress the tap-dismiss on release
-                                    if (onClock) enterClockEdit() else if (onDate) enterDateEdit() else showActionMenu()
+                                    if (onClock) enterClockEdit() else if (onDate) enterDateEdit() else pauseSlideshow()
                                 }
                                 pendingLong = pl
                                 handler.postDelayed(pl, LONG_PRESS_MS)
@@ -960,7 +1019,7 @@ class SlideshowController(
                                 dt < TAP_TIMEOUT_MS
                             ) {
                                 if (slideshowPaused) {
-                                    onDismiss?.run()
+                                    resumeSlideshow()
                                 } else {
                                     pauseSlideshow()
                                 }
@@ -1723,8 +1782,79 @@ class SlideshowController(
         if (!showClock) {
             return // night tint still updates above; the overlay clock/weather text is off
         }
-        clock.text = time
-        trimLeftBearing(clock)
+
+        // Apply selected clock style
+        when (clockStyle) {
+            "modern" -> {
+                clock.typeface = Ui.bold(context)
+                clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 96f)
+                clock.setShadowLayer(14f, 0f, 4f, 0x90000000.toInt())
+                dateLine.typeface = Ui.medium(context)
+                dateLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+                dateLine.setShadowLayer(8f, 0f, 2f, 0x90000000.toInt())
+                clockBox.setPadding(0, 0, 0, 0)
+                clockBox.background = null
+                clock.visibility = View.VISIBLE
+                widgetFlipClock.visibility = View.GONE
+                clockBox.gravity = Gravity.START
+                dateLine.gravity = Gravity.START
+            }
+            "glass" -> {
+                clock.typeface = Ui.medium(context)
+                clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 84f)
+                clock.setShadowLayer(4f, 0f, 1f, 0x40000000.toInt())
+                dateLine.typeface = Ui.medium(context)
+                dateLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                dateLine.setShadowLayer(4f, 0f, 1f, 0x40000000.toInt())
+                clockBox.setPadding(Ui.dp(context, 24f), Ui.dp(context, 16f), Ui.dp(context, 24f), Ui.dp(context, 16f))
+                val g = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0x26FFFFFF)
+                    cornerRadius = Ui.dp(context, 16f).toFloat()
+                    setStroke(Ui.dp(context, 1f), 0x4DFFFFFF)
+                }
+                clockBox.background = g
+                clock.visibility = View.VISIBLE
+                widgetFlipClock.visibility = View.GONE
+                clockBox.gravity = Gravity.START
+                dateLine.gravity = Gravity.START
+            }
+            "flip" -> {
+                clockBox.setPadding(0, 0, 0, 0)
+                clockBox.background = null
+                clock.visibility = View.GONE
+                widgetFlipClock.visibility = View.VISIBLE
+                clockBox.gravity = Gravity.CENTER_HORIZONTAL
+                dateLine.gravity = Gravity.CENTER_HORIZONTAL
+                dateLine.typeface = Ui.medium(context)
+                dateLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+                dateLine.setShadowLayer(8f, 0f, 2f, 0x90000000.toInt())
+                widgetFlipClock.setTime(
+                    c.get(Calendar.HOUR_OF_DAY),
+                    c.get(Calendar.MINUTE),
+                    use24Hour,
+                )
+            }
+            else -> { // "classic" / default
+                clock.typeface = Ui.clockFace(context)
+                clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 80f)
+                clock.setShadowLayer(12f, 0f, 2f, Color.BLACK)
+                dateLine.typeface = Ui.medium(context)
+                dateLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                dateLine.setShadowLayer(8f, 0f, 1f, Color.BLACK)
+                clockBox.setPadding(0, 0, 0, 0)
+                clockBox.background = null
+                clock.visibility = View.VISIBLE
+                widgetFlipClock.visibility = View.GONE
+                clockBox.gravity = Gravity.START
+                dateLine.gravity = Gravity.START
+            }
+        }
+
+        if (clock.visibility == View.VISIBLE) {
+            clock.text = time
+            trimLeftBearing(clock)
+        }
+
         val w = weather
         if (w == null) {
             dateLine.text = date + getBatterySuffix()
@@ -1854,60 +1984,55 @@ class SlideshowController(
         digitTypeface: android.graphics.Typeface,
         labelTypeface: android.graphics.Typeface,
     ) : View(c) {
-        private val minCardW = Ui.dp(c, 126f).toFloat()
-        private val minCardH = Ui.dp(c, 146f).toFloat()
+        private val minCardW = Ui.dp(c, 172f).toFloat()
+        private val minCardH = Ui.dp(c, 150f).toFloat()
         private val minGroupGap = Ui.dp(c, 40f).toFloat()
         private val minLabelGap = Ui.dp(c, 34f).toFloat()
-        private val groupBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF0F1419.toInt() }
+        private val groupBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF141415.toInt() }
         private val groupStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0x1CFFFFFF
+            color = 0x1AFFFFFF
             style = Paint.Style.STROKE
-            strokeWidth = Ui.dp(c, 1.5f).toFloat()
+            strokeWidth = Ui.dp(c, 1f).toFloat()
         }
-        private val cardBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1A1E27.toInt() }
-        private val cardTop = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF252A34.toInt() }
-        private val cardBottom = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1A1E27.toInt() }
+        private val cardBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF2D2E30.toInt() }
+        private val cardTop = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF353638.toInt() }
+        private val cardBottom = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF28292A.toInt() }
         private val cardStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0x2CFFFFFF
-            style = Paint.Style.STROKE
-            strokeWidth = Ui.dp(c, 1.2f).toFloat()
+            color = 0x15FFFFFF; style = Paint.Style.STROKE; strokeWidth = Ui.dp(c, 1f).toFloat()
         }
         private val splitLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0x3CFFFFFF
-            strokeWidth = Ui.dp(c, 2f).toFloat()
+            color = 0xFF141415.toInt()
+            strokeWidth = Ui.dp(c, 2.5f).toFloat()
         }
-        private val flapShade = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x4A000000 }
+        private val flapShade = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x30000000 }
         private val digitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0xFFFAFBFC.toInt()
             textAlign = Paint.Align.CENTER
             typeface = digitTypeface
-            setShadowLayer(14f, 0f, 4f, 0xFF000000.toInt())
+            setShadowLayer(8f, 0f, 2f, 0x40000000.toInt())
         }
         private val ampmPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF9AA0AE.toInt()
-            textAlign = Paint.Align.CENTER
+            color = 0xFF8E9094.toInt()
+            textAlign = Paint.Align.RIGHT
             typeface = labelTypeface
-            textSize = Ui.dp(c, 18f).toFloat()
         }
-        private val currentDigits = charArrayOf('0', '0', '0', '0')
-        private val oldDigits = charArrayOf('0', '0', '0', '0')
-        private val nextDigits = charArrayOf('0', '0', '0', '0')
-        private val progress = FloatArray(4)
-        private val animators = arrayOfNulls<ValueAnimator>(4)
+        private val currentValues = arrayOf("00", "00")
+        private val oldValues = arrayOf("00", "00")
+        private val nextValues = arrayOf("00", "00")
+        private val progress = FloatArray(2)
+        private val animators = arrayOfNulls<ValueAnimator>(2)
         private var lastRendered = ""
         private var ampm = ""
         private var showAmPm = true
-        private var cardRadius = Ui.dp(c, 15f).toFloat()
-        private var groupRadius = Ui.dp(c, 26f).toFloat()
-        private var cardGap = Ui.dp(c, 14f).toFloat()
-        private var groupGap = Ui.dp(c, 56f).toFloat()
-        private var groupPadH = Ui.dp(c, 24f).toFloat()
-        private var groupPadV = Ui.dp(c, 22f).toFloat()
+        private var cardRadius = Ui.dp(c, 12f).toFloat()
+        private var groupRadius = Ui.dp(c, 20f).toFloat()
+        private var cardGap = Ui.dp(c, 12f).toFloat()
+        private var groupPadH = Ui.dp(c, 18f).toFloat()
+        private var groupPadV = Ui.dp(c, 18f).toFloat()
         private var cardW = minCardW
         private var cardH = minCardH
         private var panelW = 0f
         private var panelH = 0f
-        private var labelGap = minLabelGap
 
         init {
             setLayerType(LAYER_TYPE_HARDWARE, null)
@@ -1917,25 +2042,29 @@ class SlideshowController(
             showAmPm = !use24Hour
             ampm = if (use24Hour) "" else if (hour24 < 12) "AM" else "PM"
             val hour = if (use24Hour) hour24 else ((hour24 + 11) % 12) + 1
-            val digits = String.format(Locale.US, "%02d%02d", hour, minute)
+            val hrStr = String.format(Locale.US, "%02d", hour)
+            val minStr = String.format(Locale.US, "%02d", minute)
+            val newValues = arrayOf(hrStr, minStr)
+            val combined = hrStr + minStr
+
             if (lastRendered.isEmpty()) {
-                for (i in currentDigits.indices) {
-                    currentDigits[i] = digits[i]
-                    oldDigits[i] = digits[i]
-                    nextDigits[i] = digits[i]
+                for (i in 0..1) {
+                    currentValues[i] = newValues[i]
+                    oldValues[i] = newValues[i]
+                    nextValues[i] = newValues[i]
                     progress[i] = 1f
                 }
-                lastRendered = digits
+                lastRendered = combined
                 invalidate()
                 return
             }
-            if (digits == lastRendered) return
-            for (i in currentDigits.indices) {
-                val next = digits[i]
-                if (currentDigits[i] != next) {
+            if (combined == lastRendered) return
+            for (i in 0..1) {
+                val next = newValues[i]
+                if (currentValues[i] != next) {
                     animators[i]?.cancel()
-                    oldDigits[i] = currentDigits[i]
-                    nextDigits[i] = next
+                    oldValues[i] = currentValues[i]
+                    nextValues[i] = next
                     progress[i] = 0f
                     animators[i] = ValueAnimator.ofFloat(0f, 1f).apply {
                         duration = 380L  // smooth flip animation
@@ -1947,12 +2076,12 @@ class SlideshowController(
                         start()
                     }
                 } else {
-                    oldDigits[i] = currentDigits[i]
-                    nextDigits[i] = currentDigits[i]
+                    oldValues[i] = currentValues[i]
+                    nextValues[i] = currentValues[i]
                     progress[i] = 1f
                 }
             }
-            lastRendered = digits
+            lastRendered = combined
         }
 
         override fun onDetachedFromWindow() {
@@ -1970,16 +2099,16 @@ class SlideshowController(
             val heightSize = MeasureSpec.getSize(heightMeasureSpec)
 
             val availW = when (widthMode) {
-                MeasureSpec.UNSPECIFIED -> (minCardW * 4f + minGroupGap + Ui.dp(context, 96f)).toInt()
+                MeasureSpec.UNSPECIFIED -> (minCardW * 2f + cardGap + groupPadH * 2f + Ui.dp(context, 20f)).toInt()
                 else -> widthSize
             }.toFloat()
             val availH = when (heightMode) {
-                MeasureSpec.UNSPECIFIED -> (availW * 0.46f).toInt()
+                MeasureSpec.UNSPECIFIED -> (minCardH + groupPadV * 2f + Ui.dp(context, 20f)).toInt()
                 else -> heightSize
             }.toFloat()
 
             updateGeometry(availW, availH)
-            val wantedH = (panelH + if (showAmPm) labelGap + ampmPaint.textSize else 0f).toInt()
+            val wantedH = panelH.toInt()
             val finalH = when (heightMode) {
                 MeasureSpec.EXACTLY -> heightSize
                 MeasureSpec.AT_MOST -> minOf(wantedH, heightSize)
@@ -1991,52 +2120,16 @@ class SlideshowController(
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             updateGeometry(width.toFloat(), height.toFloat())
-            val contentW = panelW * 2f + groupGap
-            val contentH = panelH + if (showAmPm && ampm.isNotEmpty()) labelGap + ampmPaint.textSize else 0f
+            val contentW = panelW
+            val contentH = panelH
             val left = (width - contentW) / 2f
             val top = (height - contentH) / 2f
-            val hourGroup = RectF(left, top, left + panelW, top + panelH)
-            val minuteGroup = RectF(
-                hourGroup.right + groupGap,
-                top,
-                hourGroup.right + groupGap + panelW,
-                top + panelH,
-            )
-            drawGroup(canvas, hourGroup, 0)
-            drawGroup(canvas, minuteGroup, 2)
-            if (showAmPm && ampm.isNotEmpty()) {
-                val baseY = hourGroup.bottom + labelGap
-                canvas.drawText(ampm, minuteGroup.centerX(), baseY, ampmPaint)
-            }
-        }
+            val group = RectF(left, top, left + panelW, top + panelH)
 
-        private fun updateGeometry(availW: Float, availH: Float) {
-            val contentW = (availW - paddingLeft - paddingRight).coerceAtLeast(minCardW * 4f)
-            val contentH = (availH - paddingTop - paddingBottom).coerceAtLeast(minCardH + minLabelGap)
-            val usableW = contentW * 0.92f
-            val usableH = if (showAmPm) contentH * 0.78f else contentH * 0.86f
-            val widthScale = usableW / (minCardW * 4f + minGroupGap + Ui.dp(context, 96f))
-            val heightScale = usableH / (minCardH + Ui.dp(context, 44f))
-            val scale = max(1f, min(widthScale, heightScale))
-
-            cardW = minCardW * scale
-            cardH = minCardH * scale
-            cardGap = Ui.dp(context, 14f) * scale
-            groupGap = max(minGroupGap, Ui.dp(context, 56f) * scale)
-            groupPadH = Ui.dp(context, 24f) * scale
-            groupPadV = Ui.dp(context, 22f) * scale
-            cardRadius = Ui.dp(context, 15f) * scale
-            groupRadius = Ui.dp(context, 26f) * scale
-            labelGap = max(minLabelGap, Ui.dp(context, 24f) * scale)
-            panelW = groupPadH * 2f + cardW * 2f + cardGap
-            panelH = groupPadV * 2f + cardH
-            digitPaint.textSize = cardH * 0.7f
-            ampmPaint.textSize = max(Ui.dp(context, 18f).toFloat(), Ui.dp(context, 18f) * scale * 0.9f)
-        }
-
-        private fun drawGroup(canvas: Canvas, group: RectF, startIdx: Int) {
+            // Draw container background and stroke
             canvas.drawRoundRect(group, groupRadius, groupRadius, groupBg)
             canvas.drawRoundRect(group, groupRadius, groupRadius, groupStroke)
+
             val cardTopY = group.top + groupPadV
             val first = RectF(
                 group.left + groupPadH,
@@ -2050,8 +2143,36 @@ class SlideshowController(
                 first.right + cardGap + cardW,
                 cardTopY + cardH,
             )
-            drawCard(canvas, first, startIdx)
-            drawCard(canvas, second, startIdx + 1)
+
+            drawCard(canvas, first, 0)
+            drawCard(canvas, second, 1)
+        }
+
+        private fun updateGeometry(availW: Float, availH: Float) {
+            val contentW = (availW - paddingLeft - paddingRight).coerceAtLeast(minCardW * 2f + cardGap + groupPadH * 2f)
+            val contentH = (availH - paddingTop - paddingBottom).coerceAtLeast(minCardH + groupPadV * 2f)
+            val usableW = contentW * 0.92f
+            val usableH = contentH * 0.92f
+
+            val minNeededW = minCardW * 2f + Ui.dp(context, 12f) + Ui.dp(context, 18f) * 2f
+            val minNeededH = minCardH + Ui.dp(context, 18f) * 2f
+            val widthScale = usableW / minNeededW
+            val heightScale = usableH / minNeededH
+            val scale = max(1f, min(widthScale, heightScale))
+
+            cardW = minCardW * scale
+            cardH = minCardH * scale
+            cardGap = Ui.dp(context, 12f) * scale
+            groupPadH = Ui.dp(context, 18f) * scale
+            groupPadV = Ui.dp(context, 18f) * scale
+            cardRadius = Ui.dp(context, 12f) * scale
+            groupRadius = Ui.dp(context, 20f) * scale
+
+            panelW = groupPadH * 2f + cardW * 2f + cardGap
+            panelH = groupPadV * 2f + cardH
+
+            digitPaint.textSize = cardH * 0.68f
+            ampmPaint.textSize = max(Ui.dp(context, 14f).toFloat(), Ui.dp(context, 14f) * scale * 0.85f)
         }
 
         private fun drawCard(canvas: Canvas, rect: RectF, idx: Int) {
@@ -2066,39 +2187,58 @@ class SlideshowController(
 
             val p = progress[idx]
             if (p >= 1f) {
-                currentDigits[idx] = nextDigits[idx]
-                drawDigitHalf(canvas, rect, currentDigits[idx], true)
-                drawDigitHalf(canvas, rect, currentDigits[idx], false)
+                currentValues[idx] = nextValues[idx]
+                drawDigitHalf(canvas, rect, currentValues[idx], true)
+                drawDigitHalf(canvas, rect, currentValues[idx], false)
+
+                // Draw AM/PM inside minutes card (idx == 1)
+                if (idx == 1 && showAmPm && ampm.isNotEmpty()) {
+                    drawAmPmText(canvas, rect)
+                }
                 return
             }
 
-            val oldChar = oldDigits[idx]
-            val newChar = nextDigits[idx]
+            val oldVal = oldValues[idx]
+            val newVal = nextValues[idx]
             if (p < 0.5f) {
-                drawDigitHalf(canvas, rect, oldChar, true)
-                drawDigitHalf(canvas, rect, oldChar, false)
+                drawDigitHalf(canvas, rect, oldVal, true)
+                drawDigitHalf(canvas, rect, oldVal, false)
                 val flap = 1f - (p / 0.5f)
-                drawAnimatedHalf(canvas, rect, oldChar, true, flap)
+                drawAnimatedHalf(canvas, rect, oldVal, true, flap)
             } else {
-                drawDigitHalf(canvas, rect, newChar, true)
-                drawDigitHalf(canvas, rect, oldChar, false)
+                drawDigitHalf(canvas, rect, newVal, true)
+                drawDigitHalf(canvas, rect, oldVal, false)
                 val flap = (p - 0.5f) / 0.5f
-                drawAnimatedHalf(canvas, rect, newChar, false, flap)
+                drawAnimatedHalf(canvas, rect, newVal, false, flap)
+            }
+
+            // Draw AM/PM inside minutes card (idx == 1)
+            if (idx == 1 && showAmPm && ampm.isNotEmpty()) {
+                drawAmPmText(canvas, rect)
             }
         }
 
-        private fun drawAnimatedHalf(canvas: Canvas, rect: RectF, ch: Char, topHalf: Boolean, scaleY: Float) {
+        private fun drawAmPmText(canvas: Canvas, rect: RectF) {
+            val x = rect.right - Ui.dp(context, 12f) * (rect.width() / minCardW)
+            val y = rect.bottom - Ui.dp(context, 12f) * (rect.height() / minCardH)
+            ampmPaint.textAlign = Paint.Align.RIGHT
+            val fm = ampmPaint.fontMetrics
+            val baseline = y - fm.descent
+            canvas.drawText(ampm, x, baseline, ampmPaint)
+        }
+
+        private fun drawAnimatedHalf(canvas: Canvas, rect: RectF, str: String, topHalf: Boolean, scaleY: Float) {
             val mid = rect.centerY()
             val half = if (topHalf) RectF(rect.left, rect.top, rect.right, mid) else RectF(rect.left, mid, rect.right, rect.bottom)
             canvas.save()
             canvas.clipRect(half)
             canvas.scale(1f, scaleY.coerceAtLeast(0.02f), rect.centerX(), mid)
-            drawDigitHalf(canvas, rect, ch, topHalf)
+            drawDigitHalf(canvas, rect, str, topHalf)
             canvas.drawRect(half, flapShade)
             canvas.restore()
         }
 
-        private fun drawDigitHalf(canvas: Canvas, rect: RectF, ch: Char, topHalf: Boolean) {
+        private fun drawDigitHalf(canvas: Canvas, rect: RectF, str: String, topHalf: Boolean) {
             val mid = rect.centerY()
             canvas.save()
             if (topHalf) {
@@ -2108,7 +2248,8 @@ class SlideshowController(
             }
             val fm = digitPaint.fontMetrics
             val baseline = rect.centerY() - (fm.ascent + fm.descent) / 2f
-            canvas.drawText(ch.toString(), rect.centerX(), baseline, digitPaint)
+            digitPaint.textAlign = Paint.Align.CENTER
+            canvas.drawText(str, rect.centerX(), baseline, digitPaint)
             canvas.restore()
         }
     }
