@@ -983,6 +983,26 @@ class SlideshowController(
 
     fun start() {
         running = true
+
+        val showBattery = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+            .getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
+        if (showBattery && !batteryReceiverRegistered) {
+            try {
+                val stickyIntent = context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                if (stickyIntent != null) {
+                    val level = stickyIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                    val scale = stickyIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                    batteryLevel = if (level >= 0 && scale > 0) (level * 100 / scale) else -1
+                    val status = stickyIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                    batteryIsCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                                        status == BatteryManager.BATTERY_STATUS_FULL
+                }
+                batteryReceiverRegistered = true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to register battery receiver", e)
+            }
+        }
+
         startClock()
         applyDateTransform()  // apply saved date overlay transform
         startWeather()
@@ -1028,17 +1048,6 @@ class SlideshowController(
                     clockEditHint.alpha = 1f
                 }.start()
             }.start()
-        }
-
-        val showBattery = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-            .getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
-        if (showBattery && !batteryReceiverRegistered) {
-            try {
-                context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-                batteryReceiverRegistered = true
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to register battery receiver", e)
-            }
         }
     }
 
