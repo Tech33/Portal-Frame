@@ -35,7 +35,10 @@ jobs:
           fi
           
           VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -1 | sed 's/.*versionCode = //')
-          PREV_VERSION_CODE=$(jq '.versionCode' version.json)
+          PREV_VERSION_CODE=$(curl -sL https://github.com/Tech33/Portal-Frame/releases/latest/download/version.json | jq '.versionCode' 2>/dev/null || echo 0)
+          if [ -z "$PREV_VERSION_CODE" ] || [ "$PREV_VERSION_CODE" = "null" ]; then
+            PREV_VERSION_CODE=0
+          fi
           if [ "$VERSION_CODE" -le "$PREV_VERSION_CODE" ]; then
             echo "::error::versionCode ($VERSION_CODE) must be greater than previous versionCode ($PREV_VERSION_CODE)"
             exit 1
