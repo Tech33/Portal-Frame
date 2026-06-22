@@ -32,11 +32,40 @@ to verify the download). Save it to the computer you'll use in Part 1.
 If a friend or family member is more comfortable with computers, Part 1 is the only part
 they need to help with — everything after that happens on the Portal's screen.
 
+
 ---
 
-## Part 1 — Install Frame on the Portal (one time, from a computer)
+## ⚡ 1-Click Automatic Installation (Recommended)
 
-Installing uses a free Google tool called **ADB** (Android Debug Bridge).
+To make installation as simple as possible, the project includes an automatic 1-click installer script inside the `provisioning` folder. It will download the ADB tools, get the latest version of Frame, install the app, disable Facebook/Portal system updates, grant necessary secure permissions, and configure the screensaver automatically.
+
+### For Windows:
+1. Connect your Meta Portal Go to your computer with a USB cable.
+2. Turn on **Developer Mode & USB debugging** on the Portal (see steps 1 & 2 in the manual guide below).
+3. Double-click the **[provision.bat](file:///Users/saurabh/Portal-Frame/provisioning/provision.bat)** file inside the `provisioning` folder.
+4. Tap **Allow** on the Portal screen if prompted to authorize debugging.
+
+### For macOS / Linux:
+1. Connect your Meta Portal Go to your computer with a USB cable.
+2. Turn on **Developer Mode & USB debugging** on the Portal.
+3. Open Terminal, navigate to the `provisioning` folder, and run:
+   ```bash
+   chmod +x provision.command
+   ./provision.command
+   ```
+   *(On macOS, you can also double-click [provision.command](file:///Users/saurabh/Portal-Frame/provisioning/provision.command) in Finder)*.
+4. Tap **Allow** on the Portal screen to authorize debugging.
+
+### 🔄 1-Click Uninstall / Restore Stock settings
+If you ever want to completely uninstall Frame and restore all default Portal system behavior (including re-enabling the stock Aloha launcher and Portal OS system updates), run:
+* **Windows**: Double-click **[restore.bat](file:///Users/saurabh/Portal-Frame/provisioning/restore.bat)**.
+* **macOS / Linux**: Run **[restore.command](file:///Users/saurabh/Portal-Frame/provisioning/restore.command)**.
+
+---
+
+## Part 1 — Manual Installation (Alternate Method)
+
+Installing manually uses a free Google command-line tool called **ADB** (Android Debug Bridge).
 
 ### 1. Get ADB on your computer
 - Download **Android SDK Platform-Tools** from

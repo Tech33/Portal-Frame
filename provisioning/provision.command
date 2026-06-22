@@ -16,8 +16,17 @@ if ! command -v adb &> /dev/null; then
     ADB="./platform-tools/adb"
 fi
 
-# Download latest Frame.apk if it doesn't exist
-if [ ! -f "Frame.apk" ]; then
+# Download latest Frame.apk
+DOWNLOAD=true
+if [ -f "Frame.apk" ]; then
+    read -p "Frame.apk already exists. Download the latest version from GitHub? (y/n) [y]: " choice
+    choice=${choice:-y}
+    if [[ ! "$choice" =~ ^[Yy]$ ]]; then
+        DOWNLOAD=false
+    fi
+fi
+
+if [ "$DOWNLOAD" = true ]; then
     echo "Downloading the latest version of Frame APK..."
     curl -L -o Frame.apk https://github.com/Tech33/Portal-Frame/releases/latest/download/Frame.apk
 fi

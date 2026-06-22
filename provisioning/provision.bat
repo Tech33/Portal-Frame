@@ -16,8 +16,17 @@ if %errorlevel% neq 0 (
     set ADB=platform-tools\adb.exe
 )
 
-:: Download latest Frame.apk if it doesn't exist
-if not exist "Frame.apk" (
+:: Download latest Frame.apk
+set DOWNLOAD=true
+set choice=y
+if exist "Frame.apk" (
+    set /p choice="Frame.apk already exists. Download the latest version from GitHub? (y/n) [y]: "
+)
+if /i "%choice%" neq "y" if /i "%choice%" neq "yes" (
+    set DOWNLOAD=false
+)
+
+if "%DOWNLOAD%"=="true" (
     echo Downloading the latest version of Frame APK...
     curl -L -o Frame.apk https://github.com/Tech33/Portal-Frame/releases/latest/download/Frame.apk
 )

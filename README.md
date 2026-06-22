@@ -14,8 +14,7 @@ cinematic motion, and ambient color.
 That link always serves the newest signed release. Prefer to pick a version (or grab the
 `.sha256`)? Browse all builds on the **[Releases page](https://github.com/Tech33/Portal-Frame/releases/latest)**.
 
-Then follow the **[Install & User Guide](INSTALL.md)** (install the APK, add your album, turn it on
-as the screensaver). After that, open **Frame → Updates** on the Portal to check for wireless
+Then follow the **[Install & User Guide](INSTALL.md)** (supporting both 1-click automatic setup and manual installation options). After that, open **Frame → Updates** on the Portal to check for wireless
 updates — no computer required.
 
 ## Version tracker
