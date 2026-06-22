@@ -24,6 +24,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate Release Versioning
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION_NAME=$(grep 'versionName = ' app/build.gradle.kts | head -1 | sed 's/.*versionName = "\(.*\)".*/\1/')
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "$VERSION_NAME" != "$TAG_VERSION" ]; then
+            echo "::error::Version name mismatch! Tag is $GITHUB_REF_NAME but app/build.gradle.kts versionName is $VERSION_NAME"
+            exit 1
+          fi
+          
+          VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -1 | sed 's/.*versionCode = //')
+          PREV_VERSION_CODE=$(jq '.versionCode' version.json)
+          if [ "$VERSION_CODE" -le "$PREV_VERSION_CODE" ]; then
+            echo "::error::versionCode ($VERSION_CODE) must be greater than previous versionCode ($PREV_VERSION_CODE)"
+            exit 1
+          fi
+          
+          echo "Validation successful! Tag $GITHUB_REF_NAME matches build configuration (versionName=$VERSION_NAME, versionCode=$VERSION_CODE)."
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
