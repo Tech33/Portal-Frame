@@ -34,7 +34,8 @@ internal object UpdateInstaller {
         if (!url.startsWith("https://")) {
             return Result.Error("Refusing non-HTTPS download URL.")
         }
-        val dest = File(context.cacheDir, "frame-update.apk")
+        val cacheDir = context.externalCacheDir ?: context.cacheDir
+        val dest = File(cacheDir, "frame-update.apk")
         dest.delete()
         var c: HttpURLConnection? = null
         try {
@@ -99,11 +100,29 @@ internal object UpdateInstaller {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !context.packageManager.canRequestPackageInstalls()
         ) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}"),
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+            try {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${context.packageName}"),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to launch app-specific unknown app sources setting, trying generic list", e)
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Failed to launch unknown app sources list, trying security settings", e2)
+                    try {
+                        val intent = Intent(Settings.ACTION_SECURITY_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    } catch (e3: Exception) {
+                        Log.e(TAG, "Failed to launch security settings", e3)
+                    }
+                }
+            }
             return false
         }
         val uri = FileProvider.getUriForFile(

@@ -36,7 +36,60 @@ echo Connecting to device... Please plug in your Meta Portal via USB and authori
 echo Device connected!
 
 echo 1. Installing Frame APK...
-%ADB% install -r Frame.apk
+%ADB% install -r Frame.apk > install_log.txt 2>&1
+type install_log.txt
+
+findstr /i "INSTALL_FAILED_UPDATE_INCOMPATIBLE" install_log.txt >nul
+if %errorlevel% equ 0 (
+    echo ------------------------------------------------------------
+    echo WARNING: Signature mismatch detected!
+    echo An existing version of Frame is installed with a conflicting certificate
+    echo (e.g., debug vs. release key).
+    echo To update, the existing app must be uninstalled first.
+    echo WARNING: This will reset your on-device settings and album links.
+    echo ------------------------------------------------------------
+    set uninstall_choice=y
+    set /p uninstall_choice="Uninstall the existing version and retry installation? (y/n) [y]: "
+    if /i "%uninstall_choice%" neq "n" (
+        echo Uninstalling existing app...
+        %ADB% uninstall com.portalhacks.frame
+        echo Reinstalling...
+        %ADB% install Frame.apk
+    ) else (
+        echo Installation aborted by user.
+        del install_log.txt
+        pause
+        exit /b 1
+    )
+) else (
+    findstr /i "INSTALL_FAILED_VERSION_DOWNGRADE" install_log.txt >nul
+    if %errorlevel% equ 0 (
+        echo ------------------------------------------------------------
+        echo WARNING: Version downgrade detected!
+        echo The version you are trying to install is older than the installed version.
+        echo ------------------------------------------------------------
+        set downgrade_choice=y
+        set /p downgrade_choice="Force downgrade? (y/n) [y]: "
+        if /i "%downgrade_choice%" neq "n" (
+            echo Installing with downgrade flag (-d)...
+            %ADB% install -d -r Frame.apk
+        ) else (
+            echo Installation aborted by user.
+            del install_log.txt
+            pause
+            exit /b 1
+        )
+    ) else (
+        findstr /i "Failure" install_log.txt >nul
+        if %errorlevel% equ 0 (
+            echo ERROR: Installation failed.
+            del install_log.txt
+            pause
+            exit /b 1
+        )
+    )
+)
+del install_log.txt
 
 echo 2. Pushing photos...
 if exist "photos" (

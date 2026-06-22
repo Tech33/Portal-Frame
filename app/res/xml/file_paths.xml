@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <!-- OTA updates are downloaded to cacheDir before install. -->
+    <!-- OTA updates are downloaded to cacheDir or externalCacheDir before install. -->
     <cache-path name="apk_cache" path="." />
+    <external-cache-path name="apk_external_cache" path="." />
+    <files-path name="apk_files" path="." />
+    <external-files-path name="apk_external_files" path="." />
 </paths>

@@ -36,7 +36,45 @@ $ADB wait-for-device
 echo "Device connected!"
 
 echo "1. Installing Frame APK..."
-$ADB install -r Frame.apk
+INSTALL_OUTPUT=$($ADB install -r Frame.apk 2>&1)
+echo "$INSTALL_OUTPUT"
+if echo "$INSTALL_OUTPUT" | grep -q "INSTALL_FAILED_UPDATE_INCOMPATIBLE"; then
+    echo "------------------------------------------------------------"
+    echo "⚠️  WARNING: Signature mismatch detected!"
+    echo "An existing version of Frame is installed with a conflicting certificate"
+    echo "(e.g., debug vs. release key)."
+    echo "To update, the existing app must be uninstalled first."
+    echo "WARNING: This will reset your on-device settings and album links."
+    echo "------------------------------------------------------------"
+    read -p "Uninstall the existing version and retry installation? (y/n) [y]: " uninstall_choice
+    uninstall_choice=${uninstall_choice:-y}
+    if [[ "$uninstall_choice" =~ ^[Yy]$ ]]; then
+        echo "Uninstalling existing app..."
+        $ADB uninstall com.portalhacks.frame
+        echo "Reinstalling..."
+        $ADB install Frame.apk
+    else
+        echo "❌ Installation aborted by user."
+        exit 1
+    fi
+elif echo "$INSTALL_OUTPUT" | grep -q "INSTALL_FAILED_VERSION_DOWNGRADE"; then
+    echo "------------------------------------------------------------"
+    echo "⚠️  WARNING: Version downgrade detected!"
+    echo "The version you are trying to install is older than the installed version."
+    echo "------------------------------------------------------------"
+    read -p "Force downgrade? (y/n) [y]: " downgrade_choice
+    downgrade_choice=${downgrade_choice:-y}
+    if [[ "$downgrade_choice" =~ ^[Yy]$ ]]; then
+        echo "Installing with downgrade flag (-d)..."
+        $ADB install -d -r Frame.apk
+    else
+        echo "❌ Installation aborted by user."
+        exit 1
+    fi
+elif echo "$INSTALL_OUTPUT" | grep -q "Failure"; then
+    echo "❌ ERROR: Installation failed: $INSTALL_OUTPUT"
+    exit 1
+fi
 
 echo "2. Pushing photos..."
 if [ -d "photos" ]; then
