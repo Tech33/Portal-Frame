@@ -25,8 +25,8 @@ android {
         applicationId = "com.portalhacks.frame"
         minSdk = 28
         targetSdk = 29
-        versionCode = 21
-        versionName = "1.5.4"
+        versionCode = 22
+        versionName = "1.5.5"
     }
 
     compileOptions {
@@ -55,6 +55,8 @@ android {
                 storePassword = releaseSecret("FRAME_KEYSTORE_PASSWORD", "storePassword")
                 keyAlias = releaseSecret("FRAME_KEY_ALIAS", "keyAlias")
                 keyPassword = releaseSecret("FRAME_KEY_PASSWORD", "keyPassword")
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }
