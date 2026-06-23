@@ -23,10 +23,10 @@ android {
 
     defaultConfig {
         applicationId = "com.portalhacks.frame"
-        minSdk = 28
+        minSdk = 23
         targetSdk = 29
-        versionCode = 23
-        versionName = "1.5.6"
+        versionCode = 24
+        versionName = "1.5.7"
     }
 
     compileOptions {
