@@ -90,38 +90,18 @@ $ADB shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTIN
 $ADB shell pm grant com.portalhacks.frame android.permission.CAMERA
 
 echo "4. Enabling on-device installs (Unknown Sources)..."
-# The Portal OS 'install_non_market_apps' toggle is broken and has no effect.
-# Fix: disable the Meta RRO overlay that breaks the installer dialog, then
-# grant REQUEST_INSTALL_PACKAGES directly via appops (same approach as Immortal).
-$ADB shell pm disable-user --user 0 com.facebook.aloha.rro.niu.android 2>/dev/null || true
-$ADB shell appops set com.portalhacks.frame REQUEST_INSTALL_PACKAGES allow 2>/dev/null || true
 $ADB shell settings put secure install_non_market_apps 1
 
-echo "5. Installing Shizuku (silent in-app update bridge)..."
-# Shizuku lets Frame install APKs silently via the ADB shell user, completely
-# bypassing the Portal's broken/invisible package installer dialog.
-SHIZUKU_APK="shizuku.apk"
-if [ ! -f "$SHIZUKU_APK" ]; then
-    echo "   Downloading Shizuku..."
-    SHIZUKU_URL=$(curl -sL "https://api.github.com/repos/RikkaApps/Shizuku/releases/latest" \
-        | python3 -c "import sys,json; r=json.load(sys.stdin); print(next(a['browser_download_url'] for a in r['assets'] if a['name'].endswith('.apk')))")
-    curl -L -o "$SHIZUKU_APK" "$SHIZUKU_URL"
-fi
-$ADB install -r "$SHIZUKU_APK" 2>/dev/null || true
-echo "   Starting Shizuku ADB service..."
-$ADB shell sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh 2>/dev/null || \
-    echo "   ⚠️  Shizuku start.sh not found — open the Shizuku app on Portal first, then re-run this script."
-
-echo "6. Freezing OS updates..."
+echo "5. Freezing OS updates..."
 $ADB shell pm disable-user --user 0 com.facebook.systemupdates 2>/dev/null
 $ADB shell pm disable-user --user 0 com.facebook.portal.updater 2>/dev/null
 $ADB shell pm disable-user --user 0 com.facebook.updater 2>/dev/null
 $ADB shell pm disable-user --user 0 com.oculus.updater 2>/dev/null
 
-echo "7. Replacing home screen (disabling Aloha launcher)..."
+echo "6. Replacing home screen (disabling Aloha launcher)..."
 $ADB shell pm disable-user --user 0 com.facebook.aloha.launcher 2>/dev/null
 
-echo "8. Setting Frame as screensaver and enabling guard..."
+echo "7. Setting Frame as screensaver and enabling guard..."
 $ADB shell settings put secure screensaver_enabled 1
 $ADB shell settings put secure screensaver_components com.portalhacks.frame/.FrameDreamService
 $ADB shell settings put secure screensaver_activate_on_dock 1

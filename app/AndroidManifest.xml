@@ -100,27 +100,5 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Shizuku binder provider — lets Frame talk to the Shizuku ADB service
-             that provision.command starts. Used for silent in-app APK installs,
-             bypassing the Portal's broken package installer dialog. -->
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:multiprocess="false"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
-
-        <!-- Receives PackageInstaller session commit results for silent installs. -->
-        <receiver
-            android:name=".InstallStatusReceiver"
-            android:exported="false" />
-
     </application>
-
-    <!-- Allow Frame to see whether Shizuku is installed. -->
-    <queries>
-        <package android:name="moe.shizuku.privileged.api" />
-    </queries>
-
 </manifest>
