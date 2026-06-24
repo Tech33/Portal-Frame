@@ -112,6 +112,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_PAIRS = "pairs"           // boolean: pair two photos to fill the screen
         const val KEY_KEN_BURNS = "ken_burns"   // boolean: cinematic pan/zoom
         const val KEY_CLOCK = "clock"           // boolean: clock + weather overlay
+        const val KEY_CLOCK_FLIP = "clock_flip" // boolean: show full-screen web flip clock
         const val KEY_WEATHER_FAHRENHEIT = "weather_fahrenheit" // boolean: weather temp unit
         const val KEY_CLOCK_24H = "clock_24h"   // boolean: explicit 24-hour clock mode
         const val KEY_CLOCK_LOW_LIGHT = "clock_low_light" // boolean: clock-only in low light
@@ -156,6 +157,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_PAIRS = false
         const val DEFAULT_KEN_BURNS = true
         const val DEFAULT_CLOCK = true
+        const val DEFAULT_CLOCK_FLIP = false
         const val DEFAULT_WEATHER_FAHRENHEIT = false
         const val DEFAULT_CLOCK_24H = false
         const val DEFAULT_CLOCK_LOW_LIGHT = false

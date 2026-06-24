@@ -13,6 +13,10 @@ import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.view.GestureDetector
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,6 +48,7 @@ class SlideshowComposeActivity : ComponentActivity() {
     private var currentIds: List<String> = ArrayList()
     private var lowLightClockOnly = false
     private var scheduledClockOnly = false
+    private var useFlipClock = false
 
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private val lightSensor: Sensor? by lazy { sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT) }
@@ -86,6 +91,58 @@ class SlideshowComposeActivity : ComponentActivity() {
         // system's adaptive/manual brightness (and its light sensor) governs the frame.
         window.attributes = window.attributes.apply {
             screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
+
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
+        useFlipClock = prefs.getBoolean(ConfigReceiver.KEY_CLOCK_FLIP, ConfigReceiver.DEFAULT_CLOCK_FLIP)
+
+        if (useFlipClock) {
+            val root = FrameLayout(this)
+            val webView = WebView(this).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    displayZoomControls = false
+                    builtInZoomControls = false
+                }
+                webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                        return false
+                    }
+                }
+                loadUrl("file:///android_asset/immortal_clock/index.html")
+            }
+            root.addView(webView)
+
+            val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(homeIntent)
+                    finishAndRemoveTask()
+                    return true
+                }
+
+                override fun onLongPress(e: MotionEvent) {
+                    startActivity(Intent(this@SlideshowComposeActivity, SettingsActivity::class.java))
+                }
+            })
+
+            webView.setOnTouchListener { _, event ->
+                gestureDetector.onTouchEvent(event)
+                true
+            }
+
+            setContent {
+                AndroidView(factory = { root }, modifier = Modifier.fillMaxSize())
+            }
+            return
         }
 
         loader = ImageLoader(this)
@@ -139,6 +196,7 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (useFlipClock) return
         // Clear any photo retained from a previous run so re-entering the frame
         // doesn't flash the old image before the first new frame loads.
         controller.blank()
@@ -190,6 +248,7 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        if (useFlipClock) return
         sensorManager.unregisterListener(lightListener)
         handler.removeCallbacks(refreshTick)
         handler.removeCallbacks(scheduleTick)

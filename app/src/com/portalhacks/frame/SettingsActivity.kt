@@ -667,6 +667,14 @@ class SettingsActivity : ComponentActivity() {
                 )
                 Divider()
                 ToggleRow(
+                    label = "Use Immortal Flip Clock",
+                    key = ConfigReceiver.KEY_CLOCK_FLIP,
+                    def = ConfigReceiver.DEFAULT_CLOCK_FLIP,
+                    iconRes = R.drawable.ic_night_clock,
+                    iconBg = Color(0xFFE05B49),
+                )
+                Divider()
+                ToggleRow(
                     label = "Scheduled full-screen night clock",
                     key = ConfigReceiver.KEY_NIGHT_CLOCK,
                     def = ConfigReceiver.DEFAULT_NIGHT_CLOCK,

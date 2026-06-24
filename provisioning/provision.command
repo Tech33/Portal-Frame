@@ -18,7 +18,7 @@ ADB="./platform-tools/adb"
 
 # 2. Download APK assets
 echo "[+] Downloading required applications..."
-curl -L -o portal-frame.apk https://github.com/Tech33/Portal-Frame/releases/download/v1.5.11/Frame.apk
+curl -L -o portal-frame.apk https://github.com/Tech33/Portal-Frame/releases/download/v1.5.12/Frame.apk
 
 echo ""
 echo "Please connect your Meta Portal via USB."
