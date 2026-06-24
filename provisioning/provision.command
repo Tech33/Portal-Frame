@@ -1,115 +1,57 @@
 #!/bin/bash
-# Move to the directory containing this script
-cd "$(dirname "$0")"
-
-echo "=== Portal Frame Provisioning Tool ==="
-
-# Check if local or system adb exists
-ADB="adb"
-if ! command -v adb &> /dev/null; then
-    if [ ! -d "platform-tools" ]; then
-        echo "ADB not found. Downloading Android platform-tools for macOS..."
-        curl -L -o platform-tools.zip https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
-        unzip -q platform-tools.zip
-        rm platform-tools.zip
-    fi
-    ADB="./platform-tools/adb"
-fi
-
-# Download latest Frame.apk
-DOWNLOAD=true
-if [ -f "Frame.apk" ]; then
-    read -p "Frame.apk already exists. Download the latest version from GitHub? (y/n) [y]: " choice
-    choice=${choice:-y}
-    if [[ ! "$choice" =~ ^[Yy]$ ]]; then
-        DOWNLOAD=false
-    fi
-fi
-
-if [ "$DOWNLOAD" = true ]; then
-    echo "Downloading the latest version of Frame APK..."
-    curl -L -o Frame.apk https://github.com/Tech33/Portal-Frame/releases/latest/download/Frame.apk
-fi
-
-echo "Connecting to device... Please plug in your Meta Portal via USB and authorize the USB debugging prompt on the screen."
-$ADB wait-for-device
-echo "Device connected!"
-
-echo "1. Installing Frame APK..."
-INSTALL_OUTPUT=$($ADB install -r Frame.apk 2>&1)
-echo "$INSTALL_OUTPUT"
-if echo "$INSTALL_OUTPUT" | grep -q "INSTALL_FAILED_UPDATE_INCOMPATIBLE"; then
-    echo "------------------------------------------------------------"
-    echo "⚠️  WARNING: Signature mismatch detected!"
-    echo "An existing version of Frame is installed with a conflicting certificate"
-    echo "(e.g., debug vs. release key)."
-    echo "To update, the existing app must be uninstalled first."
-    echo "WARNING: This will reset your on-device settings and album links."
-    echo "------------------------------------------------------------"
-    read -p "Uninstall the existing version and retry installation? (y/n) [y]: " uninstall_choice
-    uninstall_choice=${uninstall_choice:-y}
-    if [[ "$uninstall_choice" =~ ^[Yy]$ ]]; then
-        echo "Uninstalling existing app..."
-        $ADB uninstall com.portalhacks.frame
-        echo "Reinstalling..."
-        $ADB install Frame.apk
-    else
-        echo "❌ Installation aborted by user."
-        exit 1
-    fi
-elif echo "$INSTALL_OUTPUT" | grep -q "INSTALL_FAILED_VERSION_DOWNGRADE"; then
-    echo "------------------------------------------------------------"
-    echo "⚠️  WARNING: Version downgrade detected!"
-    echo "The version you are trying to install is older than the installed version."
-    echo "------------------------------------------------------------"
-    read -p "Force downgrade? (y/n) [y]: " downgrade_choice
-    downgrade_choice=${downgrade_choice:-y}
-    if [[ "$downgrade_choice" =~ ^[Yy]$ ]]; then
-        echo "Installing with downgrade flag (-d)..."
-        $ADB install -d -r Frame.apk
-    else
-        echo "❌ Installation aborted by user."
-        exit 1
-    fi
-elif echo "$INSTALL_OUTPUT" | grep -q "Failure"; then
-    echo "❌ ERROR: Installation failed: $INSTALL_OUTPUT"
-    exit 1
-fi
-
-echo "2. Pushing photos..."
-if [ -d "photos" ]; then
-    $ADB shell mkdir -p /sdcard/Pictures/
-    $ADB push photos/. /sdcard/Pictures/
-    echo "Photos pushed!"
-else
-    echo "No 'photos' folder found next to the script. Skipping photo push."
-fi
-
-echo "3. Granting permissions..."
-$ADB shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS
-$ADB shell pm grant com.portalhacks.frame android.permission.CAMERA
-
-echo "4. Enabling on-device installs (Unknown Sources)..."
-$ADB shell settings put secure install_non_market_apps 1
-
-echo "5. Freezing OS updates..."
-$ADB shell pm disable-user --user 0 com.facebook.systemupdates 2>/dev/null
-$ADB shell pm disable-user --user 0 com.facebook.portal.updater 2>/dev/null
-$ADB shell pm disable-user --user 0 com.facebook.updater 2>/dev/null
-$ADB shell pm disable-user --user 0 com.oculus.updater 2>/dev/null
-
-echo "6. Replacing home screen (disabling Aloha launcher)..."
-$ADB shell pm disable-user --user 0 com.facebook.aloha.launcher 2>/dev/null
-
-echo "7. Setting Frame as screensaver and enabling guard..."
-$ADB shell settings put secure screensaver_enabled 1
-$ADB shell settings put secure screensaver_components com.portalhacks.frame/.FrameDreamService
-$ADB shell settings put secure screensaver_activate_on_dock 1
-$ADB shell settings put secure screensaver_activate_on_sleep 1
-# Enable screensaver guard in the app prefs
-$ADB shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --ez guard true
-
-echo "=== Provisioning Complete! ==="
-echo "Your Meta Portal has been provisioned as a custom device."
+echo "======================================================="
+echo "       Portal-Frame v1.5.7 One-Click Installer        "
+echo "======================================================="
 echo ""
-read -p "Press Enter to exit..."
+
+# 1. Grab platform tools depending on OS
+if [ ! -d "platform-tools" ]; then
+    echo "[+] Downloading ADB platform-tools..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        curl -L -o tools.zip https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
+    else
+        curl -L -o tools.zip https://dl.google.com/android/repository/platform-tools-latest-linux.zip
+    fi
+    unzip tools.zip && rm tools.zip
+fi
+ADB="./platform-tools/adb"
+
+# 2. Download APK assets
+echo "[+] Downloading required applications..."
+curl -L -o portal-frame.apk https://github.com/Tech33/Portal-Frame/releases/download/v1.5.11/Frame.apk
+
+echo ""
+echo "Please connect your Meta Portal via USB."
+echo "Ensure ADB is enabled under Settings -> Debug -> ADB Enabled."
+read -p "Press [Enter] when ready to continue..."
+
+echo "[+] Waiting for Portal connection..."
+$ADB wait-for-device
+echo "[+] Device connected!"
+
+# 3. Process installations
+echo "[+] Sideloading Portal-Frame..."
+$ADB install -r -d portal-frame.apk
+
+# 4. Grant Required Permissions via ADB
+echo "[+] Automating application permissions..."
+# Grant Portal-Frame storage access
+$ADB shell pm grant com.portalhacks.frame android.permission.READ_EXTERNAL_STORAGE
+$ADB shell pm grant com.portalhacks.frame android.permission.WRITE_EXTERNAL_STORAGE
+# Attempt secure settings grant (silencing errors if firmware restricts it)
+$ADB shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS 2>/dev/null
+
+# Disable Meta installer overlay to restore native package installer buttons
+$ADB shell cmd overlay disable --user 0 com.oculus.apps.installer.overlay 2>/dev/null || true
+# Disable background safety verifier to stop OS from intercepting sideloaded apps
+$ADB shell settings put global package_verifier_enable 0 2>/dev/null || true
+
+# 5. Boot straight into Portal-Frame
+echo "[+] Booting up Portal-Frame..."
+$ADB shell monkey -p com.portalhacks.frame -c android.intent.category.LAUNCHER 1
+
+echo ""
+echo "======================================================="
+echo "SUCCESS: Installation and Permission Grant Complete!"
+echo "======================================================="
+rm portal-frame.apk

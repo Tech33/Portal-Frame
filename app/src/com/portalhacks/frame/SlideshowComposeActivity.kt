@@ -93,11 +93,12 @@ class SlideshowComposeActivity : ComponentActivity() {
         val root = FrameLayout(this)
         controller = SlideshowController(this, root, loader).apply {
             setOnDismiss {
-                // Tap dismisses the screensaver. The dream launched us in our own task
-                // (FLAG_ACTIVITY_NEW_TASK) on top of whatever app the user had open, so
-                // just tearing this task down hands control back to that app — matching
-                // the stock Portal screensaver. (We used to force CATEGORY_HOME here,
-                // which always bounced the user to the launcher instead; see issue #3.)
+                // Navigate to the default launcher
+                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(homeIntent)
                 finishAndRemoveTask()
             }
             // Portal's launcher won't show sideloaded app icons, so long-press the
