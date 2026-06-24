@@ -105,6 +105,11 @@ echo 3. Granting permissions...
 %ADB% shell pm grant com.portalhacks.frame android.permission.CAMERA
 
 echo 4. Enabling on-device installs (Unknown Sources)...
+REM The Portal OS 'install_non_market_apps' toggle is broken and has no effect.
+REM Fix: disable the Meta RRO overlay that breaks the installer dialog, then
+REM grant REQUEST_INSTALL_PACKAGES directly via appops (same approach as Immortal).
+%ADB% shell pm disable-user --user 0 com.facebook.aloha.rro.niu.android >nul 2>nul
+%ADB% shell appops set com.portalhacks.frame REQUEST_INSTALL_PACKAGES allow >nul 2>nul
 %ADB% shell settings put secure install_non_market_apps 1
 
 echo 5. Freezing OS updates...
