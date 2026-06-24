@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
-import androidx.localbroadcastmanager.api.LocalBroadcastManager
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 
 /**
  * Receives PackageInstaller session commit callbacks from [UpdateInstaller.installViaShizuku].

@@ -112,16 +112,30 @@ REM grant REQUEST_INSTALL_PACKAGES directly via appops (same approach as Immorta
 %ADB% shell appops set com.portalhacks.frame REQUEST_INSTALL_PACKAGES allow >nul 2>nul
 %ADB% shell settings put secure install_non_market_apps 1
 
-echo 5. Freezing OS updates...
+echo 5. Installing Shizuku (silent in-app update bridge)...
+:: Shizuku lets Frame install APKs silently via the ADB shell user, completely
+:: bypassing the Portal's broken/invisible package installer dialog.
+if not exist "shizuku.apk" (
+    echo    Downloading Shizuku...
+    powershell -Command "$r = Invoke-RestMethod -Uri 'https://api.github.com/repos/RikkaApps/Shizuku/releases/latest'; $url = ($r.assets | Where-Object { $_.name -like '*.apk' } | Select-Object -First 1).browser_download_url; Invoke-WebRequest -Uri $url -OutFile 'shizuku.apk'"
+)
+%ADB% install -r shizuku.apk >nul 2>nul
+echo    Starting Shizuku ADB service...
+%ADB% shell sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh >nul 2>nul
+if %errorlevel% neq 0 (
+    echo    WARNING: Shizuku start.sh not found - open the Shizuku app on Portal first, then re-run this script.
+)
+
+echo 6. Freezing OS updates...
 %ADB% shell pm disable-user --user 0 com.facebook.systemupdates >nul 2>nul
 %ADB% shell pm disable-user --user 0 com.facebook.portal.updater >nul 2>nul
 %ADB% shell pm disable-user --user 0 com.facebook.updater >nul 2>nul
 %ADB% shell pm disable-user --user 0 com.oculus.updater >nul 2>nul
 
-echo 6. Replacing home screen (disabling Aloha launcher)...
+echo 7. Replacing home screen (disabling Aloha launcher)...
 %ADB% shell pm disable-user --user 0 com.facebook.aloha.launcher >nul 2>nul
 
-echo 7. Setting Frame as screensaver and enabling guard...
+echo 8. Setting Frame as screensaver and enabling guard...
 %ADB% shell settings put secure screensaver_enabled 1
 %ADB% shell settings put secure screensaver_components com.portalhacks.frame/.FrameDreamService
 %ADB% shell settings put secure screensaver_activate_on_dock 1
