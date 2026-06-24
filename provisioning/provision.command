@@ -35,9 +35,8 @@ $ADB install -r -d portal-frame.apk
 
 # 4. Grant Required Permissions via ADB
 echo "[+] Automating application permissions..."
-# Grant Portal-Frame storage access
-$ADB shell pm grant com.portalhacks.frame android.permission.READ_EXTERNAL_STORAGE
-$ADB shell pm grant com.portalhacks.frame android.permission.WRITE_EXTERNAL_STORAGE
+# Grant Portal-Frame camera access (used for setup QR scanning)
+$ADB shell pm grant com.portalhacks.frame android.permission.CAMERA 2>/dev/null
 # Attempt secure settings grant (silencing errors if firmware restricts it)
 $ADB shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS 2>/dev/null
 
