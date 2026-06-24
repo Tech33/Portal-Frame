@@ -25,8 +25,8 @@ android {
         applicationId = "com.portalhacks.frame"
         minSdk = 23
         targetSdk = 29
-        versionCode = 29
-        versionName = "1.5.12"
+        versionCode = 30
+        versionName = "1.5.13"
     }
 
     compileOptions {

@@ -1,5 +1,6 @@
 package com.portalhacks.frame
 
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.hardware.Sensor
@@ -93,7 +94,7 @@ class SlideshowComposeActivity : ComponentActivity() {
             screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
 
-        val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         useFlipClock = prefs.getBoolean(ConfigReceiver.KEY_CLOCK_FLIP, ConfigReceiver.DEFAULT_CLOCK_FLIP)
 
         if (useFlipClock) {
@@ -108,6 +109,8 @@ class SlideshowComposeActivity : ComponentActivity() {
                     domStorageEnabled = true
                     displayZoomControls = false
                     builtInZoomControls = false
+                    useWideViewPort = true
+                    loadWithOverviewMode = true
                 }
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
@@ -202,7 +205,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         controller.blank()
         // Re-apply the clock position/size (picks up a Settings "reset" done while away).
         controller.applyClockTransform()
-        val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
 
         // "Only show clock in low light": watch the ambient light sensor when enabled.
         sensorManager.unregisterListener(lightListener)
@@ -260,7 +263,7 @@ class SlideshowComposeActivity : ComponentActivity() {
     }
 
     private fun updateScheduledClockOnly() {
-        val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, ConfigReceiver.DEFAULT_NIGHT_CLOCK)) {
             scheduledClockOnly = false
             applyClockOnlyMode()
@@ -296,7 +299,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         if (albums.isEmpty()) {
             return
         }
-        val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         for (url in albums) {
             loader.executor().execute {
                 try {
@@ -317,7 +320,7 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     /** Recompute the slideshow from all albums' caches and apply it if it changed. */
     private fun rebuildFromCaches(showHint: Boolean) {
-        val prefs = getSharedPreferences(ConfigReceiver.PREFS, MODE_PRIVATE)
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         if (currentAlbums != Albums.enabled(prefs)) {
             return // the playing album set changed while fetching
         }
