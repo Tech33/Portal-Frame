@@ -25,8 +25,8 @@ android {
         applicationId = "com.portalhacks.frame"
         minSdk = 23
         targetSdk = 29
-        versionCode = 25
-        versionName = "1.5.8"
+        versionCode = 26
+        versionName = "1.5.9"
     }
 
     compileOptions {
@@ -95,6 +95,12 @@ kotlin {
 dependencies {
     implementation(files("libs/zxing-core-3.5.3.jar"))
     implementation("androidx.core:core-ktx:1.15.0")
+
+    // Shizuku — runs as ADB shell user to install APKs silently on Portal
+    // (the Portal's stock package installer dialog is broken/invisible).
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

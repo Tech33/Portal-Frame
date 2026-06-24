@@ -2,11 +2,14 @@ package com.portalhacks.frame
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
+import rikka.shizuku.Shizuku
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -15,18 +18,59 @@ import java.net.URL
 import java.security.MessageDigest
 
 /**
- * Downloads a signed release APK from GitHub and launches the system installer.
- * APK bytes are capped; optional SHA-256 verification uses the manifest hash.
+ * Downloads a signed release APK from GitHub and installs it.
+ *
+ * Install strategy (tried in order):
+ *  1. **Shizuku** — silent install via the ADB-shell PackageInstaller session.
+ *     Requires Shizuku to be running (started once by provision.command).
+ *     Completely bypasses the Meta Portal's broken installer dialog.
+ *  2. **Intent fallback** — fires ACTION_VIEW for the APK; shows the system
+ *     installer dialog (broken/invisible on some Portal models).
  */
 internal object UpdateInstaller {
 
     private const val TAG = "PortalFrame"
     private const val MAX_APK_BYTES = 80L * 1024 * 1024
 
+    // Action broadcast back to InstallStatusReceiver when a session commits.
+    const val ACTION_INSTALL_STATUS = "com.portalhacks.frame.INSTALL_STATUS"
+    const val EXTRA_STATUS = "status"
+    const val EXTRA_MESSAGE = "message"
+
     sealed class Result {
         data class Ready(val file: File) : Result()
         data class Error(val message: String) : Result()
     }
+
+    // ── Shizuku availability ─────────────────────────────────────────────────
+
+    /** True when Shizuku is installed, running, and Frame has been granted permission. */
+    fun isShizukuReady(): Boolean {
+        return try {
+            Shizuku.pingBinder() &&
+                Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** True when Shizuku is installed but permission hasn't been granted yet. */
+    fun needsShizukuPermission(): Boolean {
+        return try {
+            Shizuku.pingBinder() &&
+                Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun requestShizukuPermission(requestCode: Int) {
+        try {
+            Shizuku.requestPermission(requestCode)
+        } catch (_: Exception) { }
+    }
+
+    // ── Download ─────────────────────────────────────────────────────────────
 
     /** Download [manifest.apkUrl] into [Context.cacheDir]. */
     fun download(context: Context, manifest: UpdateChecker.UpdateManifest): Result {
@@ -57,16 +101,12 @@ internal object UpdateInstaller {
             while (input.read(buf).also { n = it } != -1) {
                 total += n
                 if (total > MAX_APK_BYTES) {
-                    out.close()
-                    input.close()
-                    tmp.delete()
+                    out.close(); input.close(); tmp.delete()
                     return Result.Error("Download exceeded size limit.")
                 }
                 out.write(buf, 0, n)
             }
-            out.flush()
-            out.close()
-            input.close()
+            out.flush(); out.close(); input.close()
             if (!tmp.renameTo(dest)) {
                 tmp.delete()
                 return Result.Error("Couldn't save the downloaded APK.")
@@ -89,55 +129,108 @@ internal object UpdateInstaller {
         }
     }
 
+    // ── Install ──────────────────────────────────────────────────────────────
+
     /**
-     * Launch the package installer for [apk]. On Android 8+ may send the user to
-     * "Install unknown apps" settings first if Frame isn't allowed to install APKs.
+     * Install [apk] using the best available method.
+     * Returns true if Shizuku silent install was attempted (no user action needed),
+     * false if the intent fallback was used (user must interact with dialog).
      */
     fun promptInstall(context: Context, apk: File): Boolean {
-        if (!apk.isFile) {
-            return false
+        if (!apk.isFile) return false
+
+        // 1️⃣ Shizuku path — silent, no dialog
+        if (isShizukuReady()) {
+            return try {
+                installViaShizuku(context, apk)
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Shizuku install failed, falling back to intent", e)
+                installViaIntent(context, apk)
+            }
         }
+
+        // 2️⃣ Intent fallback
+        return installViaIntent(context, apk)
+    }
+
+    // ── Shizuku silent install ───────────────────────────────────────────────
+
+    private fun installViaShizuku(context: Context, apk: File) {
+        val packageInstaller = context.packageManager.packageInstaller
+        val params = PackageInstaller.SessionParams(
+            PackageInstaller.SessionParams.MODE_FULL_INSTALL
+        ).apply {
+            setAppPackageName(context.packageName)
+            setSize(apk.length())
+        }
+
+        val sessionId = packageInstaller.createSession(params)
+        packageInstaller.openSession(sessionId).use { session ->
+            // Stream APK bytes into the session
+            apk.inputStream().buffered().use { apkIn ->
+                session.openWrite("frame-update.apk", 0, apk.length()).use { out ->
+                    apkIn.copyTo(out)
+                    session.fsync(out)
+                }
+            }
+
+            // Broadcast result back to InstallStatusReceiver
+            val intent = Intent(context, InstallStatusReceiver::class.java).apply {
+                action = ACTION_INSTALL_STATUS
+            }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                    android.app.PendingIntent.FLAG_MUTABLE
+            } else {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pi = android.app.PendingIntent.getBroadcast(
+                context, sessionId, intent, flags
+            )
+            session.commit(pi.intentSender)
+        }
+        Log.i(TAG, "Shizuku install session committed for session $sessionId")
+    }
+
+    // ── Intent fallback ──────────────────────────────────────────────────────
+
+    private fun installViaIntent(context: Context, apk: File): Boolean {
+        // On Android 8+, send user to "Install unknown apps" settings if not allowed
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !context.packageManager.canRequestPackageInstalls()
         ) {
             try {
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${context.packageName}"),
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to launch app-specific unknown app sources setting, trying generic list", e)
+                context.startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:${context.packageName}"),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (_: Exception) {
                 try {
-                    val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(intent)
-                } catch (e2: Exception) {
-                    Log.e(TAG, "Failed to launch unknown app sources list, trying security settings", e2)
-                    try {
-                        val intent = Intent(Settings.ACTION_SECURITY_SETTINGS)
+                    context.startActivity(
+                        Intent(Settings.ACTION_SECURITY_SETTINGS)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(intent)
-                    } catch (e3: Exception) {
-                        Log.e(TAG, "Failed to launch security settings", e3)
-                    }
-                }
+                    )
+                } catch (_: Exception) { }
             }
             return false
         }
         val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            apk,
+            context, "${context.packageName}.fileprovider", apk,
         )
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(intent)
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        )
         return true
     }
+
+    // ── Utilities ────────────────────────────────────────────────────────────
 
     private fun sha256Hex(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")

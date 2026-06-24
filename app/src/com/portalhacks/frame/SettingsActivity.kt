@@ -1,8 +1,11 @@
 package com.portalhacks.frame
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.pm.PackageInstaller
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -66,12 +69,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.localbroadcastmanager.api.LocalBroadcastManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import android.widget.Toast
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import rikka.shizuku.Shizuku
 
 /**
  * The Photos setup/settings screen, in Jetpack Compose (migration Milestone 3).
@@ -101,6 +106,13 @@ class SettingsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Listen for silent install results from Shizuku (InstallStatusReceiver)
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            installResultReceiver,
+            IntentFilter(UpdateInstaller.ACTION_INSTALL_STATUS),
+        )
+
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -113,6 +125,20 @@ class SettingsActivity : ComponentActivity() {
             ) {
                 SettingsScreen()
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(installResultReceiver)
+    }
+
+    // Receives silent install result from InstallStatusReceiver and updates UI
+    private var _installStatusCallback: ((String) -> Unit)? = null
+    private val installResultReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val msg = intent.getStringExtra(UpdateInstaller.EXTRA_MESSAGE) ?: return
+            _installStatusCallback?.invoke(msg)
         }
     }
 
@@ -220,10 +246,14 @@ class SettingsActivity : ComponentActivity() {
             runOnUiThread { onStatus("Downloading update…") }
             when (val result = UpdateInstaller.download(this, manifest)) {
                 is UpdateInstaller.Result.Ready -> runOnUiThread {
-                    if (UpdateInstaller.promptInstall(this, result.file)) {
-                        onStatus("Follow the system prompt to install.")
-                    } else {
-                        onStatus("Allow Frame to install updates, then tap Download again.")
+                    val usedShizuku = UpdateInstaller.promptInstall(this, result.file)
+                    when {
+                        usedShizuku && UpdateInstaller.isShizukuReady() ->
+                            onStatus("Installing silently… (Shizuku)")
+                        UpdateInstaller.needsShizukuPermission() ->
+                            onStatus("Grant Shizuku permission, then try again.")
+                        else ->
+                            onStatus("Follow the system prompt to install.")
                     }
                     onFinished()
                 }
