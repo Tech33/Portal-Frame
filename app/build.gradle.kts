@@ -95,6 +95,7 @@ kotlin {
 dependencies {
     implementation(files("libs/zxing-core-3.5.3.jar"))
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("com.google.mlkit:face-detection:16.1.7")
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

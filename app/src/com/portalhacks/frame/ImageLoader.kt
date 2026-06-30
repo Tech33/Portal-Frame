@@ -83,6 +83,7 @@ class ImageLoader(context: Context) {
             val bmp = loadSync(id, reqW, reqH, zoomFill)
             if (bmp != null) {
                 mem.put(key, bmp)
+                FaceFocus.detectAndCache(bmp)
             }
             main.post { cb.onLoaded(bmp) }
         }
@@ -98,6 +99,7 @@ class ImageLoader(context: Context) {
             val b = loadSync(id, reqW, reqH, zoomFill)
             if (b != null) {
                 mem.put(key, b)
+                FaceFocus.detectAndCache(b)
             }
         }
     }
@@ -175,6 +177,7 @@ class ImageLoader(context: Context) {
             val result = out
             if (result != null) {
                 mem.put(key, result)
+                FaceFocus.detectAndCache(result)
             }
             main.post { cb.onLoaded(result) }
         }

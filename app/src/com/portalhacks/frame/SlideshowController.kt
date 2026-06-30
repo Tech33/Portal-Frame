@@ -1551,21 +1551,26 @@ class SlideshowController(
             private const val END_ZOOM_MAX = 1.10f
 
             /**
-             * @param focus optional {fx, fy} in [0,1] image space to drift toward; null = random.
+             * @param focus optional FaceFocusResult to drift toward and zoom out for; null = random.
              */
-            fun random(w: Int, h: Int, r: Random, focus: FloatArray?): KenBurns {
+            fun random(w: Int, h: Int, r: Random, focus: FaceFocusResult?): KenBurns {
                 // Start at exact fill (scale 1.0, centred) and zoom IN to a gentle target. Pan
                 // starts at zero (1.0 has no cover slack) and grows linearly with the scale toward
                 // the end scale's slack — edge-safe at every point along the path.
-                val s1 = END_ZOOM_MIN + r.nextFloat() * (END_ZOOM_MAX - END_ZOOM_MIN)
+                var s1 = END_ZOOM_MIN + r.nextFloat() * (END_ZOOM_MAX - END_ZOOM_MIN)
+                if (focus != null) {
+                    // Zoom out a bit depending on the zoomFactor (fewer zoom-in scale = "zooming out")
+                    s1 = 1.0f + (s1 - 1f) * focus.zoomFactor
+                }
+
                 val slackX = (s1 - 1f) / 2f * w * 0.9f // 90% of the end scale's cover slack
                 val slackY = (s1 - 1f) / 2f * h * 0.9f
                 val tx1: Float
                 val ty1: Float
                 if (focus != null) {
-                    // Drift toward the focal point (e.g. a detected face) as it zooms in.
-                    tx1 = clamp((0.5f - focus[0]) * 2f, -1f, 1f) * slackX
-                    ty1 = clamp((0.5f - focus[1]) * 2f, -1f, 1f) * slackY
+                    // Drift toward the focal point (e.g. centroid of detected faces) as it zooms in.
+                    tx1 = clamp((0.5f - focus.fx) * 2f, -1f, 1f) * slackX
+                    ty1 = clamp((0.5f - focus.fy) * 2f, -1f, 1f) * slackY
                 } else {
                     tx1 = (r.nextFloat() * 2f - 1f) * slackX
                     ty1 = (r.nextFloat() * 2f - 1f) * slackY
