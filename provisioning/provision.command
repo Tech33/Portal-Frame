@@ -39,7 +39,30 @@ echo "[+] Device connected!"
 
 # 3. Process installations
 echo "[+] Sideloading Portal-Frame..."
-$ADB install -r -d portal-frame.apk
+INSTALL_RES=$($ADB install -r -d portal-frame.apk 2>&1)
+echo "$INSTALL_RES"
+
+if [[ "$INSTALL_RES" == *"INSTALL_FAILED_UPDATE_INCOMPATIBLE"* ]]; then
+    echo "------------------------------------------------------------"
+    echo "WARNING: Signature mismatch detected!"
+    echo "An existing version of Frame is installed with a conflicting certificate"
+    echo "(e.g., debug vs. release key)."
+    echo "To update, the existing app must be uninstalled first."
+    echo "WARNING: This will reset your on-device settings and album links."
+    echo "------------------------------------------------------------"
+    read -p "Uninstall the existing version and retry installation? (y/n) [y]: " uninstall_choice
+    uninstall_choice=${uninstall_choice:-y}
+    if [[ "$uninstall_choice" =~ ^[Yy]$ ]]; then
+        echo "[+] Uninstalling existing app..."
+        $ADB uninstall com.portalhacks.frame
+        echo "[+] Reinstalling..."
+        $ADB install portal-frame.apk
+    else
+        echo "[-] Installation aborted by user."
+        rm portal-frame.apk
+        exit 1
+    fi
+fi
 
 # 4. Grant Required Permissions via ADB
 echo "[+] Automating application permissions..."
