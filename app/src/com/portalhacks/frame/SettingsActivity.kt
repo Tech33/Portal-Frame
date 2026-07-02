@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.net.Uri
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -335,6 +336,7 @@ class SettingsActivity : ComponentActivity() {
         val ctx = LocalContext.current
         var showNightClockDialog by remember { mutableStateOf(false) }
         var showAdbDialog by remember { mutableStateOf(false) }
+        var showUninstallConfirmDialog by remember { mutableStateOf(false) }
         var refreshingAlbums by remember { mutableStateOf(false) }
         var albumRefreshStatus by remember { mutableStateOf("") }
         var checkingUpdate by remember { mutableStateOf(false) }
@@ -499,6 +501,34 @@ class SettingsActivity : ComponentActivity() {
                     iconRes = R.drawable.ic_reset,
                     iconBg = Color(0xFF007AFF),
                 )
+                Spacer(Modifier.height(16.dp))
+                Divider()
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Revert & Uninstall",
+                    color = PortalColors.Text,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Removes the Frame app and lets you return your Portal to its stock state.",
+                    color = PortalColors.Text.copy(alpha = 0.6f),
+                    fontSize = 13.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0x22FF3B30))
+                        .border(1.dp, Color(0x30FF3B30), RoundedCornerShape(16.dp))
+                        .clickable { showUninstallConfirmDialog = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Uninstall Frame", color = Color(0xFFFF453A), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                }
             }
             Card(if (hasAlbum) "Albums" else "No albums yet") {
                 if (hasAlbum) {
@@ -792,6 +822,65 @@ class SettingsActivity : ComponentActivity() {
                 }
             )
         }
+
+        if (showUninstallConfirmDialog) {
+            UninstallConfirmDialog(
+                onDismiss = {
+                    showUninstallConfirmDialog = false
+                }
+            )
+        }
+    }
+
+    @Composable
+    private fun UninstallConfirmDialog(
+        onDismiss: () -> Unit
+    ) {
+        val context = LocalContext.current
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Text("Uninstall Frame?", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text(
+                        "This will prompt the Android system to uninstall the Frame application.",
+                        color = PortalColors.Text.copy(alpha = 0.8f),
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "⚠️ IMPORTANT WARNING:\nIf you disabled the default Facebook Aloha launcher to replace your home screen, you must run the 'restore' script on your computer first, or re-enable it via ADB to prevent the device from booting to a blank screen.",
+                        color = Color(0xFFFF453A),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 18.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        val intent = Intent(Intent.ACTION_DELETE).apply {
+                            data = Uri.parse("package:" + context.packageName)
+                        }
+                        context.startActivity(intent)
+                    }
+                ) {
+                    Text("Uninstall", color = Color(0xFFFF453A), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = PortalColors.Text.copy(alpha = 0.6f))
+                }
+            },
+            containerColor = PortalColors.Surface,
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 
     @Composable
