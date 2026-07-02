@@ -11,11 +11,32 @@ cinematic motion, and ambient color.
 
 ### ⬇️ [Download the latest APK](https://github.com/Tech33/Portal-Frame/releases/latest/download/Frame.apk)
 
-That link always serves the newest signed release. Prefer to pick a version (or grab the
-`.sha256`)? Browse all builds on the **[Releases page](https://github.com/Tech33/Portal-Frame/releases/latest)**.
+That link always serves the newest signed release. Prefer to pick a version (or grab the `.sha256`)? Browse all builds on the **[Releases page](https://github.com/Tech33/Portal-Frame/releases/latest)**.
 
-Then follow the **[Install & User Guide](INSTALL.md)** (supporting both 1-click automatic setup and manual installation options). After that, open **Frame → Updates** on the Portal to check for wireless
-updates — no computer required.
+---
+
+### ⚡ 1-Click Installation (Recommended)
+
+To make installation as simple as possible, the project includes an automatic 1-click installer inside the `provisioning` folder. It will download the ADB tools, get the latest version of Frame, install the app, disable Facebook/Portal updater tools, grant secure permissions, and configure the screensaver automatically.
+
+1. **Prerequisite**: Turn on **USB debugging** on the Portal:
+   * Go to **Settings ➔ About**.
+   * Tap the **Portal logo/build number 7 times** until it says "You are now a developer."
+   * Go back, open the new **Debug** settings menu, and toggle **ADB Enabled** to **ON**.
+2. **Connect**: Plug the Portal into your computer using a USB cable and authorize debugging when prompted on the Portal screen.
+3. **Run the Installer**:
+   * **Windows**: Double-click **`provisioning/provision.bat`**.
+   * **macOS / Linux**: Double-click (or run in Terminal) **`provisioning/provision.command`**.
+4. **Protected Mode & Wireless ADB**:
+   * The installer automatically enables **Protected Mode** by default, locking the screensaver so other apps can't override it.
+   * It also automatically configures **Wireless ADB** (port `5555`) and outputs the Portal's IP address.
+   * To connect wirelessly next time without a USB cable, just open your Terminal / Command Prompt and run:
+     ```bash
+     adb connect <PORTAL-IP>:5555
+     ```
+
+For manual installation steps or to restore default stock settings, see the full **[Install & User Guide](INSTALL.md)**.
+After that, open **Frame → Updates** on the Portal to check for wireless updates — no computer required.
 
 ## Version tracker
 
