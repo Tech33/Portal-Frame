@@ -1,24 +1,32 @@
 #!/bin/bash
+# Move to the directory containing this script
+cd "$(dirname "$0")"
+
 echo "======================================================="
-echo "       Portal-Frame v1.5.7 One-Click Installer        "
+echo "       Portal-Frame One-Click Installer for Mac        "
 echo "======================================================="
 echo ""
 
 # 1. Grab platform tools depending on OS
-if [ ! -d "platform-tools" ]; then
-    echo "[+] Downloading ADB platform-tools..."
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        curl -L -o tools.zip https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
+ADB="adb"
+if ! command -v adb &> /dev/null; then
+    if [ -d "platform-tools" ]; then
+        ADB="./platform-tools/adb"
     else
-        curl -L -o tools.zip https://dl.google.com/android/repository/platform-tools-latest-linux.zip
+        echo "[+] Downloading ADB platform-tools..."
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            curl -L -o tools.zip https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
+        else
+            curl -L -o tools.zip https://dl.google.com/android/repository/platform-tools-latest-linux.zip
+        fi
+        unzip -q tools.zip && rm tools.zip
+        ADB="./platform-tools/adb"
     fi
-    unzip tools.zip && rm tools.zip
 fi
-ADB="./platform-tools/adb"
 
-# 2. Download APK assets
-echo "[+] Downloading required applications..."
-curl -L -o portal-frame.apk https://github.com/Tech33/Portal-Frame/releases/download/v1.5.13/Frame.apk
+# 2. Download latest APK asset
+echo "[+] Downloading latest Portal-Frame application..."
+curl -L -o portal-frame.apk https://github.com/Tech33/Portal-Frame/releases/latest/download/Frame.apk
 
 echo ""
 echo "Please connect your Meta Portal via USB."
@@ -37,15 +45,35 @@ $ADB install -r -d portal-frame.apk
 echo "[+] Automating application permissions..."
 # Grant Portal-Frame camera access (used for setup QR scanning)
 $ADB shell pm grant com.portalhacks.frame android.permission.CAMERA 2>/dev/null
-# Attempt secure settings grant (silencing errors if firmware restricts it)
+# Secure settings grant for screensaver management
 $ADB shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS 2>/dev/null
 
-# Disable Meta installer overlay to restore native package installer buttons
+# 5. Enable on-device installs (Unknown Sources)
+echo "[+] Enabling on-device installs (Unknown Sources)..."
+$ADB shell settings put secure install_non_market_apps 1 2>/dev/null
 $ADB shell cmd overlay disable --user 0 com.oculus.apps.installer.overlay 2>/dev/null || true
-# Disable background safety verifier to stop OS from intercepting sideloaded apps
 $ADB shell settings put global package_verifier_enable 0 2>/dev/null || true
 
-# 5. Boot straight into Portal-Frame
+# 6. Freeze OS updates
+echo "[+] Freezing OS updates..."
+$ADB shell pm disable-user --user 0 com.facebook.systemupdates 2>/dev/null || true
+$ADB shell pm disable-user --user 0 com.facebook.portal.updater 2>/dev/null || true
+$ADB shell pm disable-user --user 0 com.facebook.updater 2>/dev/null || true
+$ADB shell pm disable-user --user 0 com.oculus.updater 2>/dev/null || true
+
+# 7. Replace home screen (disable Aloha launcher)
+echo "[+] Replacing home screen (disabling Aloha launcher)..."
+$ADB shell pm disable-user --user 0 com.facebook.aloha.launcher 2>/dev/null || true
+
+# 8. Set Frame as screensaver and enable guard (Protected Mode)
+echo "[+] Setting Frame as screensaver and enabling guard..."
+$ADB shell settings put secure screensaver_enabled 1 2>/dev/null
+$ADB shell settings put secure screensaver_components com.portalhacks.frame/.FrameDreamService 2>/dev/null
+$ADB shell settings put secure screensaver_activate_on_dock 1 2>/dev/null
+$ADB shell settings put secure screensaver_activate_on_sleep 1 2>/dev/null
+$ADB shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --ez guard true 2>/dev/null
+
+# 9. Boot straight into Portal-Frame
 echo "[+] Booting up Portal-Frame..."
 $ADB shell monkey -p com.portalhacks.frame -c android.intent.category.LAUNCHER 1
 
@@ -54,3 +82,5 @@ echo "======================================================="
 echo "SUCCESS: Installation and Permission Grant Complete!"
 echo "======================================================="
 rm portal-frame.apk
+echo ""
+read -p "Press [Enter] to exit..."

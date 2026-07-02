@@ -180,7 +180,8 @@ class ScreensaverGuardService : Service() {
         /** Start the guard only if the user opted in and we can write settings. */
         fun startIfEnabled(ctx: Context) {
             val prefs = ctx.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-            if (!prefs.getBoolean(ConfigReceiver.KEY_GUARD, false)) return
+
+            if (!prefs.getBoolean(ConfigReceiver.KEY_GUARD, true)) return
             if (!Screensaver.canWrite(ctx)) return
             start(ctx)
         }
