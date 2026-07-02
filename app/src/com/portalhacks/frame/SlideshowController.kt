@@ -1350,11 +1350,19 @@ class SlideshowController(
                 back.translationY = 0f
                 back.scaleX = 1f
                 back.scaleY = 1f
+                back.rotationY = 0f
+                back.pivotX = back.width.toFloat() / 2f
+                back.pivotY = back.height.toFloat() / 2f
+                
                 front.alpha = 0f
                 front.translationX = 0f
                 front.translationY = 0f
                 front.scaleX = 1f
                 front.scaleY = 1f
+                front.rotationY = 0f
+                front.pivotX = front.width.toFloat() / 2f
+                front.pivotY = front.height.toFloat() / 2f
+                
                 applyKenBurnsStart(front, null) // reset incoming view for reuse
                 front.colorFilter = null
                 startKenBurnsOnBack(gen)
@@ -1379,11 +1387,38 @@ class SlideshowController(
         back.alpha = 1f
         back.translationX = 0f
         back.translationY = 0f
+
+        // Reset 3D properties
+        front.rotationY = 0f
+        back.rotationY = 0f
+        front.pivotX = front.width.toFloat() / 2f
+        front.pivotY = front.height.toFloat() / 2f
+        back.pivotX = back.width.toFloat() / 2f
+        back.pivotY = back.height.toFloat() / 2f
+        front.cameraDistance = 1280f
+        back.cameraDistance = 1280f
+
         when (transitionMode) {
             TRANSITION_SLIDE, TRANSITION_PUSH -> front.translationX = reqW.toFloat()
             TRANSITION_ZOOM, TRANSITION_ZOOM_FADE -> {
                 front.scaleX = ZOOM_START_SCALE
                 front.scaleY = ZOOM_START_SCALE
+            }
+            TRANSITION_BOOK_FLIP -> {
+                front.pivotX = 0f // Pivot on left edge
+                front.cameraDistance = reqW.toFloat() * 3.5f
+                front.rotationY = -90f // swing in from left
+                front.alpha = 0f
+            }
+            TRANSITION_CUBE -> {
+                back.pivotX = 0f
+                back.cameraDistance = reqW.toFloat() * 4f
+                back.rotationY = 0f
+                
+                front.pivotX = reqW.toFloat()
+                front.cameraDistance = reqW.toFloat() * 4f
+                front.rotationY = 90f
+                front.alpha = 1f
             }
         }
         if (durationMs <= 0L) {
@@ -1391,6 +1426,7 @@ class SlideshowController(
             front.translationX = 0f
             front.scaleX = 1f
             front.scaleY = 1f
+            front.rotationY = 0f
         }
     }
 
@@ -1408,6 +1444,11 @@ class SlideshowController(
             }
             TRANSITION_ZOOM -> anim.alpha(1f).scaleX(1f).scaleY(1f)
             TRANSITION_ZOOM_FADE -> anim.alpha(1f).scaleX(1f).scaleY(1f)
+            TRANSITION_BOOK_FLIP -> anim.alpha(1f).rotationY(0f)
+            TRANSITION_CUBE -> {
+                back.animate().rotationY(-90f).alpha(0f).setDuration(durationMs)
+                anim.rotationY(0f)
+            }
             else -> anim.alpha(1f)
         }
         anim.withEndAction(onEnd)
@@ -2313,6 +2354,9 @@ class SlideshowController(
         private const val TRANSITION_ZOOM_FADE = "zoom_fade"
         private const val TRANSITION_INSTANT = "instant"
         private const val TRANSITION_PUSH = "push"
+        private const val TRANSITION_BOOK_FLIP = "book_flip"
+        private const val TRANSITION_CUBE = "cube"
+
 
         /**
          * Warm-overlay strength by time of day (Ambient-EQ-lite): none in daylight,

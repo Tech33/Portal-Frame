@@ -559,7 +559,7 @@ class SettingsActivity : ComponentActivity() {
         }
         val settingsCards: @Composable () -> Unit = {
             LivePreviewCard()
-            Card("Slideshow") {
+            Card("Slideshow options") {
                 DurationSliderRow(iconRes = R.drawable.ic_duration, iconBg = Color(0xFF5856D6))
                 Divider()
                 ToggleRow("Shuffle photos", ConfigReceiver.KEY_SHUFFLE, false, iconRes = R.drawable.ic_shuffle, iconBg = Color(0xFF007AFF))
@@ -582,12 +582,16 @@ class SettingsActivity : ComponentActivity() {
                 Divider()
                 ToggleRow("Photo captions", ConfigReceiver.KEY_CAPTIONS, true, iconRes = R.drawable.ic_captions, iconBg = Color(0xFF5AC8FA))
             }
-            Card("Ambient intelligence") {
+            Card("Smart framing & quality") {
                 ToggleRow("Face-aware framing", ConfigReceiver.KEY_FACE, true, iconRes = R.drawable.ic_face, iconBg = Color(0xFFFF9500))
                 Divider()
                 ToggleRow("Auto-enhance photos", ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE, iconRes = R.drawable.ic_enhance, iconBg = Color(0xFFFFCC00))
                 Divider()
                 ToggleRow("Ambient color glow", ConfigReceiver.KEY_AMBIENT, true, iconRes = R.drawable.ic_ambient, iconBg = Color(0xFFFF2D55))
+                Divider()
+                ToggleRow("On This Day memories", ConfigReceiver.KEY_ON_THIS_DAY, true, iconRes = R.drawable.ic_memories, iconBg = Color(0xFF34C759))
+            }
+            Card("Clock & overlay options") {
                 ToggleRow(
                     "Clock & weather", ConfigReceiver.KEY_CLOCK, true,
                     subtitle = "Long-press the clock on the screensaver to move or resize it.",
@@ -595,31 +599,28 @@ class SettingsActivity : ComponentActivity() {
                     iconBg = Color(0xFF007AFF),
                 )
                 Divider()
-                ToggleRow(
-                    label = "Hourly chime",
-                    key = ConfigReceiver.KEY_CHIME,
-                    def = ConfigReceiver.DEFAULT_CHIME,
-                    subtitle = "Plays a soft bell chime on the hour.",
-                    iconRes = R.drawable.ic_clock_format,
-                    iconBg = Color(0xFFFF9500),
-                )
+                
+                val clock24hState = rememberPrefBoolean(ConfigReceiver.KEY_CLOCK_24H, ConfigReceiver.DEFAULT_CLOCK_24H)
+                CycleRow("Clock format", if (clock24hState.value) "24-hour" else "12-hour", iconRes = R.drawable.ic_clock_format, iconBg = Color(0xFF8E8E93)) {
+                    prefs.edit().putBoolean(ConfigReceiver.KEY_CLOCK_24H, !clock24hState.value).apply()
+                }
                 Divider()
-                TimeSliderRow(
-                    "Chime starts",
-                    ConfigReceiver.KEY_CHIME_START_MIN,
-                    ConfigReceiver.DEFAULT_CHIME_START_MIN,
-                    iconRes = R.drawable.ic_duration,
-                    iconBg = Color(0xFF8E8E93),
-                )
+                
+                CycleRow(
+                    label = "Clock position & size",
+                    value = "Reset",
+                    iconRes = R.drawable.ic_reset,
+                    iconBg = Color(0xFFFF3B30),
+                    subtitle = "Reset the clock drag/pinch transformations to default bottom-left.",
+                ) {
+                    prefs.edit()
+                        .putFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
+                        .putFloat(ConfigReceiver.KEY_CLOCK_DY, ConfigReceiver.DEFAULT_CLOCK_DY)
+                        .putFloat(ConfigReceiver.KEY_CLOCK_SCALE, ConfigReceiver.DEFAULT_CLOCK_SCALE)
+                        .apply()
+                }
                 Divider()
-                TimeSliderRow(
-                    "Chime ends",
-                    ConfigReceiver.KEY_CHIME_END_MIN,
-                    ConfigReceiver.DEFAULT_CHIME_END_MIN,
-                    iconRes = R.drawable.ic_duration,
-                    iconBg = Color(0xFF8E8E93),
-                )
-                Divider()
+                
                 ToggleRow(
                     "Show battery percentage", ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY,
                     subtitle = "Appends the battery level and status to the date overlay on Portal Go.",
@@ -637,27 +638,8 @@ class SettingsActivity : ComponentActivity() {
                 ) {
                     prefs.edit().putBoolean(ConfigReceiver.KEY_WEATHER_FAHRENHEIT, !tempFahrenheitState.value).apply()
                 }
-                Divider()
-                
-                val clock24hState = rememberPrefBoolean(ConfigReceiver.KEY_CLOCK_24H, ConfigReceiver.DEFAULT_CLOCK_24H)
-                CycleRow("Clock format", if (clock24hState.value) "24-hour" else "12-hour", iconRes = R.drawable.ic_clock_format, iconBg = Color(0xFF8E8E93)) {
-                    prefs.edit().putBoolean(ConfigReceiver.KEY_CLOCK_24H, !clock24hState.value).apply()
-                }
-                Divider()
-                CycleRow(
-                    label = "Clock position & size",
-                    value = "Reset",
-                    iconRes = R.drawable.ic_reset,
-                    iconBg = Color(0xFFFF3B30),
-                    subtitle = "Reset the clock drag/pinch transformations to default bottom-left.",
-                ) {
-                    prefs.edit()
-                        .putFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
-                        .putFloat(ConfigReceiver.KEY_CLOCK_DY, ConfigReceiver.DEFAULT_CLOCK_DY)
-                        .putFloat(ConfigReceiver.KEY_CLOCK_SCALE, ConfigReceiver.DEFAULT_CLOCK_SCALE)
-                        .apply()
-                }
-                Divider()
+            }
+            Card("Night mode (Clock only)") {
                 ToggleRow(
                     label = "Only clock in low light",
                     key = ConfigReceiver.KEY_CLOCK_LOW_LIGHT,
@@ -708,8 +690,39 @@ class SettingsActivity : ComponentActivity() {
                 }
                 Divider()
                 ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true, iconRes = R.drawable.ic_night_warmth, iconBg = Color(0xFFFF9500))
-                Divider()
-                ToggleRow("On This Day memories", ConfigReceiver.KEY_ON_THIS_DAY, true, iconRes = R.drawable.ic_memories, iconBg = Color(0xFF34C759))
+            }
+            Card("Hourly chime") {
+                ToggleRow(
+                    label = "Hourly chime",
+                    key = ConfigReceiver.KEY_CHIME,
+                    def = ConfigReceiver.DEFAULT_CHIME,
+                    subtitle = "Plays a soft bell chime on the hour.",
+                    iconRes = R.drawable.ic_clock_format,
+                    iconBg = Color(0xFFFF9500),
+                )
+                
+                val showChimeOptions = rememberPrefBoolean(ConfigReceiver.KEY_CHIME, ConfigReceiver.DEFAULT_CHIME)
+                if (showChimeOptions.value) {
+                    Spacer(Modifier.height(8.dp))
+                    Column(Modifier.padding(start = 32.dp)) {
+                        TimeSliderRow(
+                            "Chime starts",
+                            ConfigReceiver.KEY_CHIME_START_MIN,
+                            ConfigReceiver.DEFAULT_CHIME_START_MIN,
+                            iconRes = R.drawable.ic_duration,
+                            iconBg = Color(0xFF8E8E93),
+                        )
+                        Divider()
+                        TimeSliderRow(
+                            "Chime ends",
+                            ConfigReceiver.KEY_CHIME_END_MIN,
+                            ConfigReceiver.DEFAULT_CHIME_END_MIN,
+                            iconRes = R.drawable.ic_duration,
+                            iconBg = Color(0xFF8E8E93),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
             }
         }
 
@@ -1250,37 +1263,58 @@ class SettingsActivity : ComponentActivity() {
     ) {
         var selected by rememberPrefString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
         val selectedVal = selected ?: ConfigReceiver.DEFAULT_TRANSITION
+        var expanded by remember { mutableStateOf(false) }
+        val label = TRANSITION_OPTIONS.firstOrNull { it.id == selectedVal }?.label ?: "Slide"
+        
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 RowIcon(iconRes, iconBg)
-                Text("Transition", color = PortalColors.Text, fontSize = 18.sp)
-            }
-            Spacer(Modifier.height(8.dp))
-            TRANSITION_OPTIONS.forEachIndexed { i, option ->
-                Row(
-                    Modifier.fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            if (selectedVal != option.id) {
-                                selected = option.id
-                                onChanged?.invoke()
-                            }
-                        }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(
-                        selected = selectedVal == option.id,
-                        onClick = null,
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = PortalColors.Blue,
-                            unselectedColor = PortalColors.TextMuted,
-                        ),
-                    )
-                    Text(option.label, color = PortalColors.Text, fontSize = 16.sp)
+                Column(Modifier.weight(1f)) {
+                    Text("Transition", color = PortalColors.Text, fontSize = 18.sp)
                 }
-                if (i < TRANSITION_OPTIONS.lastIndex) {
-                    Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "$label  ${if (expanded) "▲" else "▼"}",
+                    color = PortalColors.Blue,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(8.dp))
+                Column(Modifier.padding(start = 32.dp)) {
+                    TRANSITION_OPTIONS.forEachIndexed { i, option ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    if (selectedVal != option.id) {
+                                        selected = option.id
+                                        onChanged?.invoke()
+                                    }
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = selectedVal == option.id,
+                                onClick = null,
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = PortalColors.Blue,
+                                    unselectedColor = PortalColors.TextMuted,
+                                ),
+                            )
+                            Text(option.label, color = PortalColors.Text, fontSize = 16.sp)
+                        }
+                        if (i < TRANSITION_OPTIONS.lastIndex) {
+                            Spacer(Modifier.height(2.dp))
+                        }
+                    }
                 }
             }
         }
@@ -1528,8 +1562,6 @@ class SettingsActivity : ComponentActivity() {
             3_600_000, 10_800_000, 21_600_000, 43_200_000, // 1h, 3h, 6h, 12h
             86_400_000, // 1 day
         )
-        private val FADE_CHOICES = longArrayOf(2000, 1200, 500)
-        private val FADE_LABELS = arrayOf("Slow", "Normal", "Fast")
         private val TRANSITION_OPTIONS = listOf(
             TransitionOption("crossfade", "Crossfade"),
             TransitionOption("slide", "Slide"),
@@ -1537,7 +1569,12 @@ class SettingsActivity : ComponentActivity() {
             TransitionOption("zoom_fade", "Zoom fade"),
             TransitionOption("instant", "Instant"),
             TransitionOption("push", "Push"),
+            TransitionOption("book_flip", "Book Flip"),
+            TransitionOption("cube", "3D Cube Rotate"),
         )
+        private val FADE_CHOICES = longArrayOf(2000, 1200, 500)
+        private val FADE_LABELS = arrayOf("Slow", "Normal", "Fast")
+
 
         private fun cycle(choices: LongArray, cur: Long, fallback: Int): Long {
             for (i in choices.indices) if (choices[i] == cur) return choices[(i + 1) % choices.size]

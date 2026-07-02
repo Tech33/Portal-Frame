@@ -152,9 +152,11 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_CHIME_END_MIN = 22 * 60
         const val DEFAULT_DELAY_MS = 6000L
         const val DEFAULT_FADE_MS = 1200L
-        const val DEFAULT_TRANSITION = "crossfade"
+
+        const val DEFAULT_TRANSITION = "slide"
         const val DEFAULT_ALBUM_PLAYBACK = "shuffled_merge"
-        const val DEFAULT_PAIRS = false
+
+        const val DEFAULT_PAIRS = true
         const val DEFAULT_KEN_BURNS = true
         const val DEFAULT_CLOCK = true
         const val DEFAULT_CLOCK_FLIP = false
