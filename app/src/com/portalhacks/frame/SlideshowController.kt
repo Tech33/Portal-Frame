@@ -133,7 +133,8 @@ class SlideshowController(
     private var remote = false
     private var index = 0
     private var curIsPair = false // current frame shows a paired (two-photo) composite
-    private var running = false
+
+    internal var running = false
     private var slideshowPaused = false
     private var animGen = 0L
     private var onDismiss: Runnable? = null
@@ -1084,6 +1085,7 @@ class SlideshowController(
 
     fun stop() {
         running = false
+        clockOnly = false
         handler.removeCallbacks(autoTick)
         handler.removeCallbacks(clockTick)
         handler.removeCallbacks(weatherTick)

@@ -667,14 +667,6 @@ class SettingsActivity : ComponentActivity() {
                 )
                 Divider()
                 ToggleRow(
-                    label = "Use Immortal Flip Clock",
-                    key = ConfigReceiver.KEY_CLOCK_FLIP,
-                    def = ConfigReceiver.DEFAULT_CLOCK_FLIP,
-                    iconRes = R.drawable.ic_night_clock,
-                    iconBg = Color(0xFFE05B49),
-                )
-                Divider()
-                ToggleRow(
                     label = "Scheduled full-screen night clock",
                     key = ConfigReceiver.KEY_NIGHT_CLOCK,
                     def = ConfigReceiver.DEFAULT_NIGHT_CLOCK,
@@ -689,22 +681,31 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
                 )
-                Divider()
-                TimeSliderRow(
-                    "Night clock starts",
-                    ConfigReceiver.KEY_NIGHT_CLOCK_START_MIN,
-                    ConfigReceiver.DEFAULT_NIGHT_CLOCK_START_MIN,
-                    iconRes = R.drawable.ic_duration,
-                    iconBg = Color(0xFF8E8E93),
-                )
-                Divider()
-                TimeSliderRow(
-                    "Night clock ends",
-                    ConfigReceiver.KEY_NIGHT_CLOCK_END_MIN,
-                    ConfigReceiver.DEFAULT_NIGHT_CLOCK_END_MIN,
-                    iconRes = R.drawable.ic_duration,
-                    iconBg = Color(0xFF8E8E93),
-                )
+                
+                val showNightOptions = rememberPrefBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, ConfigReceiver.DEFAULT_NIGHT_CLOCK)
+                if (showNightOptions.value) {
+                    Spacer(Modifier.height(8.dp))
+                    Column(Modifier.padding(start = 32.dp)) {
+                        NightClockStyleSelectorRow()
+                        Divider()
+                        TimeSliderRow(
+                            "Starts at",
+                            ConfigReceiver.KEY_NIGHT_CLOCK_START_MIN,
+                            ConfigReceiver.DEFAULT_NIGHT_CLOCK_START_MIN,
+                            iconRes = R.drawable.ic_duration,
+                            iconBg = Color(0xFF8E8E93),
+                        )
+                        Divider()
+                        TimeSliderRow(
+                            "Ends at",
+                            ConfigReceiver.KEY_NIGHT_CLOCK_END_MIN,
+                            ConfigReceiver.DEFAULT_NIGHT_CLOCK_END_MIN,
+                            iconRes = R.drawable.ic_duration,
+                            iconBg = Color(0xFF8E8E93),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
                 Divider()
                 ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true, iconRes = R.drawable.ic_night_warmth, iconBg = Color(0xFFFF9500))
                 Divider()
@@ -1281,6 +1282,53 @@ class SettingsActivity : ComponentActivity() {
                 if (i < TRANSITION_OPTIONS.lastIndex) {
                     Spacer(Modifier.height(2.dp))
                 }
+            }
+        }
+    }
+
+    @Composable
+    private fun NightClockStyleSelectorRow() {
+        var selected by rememberPrefBoolean(ConfigReceiver.KEY_CLOCK_FLIP, ConfigReceiver.DEFAULT_CLOCK_FLIP)
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RowIcon(R.drawable.ic_night_clock, Color(0xFFE05B49))
+                Text("Night clock style", color = PortalColors.Text, fontSize = 18.sp)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { selected = false }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = !selected,
+                    onClick = null,
+                    colors = RadioButtonDefaults.colors(
+                        selectedColor = PortalColors.Blue,
+                        unselectedColor = PortalColors.TextMuted,
+                    ),
+                )
+                Text("Classic", color = PortalColors.Text, fontSize = 16.sp)
+            }
+            Spacer(Modifier.height(2.dp))
+            Row(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { selected = true }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = selected,
+                    onClick = null,
+                    colors = RadioButtonDefaults.colors(
+                        selectedColor = PortalColors.Blue,
+                        unselectedColor = PortalColors.TextMuted,
+                    ),
+                )
+                Text("Immortal Flip Clock", color = PortalColors.Text, fontSize = 16.sp)
             }
         }
     }

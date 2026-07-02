@@ -43,6 +43,7 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     private lateinit var loader: ImageLoader
     private lateinit var controller: SlideshowController
+    private var flipWebView: WebView? = null
     private val handler = Handler(Looper.getMainLooper())
 
     private var currentAlbums: List<String> = emptyList()
@@ -76,6 +77,7 @@ class SlideshowComposeActivity : ComponentActivity() {
     private val scheduleTick = object : Runnable {
         override fun run() {
             updateScheduledClockOnly()
+            applyClockOnlyMode()
             handler.postDelayed(this, 60000 - System.currentTimeMillis() % 60000)
         }
     }
@@ -94,66 +96,13 @@ class SlideshowComposeActivity : ComponentActivity() {
             screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
 
-        val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-        useFlipClock = prefs.getBoolean(ConfigReceiver.KEY_CLOCK_FLIP, ConfigReceiver.DEFAULT_CLOCK_FLIP)
-
-        if (useFlipClock) {
-            val root = FrameLayout(this)
-            val webView = WebView(this).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                )
-                settings.apply {
-                    javaScriptEnabled = true
-                    domStorageEnabled = true
-                    displayZoomControls = false
-                    builtInZoomControls = false
-                    useWideViewPort = true
-                    loadWithOverviewMode = true
-                }
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                        return false
-                    }
-                }
-                loadUrl("file:///android_asset/immortal_clock/index.html")
-            }
-            root.addView(webView)
-
-            val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    startActivity(homeIntent)
-                    finishAndRemoveTask()
-                    return true
-                }
-
-                override fun onLongPress(e: MotionEvent) {
-                    startActivity(Intent(this@SlideshowComposeActivity, SettingsActivity::class.java))
-                }
-            })
-
-            webView.setOnTouchListener { _, event ->
-                gestureDetector.onTouchEvent(event)
-                true
-            }
-
-            setContent {
-                AndroidView(factory = { root }, modifier = Modifier.fillMaxSize())
-            }
-            return
-        }
-
         loader = ImageLoader(this)
-        // Build the slideshow's View hierarchy, then host it inside Compose.
         val root = FrameLayout(this)
-        controller = SlideshowController(this, root, loader).apply {
+
+        // 1. Build the slideshow's View hierarchy.
+        val slideshowContainer = FrameLayout(this)
+        controller = SlideshowController(this, slideshowContainer, loader).apply {
             setOnDismiss {
-                // Navigate to the default launcher
                 val homeIntent = Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_HOME)
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -161,12 +110,59 @@ class SlideshowComposeActivity : ComponentActivity() {
                 startActivity(homeIntent)
                 finishAndRemoveTask()
             }
-            // Portal's launcher won't show sideloaded app icons, so long-press the
-            // slideshow to reach the setup/settings screen.
             setOnSettings {
                 startActivity(Intent(this@SlideshowComposeActivity, SettingsActivity::class.java))
             }
         }
+        root.addView(slideshowContainer)
+
+        // 2. Build the WebView for the Immortal Flip clock style (hidden by default)
+        val webView = WebView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                displayZoomControls = false
+                builtInZoomControls = false
+                useWideViewPort = true
+                loadWithOverviewMode = true
+            }
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                    return false
+                }
+            }
+            loadUrl("file:///android_asset/immortal_clock/index.html")
+            visibility = View.GONE
+        }
+        flipWebView = webView
+        root.addView(webView)
+
+        // GestureDetector to dismiss/exit screensaver or open settings from the WebView flip clock
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(homeIntent)
+                finishAndRemoveTask()
+                return true
+            }
+
+            override fun onLongPress(e: MotionEvent) {
+                startActivity(Intent(this@SlideshowComposeActivity, SettingsActivity::class.java))
+            }
+        })
+
+        webView.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            true
+        }
+
         setContent {
             AndroidView(factory = { root }, modifier = Modifier.fillMaxSize())
         }
@@ -199,7 +195,9 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (useFlipClock) return
+        if (flipWebView?.visibility == View.VISIBLE) {
+            flipWebView?.onResume()
+        }
         // Clear any photo retained from a previous run so re-entering the frame
         // doesn't flash the old image before the first new frame loads.
         controller.blank()
@@ -221,13 +219,13 @@ class SlideshowComposeActivity : ComponentActivity() {
         if (prefs.getBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, ConfigReceiver.DEFAULT_NIGHT_CLOCK)) {
             handler.postDelayed(scheduleTick, 60000 - System.currentTimeMillis() % 60000)
         }
-        applyClockOnlyMode()
 
         currentAlbums = Albums.enabled(prefs)
 
         if (currentAlbums.isEmpty()) {
             // No albums playing (none configured, or all stopped): show the bundled samples.
             controller.start()
+            applyClockOnlyMode()
             return
         }
 
@@ -247,11 +245,14 @@ class SlideshowComposeActivity : ComponentActivity() {
         fetchAllAndApply(cached.isEmpty())
         handler.removeCallbacks(refreshTick)
         handler.postDelayed(refreshTick, REFRESH_INTERVAL_MS)
+
+        // Apply clock only mode at the end to override slideshow if needed
+        applyClockOnlyMode()
     }
 
     override fun onPause() {
         super.onPause()
-        if (useFlipClock) return
+        flipWebView?.onPause()
         sensorManager.unregisterListener(lightListener)
         handler.removeCallbacks(refreshTick)
         handler.removeCallbacks(scheduleTick)
@@ -259,14 +260,42 @@ class SlideshowComposeActivity : ComponentActivity() {
     }
 
     private fun applyClockOnlyMode() {
-        controller.setClockOnly(lowLightClockOnly || scheduledClockOnly)
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val clockOnlyActive = lowLightClockOnly || scheduledClockOnly
+        val useFlipForNight = prefs.getBoolean(ConfigReceiver.KEY_CLOCK_FLIP, ConfigReceiver.DEFAULT_CLOCK_FLIP)
+
+        if (clockOnlyActive) {
+            if (useFlipForNight) {
+                // Show WebView Flip Clock
+                controller.setClockOnly(false)
+                controller.blank()
+                controller.stop()
+                flipWebView?.visibility = View.VISIBLE
+                flipWebView?.onResume()
+            } else {
+                // Show Classic Native Clock
+                flipWebView?.visibility = View.GONE
+                flipWebView?.onPause()
+                if (!controller.running) {
+                    controller.start()
+                }
+                controller.setClockOnly(true)
+            }
+        } else {
+            // Normal Slideshow Mode
+            flipWebView?.visibility = View.GONE
+            flipWebView?.onPause()
+            controller.setClockOnly(false)
+            if (!controller.running) {
+                controller.start()
+            }
+        }
     }
 
     private fun updateScheduledClockOnly() {
         val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, ConfigReceiver.DEFAULT_NIGHT_CLOCK)) {
             scheduledClockOnly = false
-            applyClockOnlyMode()
             return
         }
         val start = prefs.getInt(
@@ -280,7 +309,6 @@ class SlideshowComposeActivity : ComponentActivity() {
         val now = Calendar.getInstance()
         val minute = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
         scheduledClockOnly = isMinuteInRange(minute, start, end)
-        applyClockOnlyMode()
     }
 
     private val refreshTick = object : Runnable {
