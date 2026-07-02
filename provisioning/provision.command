@@ -100,10 +100,42 @@ $ADB shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --ez guard true
 echo "[+] Booting up Portal-Frame..."
 $ADB shell monkey -p com.portalhacks.frame -c android.intent.category.LAUNCHER 1
 
+# 10. Enable Wireless ADB
+echo "[+] Enabling wireless ADB on port 5555..."
+$ADB tcpip 5555 2>/dev/null
+
+# Attempt to extract Portal IP address
+PORTAL_IP=$($ADB shell "ip addr show wlan0" 2>/dev/null | grep -oE "inet [0-9.]+" | cut -d' ' -f2 | head -n 1)
+if [ -z "$PORTAL_IP" ]; then
+    PORTAL_IP=$($ADB shell ip route 2>/dev/null | awk '/src/ {print $NF}' | head -n 1)
+fi
+
 echo ""
 echo "======================================================="
 echo "SUCCESS: Installation and Permission Grant Complete!"
 echo "======================================================="
 rm portal-frame.apk
+
+if [ ! -z "$PORTAL_IP" ]; then
+    echo "-------------------------------------------------------"
+    echo "WIRELESS ADB ENABLED!"
+    echo "Your Portal IP address is: $PORTAL_IP"
+    echo ""
+    echo "To connect to this device wirelessly next time:"
+    echo "1. Unplug the USB cable."
+    echo "2. Open Terminal and run:"
+    echo "   $ADB connect $PORTAL_IP:5555"
+    echo "-------------------------------------------------------"
+else
+    echo "-------------------------------------------------------"
+    echo "WIRELESS ADB ENABLED on port 5555!"
+    echo ""
+    echo "To connect to this device wirelessly next time:"
+    echo "1. Find your Portal's IP address (Settings -> Wi-Fi -> tap your network)."
+    echo "2. Unplug the USB cable."
+    echo "3. Open Terminal and run:"
+    echo "   $ADB connect <PORTAL-IP>:5555"
+    echo "-------------------------------------------------------"
+fi
 echo ""
 read -p "Press [Enter] to exit..."

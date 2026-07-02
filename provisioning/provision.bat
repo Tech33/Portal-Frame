@@ -125,7 +125,39 @@ echo 7. Setting Frame as screensaver and enabling guard...
 %ADB% shell settings put secure screensaver_activate_on_sleep 1
 %ADB% shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --ez guard true
 
+echo 8. Enabling wireless ADB on port 5555...
+%ADB% tcpip 5555 >nul 2>&1
+
+:: Attempt to extract Portal IP address in Windows Batch
+set PORTAL_IP=
+for /f "tokens=9" %%a in ('%ADB% shell ip route 2^>nul ^| findstr "src"') do (
+    set PORTAL_IP=%%a
+)
+
 echo === Provisioning Complete! ===
 echo Your Meta Portal has been provisioned as a custom device.
+echo.
+
+if not "%PORTAL_IP%"=="" (
+    echo -------------------------------------------------------
+    echo WIRELESS ADB ENABLED!
+    echo Your Portal IP address is: %PORTAL_IP%
+    echo.
+    echo To connect to this device wirelessly next time:
+    echo 1. Unplug the USB cable.
+    echo 2. Open Command Prompt and run:
+    echo    %ADB% connect %PORTAL_IP%:5555
+    echo -------------------------------------------------------
+) else (
+    echo -------------------------------------------------------
+    echo WIRELESS ADB ENABLED on port 5555!
+    echo.
+    echo To connect to this device wirelessly next time:
+    echo 1. Find your Portal's IP address (Settings -> Wi-Fi -> tap your network).
+    echo 2. Unplug the USB cable.
+    echo 3. Open Command Prompt and run:
+    echo    %ADB% connect [PORTAL-IP]:5555
+    echo -------------------------------------------------------
+)
 echo.
 pause
