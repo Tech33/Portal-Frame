@@ -1261,8 +1261,8 @@ class SettingsActivity : ComponentActivity() {
         iconBg: Color = Color.Gray,
         onChanged: (() -> Unit)? = null
     ) {
-        var selected by rememberPrefString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
-        val selectedVal = selected ?: ConfigReceiver.DEFAULT_TRANSITION
+        val selectedState = rememberPrefString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
+        val selectedVal = selectedState.value ?: ConfigReceiver.DEFAULT_TRANSITION
         var expanded by remember { mutableStateOf(false) }
         val label = TRANSITION_OPTIONS.firstOrNull { it.id == selectedVal }?.label ?: "Slide"
         
@@ -1276,12 +1276,12 @@ class SettingsActivity : ComponentActivity() {
             ) {
                 RowIcon(iconRes, iconBg)
                 Column(Modifier.weight(1f)) {
-                    Text("Transition", color = PortalColors.Text, fontSize = 18.sp)
+                    Text("Transition", color = PortalColors.Text, fontSize = 20.sp)
                 }
                 Text(
                     text = "$label  ${if (expanded) "▲" else "▼"}",
                     color = PortalColors.Blue,
-                    fontSize = 16.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -1294,7 +1294,7 @@ class SettingsActivity : ComponentActivity() {
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable {
                                     if (selectedVal != option.id) {
-                                        selected = option.id
+                                        prefs.edit().putString(ConfigReceiver.KEY_TRANSITION, option.id).apply()
                                         onChanged?.invoke()
                                     }
                                 }
@@ -1309,7 +1309,7 @@ class SettingsActivity : ComponentActivity() {
                                     unselectedColor = PortalColors.TextMuted,
                                 ),
                             )
-                            Text(option.label, color = PortalColors.Text, fontSize = 16.sp)
+                            Text(option.label, color = PortalColors.Text, fontSize = 18.sp)
                         }
                         if (i < TRANSITION_OPTIONS.lastIndex) {
                             Spacer(Modifier.height(2.dp))
@@ -1322,17 +1322,18 @@ class SettingsActivity : ComponentActivity() {
 
     @Composable
     private fun NightClockStyleSelectorRow() {
-        var selected by rememberPrefBoolean(ConfigReceiver.KEY_CLOCK_FLIP, ConfigReceiver.DEFAULT_CLOCK_FLIP)
+        val selectedState = rememberPrefBoolean(ConfigReceiver.KEY_CLOCK_FLIP, ConfigReceiver.DEFAULT_CLOCK_FLIP)
+        val selected = selectedState.value
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 RowIcon(R.drawable.ic_night_clock, Color(0xFFE05B49))
-                Text("Night clock style", color = PortalColors.Text, fontSize = 18.sp)
+                Text("Night clock style", color = PortalColors.Text, fontSize = 20.sp)
             }
             Spacer(Modifier.height(8.dp))
             Row(
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable { selected = false }
+                    .clickable { prefs.edit().putBoolean(ConfigReceiver.KEY_CLOCK_FLIP, false).apply() }
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1344,13 +1345,13 @@ class SettingsActivity : ComponentActivity() {
                         unselectedColor = PortalColors.TextMuted,
                     ),
                 )
-                Text("Classic", color = PortalColors.Text, fontSize = 16.sp)
+                Text("Classic", color = PortalColors.Text, fontSize = 18.sp)
             }
             Spacer(Modifier.height(2.dp))
             Row(
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable { selected = true }
+                    .clickable { prefs.edit().putBoolean(ConfigReceiver.KEY_CLOCK_FLIP, true).apply() }
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1362,7 +1363,7 @@ class SettingsActivity : ComponentActivity() {
                         unselectedColor = PortalColors.TextMuted,
                     ),
                 )
-                Text("Immortal Flip Clock", color = PortalColors.Text, fontSize = 16.sp)
+                Text("Immortal Flip Clock", color = PortalColors.Text, fontSize = 18.sp)
             }
         }
     }

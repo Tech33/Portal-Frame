@@ -761,6 +761,75 @@ class SlideshowController(
         menuContainer.addView(settingsBtn, lpSettings)
         menuContainer.addView(exitBtn, lpExit)
         playButtonOverlay.addView(menuContainer)
+
+        // Central Pause Indicator
+        val centerContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+
+        // Circular background wrapper for pause symbol
+        val pauseCircle = FrameLayout(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                Ui.dp(context, 80f),
+                Ui.dp(context, 80f),
+            ).apply {
+                bottomMargin = Ui.dp(context, 16f)
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x80000000.toInt())
+                setStroke(Ui.dp(context, 2f), 0x40FFFFFF.toInt())
+            }
+        }
+
+        val pauseIcon = TextView(context).apply {
+            text = "\u23F8" // Pause symbol ⏸
+            setTextColor(Color.WHITE)
+            textSize = 32f
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            )
+        }
+        pauseCircle.addView(pauseIcon)
+
+        val pauseText = TextView(context).apply {
+            text = "Slideshow Paused"
+            setTextColor(Color.WHITE)
+            textSize = 28f
+            typeface = Ui.medium(context)
+            gravity = Gravity.CENTER
+            setShadowLayer(8f, 0f, 2f, Color.BLACK)
+        }
+
+        val resumeSubtext = TextView(context).apply {
+            text = "Tap anywhere to resume"
+            setTextColor(0xCCFFFFFF.toInt())
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setShadowLayer(6f, 0f, 1f, Color.BLACK)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = Ui.dp(context, 8f)
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+        }
+
+        centerContainer.addView(pauseCircle)
+        centerContainer.addView(pauseText)
+        centerContainer.addView(resumeSubtext)
+        playButtonOverlay.addView(centerContainer)
     }
 
     private fun showPlayButtonOverlay() {
