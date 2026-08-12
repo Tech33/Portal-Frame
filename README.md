@@ -38,6 +38,19 @@ To make installation as simple as possible, the project includes an automatic 1-
 For manual installation steps or to restore default stock settings, see the full **[Install & User Guide](INSTALL.md)**.
 After that, open **Frame → Updates** on the Portal to check for wireless updates — no computer required.
 
+## 1. Allowing In-App Updates (Sideloading support)
+Since the Portal OS's default "Unknown Sources" toggle (install_non_market_apps) is broken and does not allow apps to install updates, the following two commands are run to bypass this and allow Portal-Frame to update itself:
+
+Disable the Meta overlay (which hides/breaks the package installer dialog buttons):
+bash
+
+adb shell pm disable-user --user 0 com.facebook.aloha.rro.niu.android
+Grant the update installation permission directly via appops:
+bash
+
+adb shell appops set com.portalhacks.frame REQUEST_INSTALL_PACKAGES allow
+
+
 ## Version tracker
 
 Each release publishes a **`version.json`** on GitHub (repo root and attached to the release) with
