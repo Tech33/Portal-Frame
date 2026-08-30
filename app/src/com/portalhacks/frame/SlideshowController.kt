@@ -111,6 +111,7 @@ class SlideshowController(
     private val transitionMode: String // single selected slideshow transition mode
     private val use24Hour: Boolean
     private val shuffle: Boolean // play photos in random order
+    private val recentFirst: Boolean // sort newest photos first
     private val pairs: Boolean // pair two photos to fill the screen (side-by-side or stacked)
     private val kenBurns: Boolean // cinematic slow pan + zoom while held
     private val showClock: Boolean // clock + weather overlay
@@ -152,6 +153,9 @@ class SlideshowController(
     private var dateDx = 0f
     private var dateDy = 0f
     private var dateScale = 1f
+    private var clockOnlyDx = 0f
+    private var clockOnlyDy = 0f
+    private var clockOnlyScale = 1f
     private val actionMenuBackdrop: View
 
     // Battery status state.
@@ -195,6 +199,7 @@ class SlideshowController(
             android.text.format.DateFormat.is24HourFormat(context)
         }
         shuffle = prefs.getBoolean(ConfigReceiver.KEY_SHUFFLE, false)
+        recentFirst = prefs.getBoolean(ConfigReceiver.KEY_RECENT_FIRST, ConfigReceiver.DEFAULT_RECENT_FIRST)
         pairs = prefs.getBoolean(ConfigReceiver.KEY_PAIRS, ConfigReceiver.DEFAULT_PAIRS)
         kenBurns = prefs.getBoolean(ConfigReceiver.KEY_KEN_BURNS, ConfigReceiver.DEFAULT_KEN_BURNS)
         showClock = prefs.getBoolean(ConfigReceiver.KEY_CLOCK, ConfigReceiver.DEFAULT_CLOCK)
@@ -215,6 +220,9 @@ class SlideshowController(
         dateDx = prefs.getFloat(ConfigReceiver.KEY_DATE_DX, ConfigReceiver.DEFAULT_DATE_DX)
         dateDy = prefs.getFloat(ConfigReceiver.KEY_DATE_DY, ConfigReceiver.DEFAULT_DATE_DY)
         dateScale = prefs.getFloat(ConfigReceiver.KEY_DATE_SCALE, ConfigReceiver.DEFAULT_DATE_SCALE)
+        clockOnlyDx = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_DX, ConfigReceiver.DEFAULT_CLOCK_ONLY_DX)
+        clockOnlyDy = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_DY, ConfigReceiver.DEFAULT_CLOCK_ONLY_DY)
+        clockOnlyScale = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_SCALE, ConfigReceiver.DEFAULT_CLOCK_ONLY_SCALE)
         monthYearFmt.timeZone = TimeZone.getTimeZone("UTC")
 
         root.setBackgroundColor(Color.BLACK)
@@ -273,7 +281,7 @@ class SlideshowController(
         info = TextView(context)
         info.setTextColor(0xFFF0F0F0.toInt())
         info.typeface = Ui.medium(context)
-        info.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+        info.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
         info.setShadowLayer(8f, 0f, 1f, Color.BLACK)
         val ip = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -1266,7 +1274,9 @@ class SlideshowController(
             return
         }
         items = ArrayList(newItems)
-        if (shuffle) {
+        if (recentFirst && !shuffle) {
+            items.sortByDescending { it.timeMs }
+        } else if (shuffle) {
             smartShuffle(items)
         }
         if (onThisDay) {
