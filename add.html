@@ -78,6 +78,24 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+    #paste-btn {
+      background-color: #2C2C2E;
+      border: 1px solid #3A3A3C;
+      color: #FFFFFF;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 0 16px;
+      cursor: pointer;
+      box-shadow: none;
+      transition: background-color 0.2s;
+      white-space: nowrap;
+      height: 50px;
+      box-sizing: border-box;
+    }
+    #paste-btn:active {
+      background-color: #3A3A3C;
+    }
     button {
       width: 100%;
       padding: 16px;
@@ -139,7 +157,10 @@
 
     <div class="field-group">
       <label for="url">Shared Album Link</label>
-      <input type="text" id="url" placeholder="https://photos.app.goo.gl/..." autocomplete="off">
+      <div style="display: flex; gap: 8px; width: 100%;">
+        <input type="text" id="url" placeholder="https://photos.app.goo.gl/..." autocomplete="off" style="flex: 1;">
+        <button id="paste-btn" onclick="pasteFromClipboard()">📋 Paste</button>
+      </div>
     </div>
 
     <button id="send-btn" onclick="sendUrl()">Send to Frame</button>
@@ -157,6 +178,30 @@
       const codeInput = document.getElementById('code');
       codeInput.value = codeParam;
       codeInput.disabled = true;
+    }
+
+    async function pasteFromClipboard() {
+      const urlInput = document.getElementById('url');
+      const statusBox = document.getElementById('status-box');
+      statusBox.className = 'status';
+      statusBox.style.display = 'none';
+
+      try {
+        if (!navigator.clipboard || !navigator.clipboard.readText) {
+          alert("Your browser does not support automatic clipboard pasting. Please long-press the text box and select 'Paste' manually.");
+          return;
+        }
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          urlInput.value = text.trim();
+        } else {
+          statusBox.innerText = 'Clipboard is empty. Please copy the link from WhatsApp or Photos first!';
+          statusBox.classList.add('error');
+        }
+      } catch (err) {
+        console.error("Failed to read clipboard:", err);
+        alert("Could not read clipboard. Please ensure clipboard permissions are allowed, or long-press the text box to paste manually.");
+      }
     }
 
     async function importKey(keyStr) {
