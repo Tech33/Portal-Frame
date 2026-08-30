@@ -594,6 +594,15 @@ class SettingsActivity : ComponentActivity() {
                 Divider()
                 ToggleRow("Shuffle photos", ConfigReceiver.KEY_SHUFFLE, false, iconRes = R.drawable.ic_shuffle, iconBg = Color(0xFF007AFF))
                 Divider()
+                ToggleRow(
+                    "Recent photos first",
+                    ConfigReceiver.KEY_RECENT_FIRST,
+                    ConfigReceiver.DEFAULT_RECENT_FIRST,
+                    subtitle = "Show recently taken photos first (only applies when Shuffle is off)",
+                    iconRes = R.drawable.ic_clock_format,
+                    iconBg = Color(0xFF5856D6)
+                )
+                Divider()
                 TransitionSelectorRow(iconRes = R.drawable.ic_transition, iconBg = Color(0xFF34C759))
                 Divider()
                 ToggleRow("Pair photos to fill the screen", ConfigReceiver.KEY_PAIRS, false, iconRes = R.drawable.ic_pairs, iconBg = Color(0xFFFF9500))
@@ -637,16 +646,22 @@ class SettingsActivity : ComponentActivity() {
                 Divider()
                 
                 CycleRow(
-                    label = "Clock position & size",
+                    label = "Clock & date positions",
                     value = "Reset",
                     iconRes = R.drawable.ic_reset,
                     iconBg = Color(0xFFFF3B30),
-                    subtitle = "Reset the clock drag/pinch transformations to default bottom-left.",
+                    subtitle = "💡 Tip: While playing the slideshow, you can long-press the clock or date (or the centered clock at night) to drag and pinch-to-zoom. Tap here to reset all overlays.",
                 ) {
                     prefs.edit()
                         .putFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
                         .putFloat(ConfigReceiver.KEY_CLOCK_DY, ConfigReceiver.DEFAULT_CLOCK_DY)
                         .putFloat(ConfigReceiver.KEY_CLOCK_SCALE, ConfigReceiver.DEFAULT_CLOCK_SCALE)
+                        .putFloat(ConfigReceiver.KEY_DATE_DX, ConfigReceiver.DEFAULT_DATE_DX)
+                        .putFloat(ConfigReceiver.KEY_DATE_DY, ConfigReceiver.DEFAULT_DATE_DY)
+                        .putFloat(ConfigReceiver.KEY_DATE_SCALE, ConfigReceiver.DEFAULT_DATE_SCALE)
+                        .putFloat(ConfigReceiver.KEY_CLOCK_ONLY_DX, ConfigReceiver.DEFAULT_CLOCK_ONLY_DX)
+                        .putFloat(ConfigReceiver.KEY_CLOCK_ONLY_DY, ConfigReceiver.DEFAULT_CLOCK_ONLY_DY)
+                        .putFloat(ConfigReceiver.KEY_CLOCK_ONLY_SCALE, ConfigReceiver.DEFAULT_CLOCK_ONLY_SCALE)
                         .apply()
                 }
                 Divider()
@@ -1139,27 +1154,31 @@ class SettingsActivity : ComponentActivity() {
     ) {
         val onState = rememberPrefBoolean(key, def)
         val on = onState.value
+        val toggleAction = { checked: Boolean ->
+            if (onClickOverride != null) {
+                onClickOverride(checked)
+            } else {
+                prefs.edit().putBoolean(key, checked).apply()
+                onChanged?.invoke()
+            }
+        }
         Row(
-            Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            Modifier
+                .fillMaxWidth()
+                .clickable { toggleAction(!on) }
+                .padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RowIcon(iconRes, iconBg)
             Column(Modifier.weight(1f)) {
                 Text(label, color = PortalColors.Text, fontSize = 18.sp)
                 if (subtitle != null) {
-                    Text(subtitle, color = PortalColors.Text.copy(alpha = 0.6f), fontSize = 13.sp)
+                    Text(subtitle, color = PortalColors.Text.copy(alpha = 0.8f), fontSize = 14.sp)
                 }
             }
             Switch(
                 checked = on,
-                onCheckedChange = { checked ->
-                    if (onClickOverride != null) {
-                        onClickOverride(checked)
-                    } else {
-                        prefs.edit().putBoolean(key, checked).apply()
-                        onChanged?.invoke()
-                    }
-                },
+                onCheckedChange = { checked -> toggleAction(checked) },
                 colors = SwitchDefaults.colors(checkedTrackColor = PortalColors.Blue),
             )
         }
