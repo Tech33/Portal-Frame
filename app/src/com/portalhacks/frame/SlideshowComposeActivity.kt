@@ -353,6 +353,22 @@ class SlideshowComposeActivity : ComponentActivity() {
         if (currentAlbums != Albums.enabled(prefs)) {
             return // the playing album set changed while fetching
         }
+
+        // Check for private broadcast message prefix in album titles
+        var broadcastMsg = ""
+        for (url in currentAlbums) {
+            val title = AlbumCache.title(prefs, url)
+            if (title != null && (title.startsWith("[Msg]", ignoreCase = true) || title.startsWith("[Msg] ", ignoreCase = true))) {
+                val idx = title.indexOf(']')
+                val msg = title.substring(idx + 1).trim()
+                if (msg.isNotEmpty()) {
+                    broadcastMsg = msg
+                    break // use the first found message
+                }
+            }
+        }
+        controller.setBroadcastMessage(broadcastMsg)
+
         val merged = mergedSlides(prefs, currentAlbums)
         if (merged.isEmpty()) {
             if (showHint) controller.setStatusHint("Couldn't load photos — retrying later")

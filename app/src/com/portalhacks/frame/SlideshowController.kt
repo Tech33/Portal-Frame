@@ -81,6 +81,7 @@ class SlideshowController(
     private val bigDate: TextView
     private val clockOnlyBox: LinearLayout
     private val clockExit: TextView
+    private val broadcastBanner: TextView
     private val dateLine: TextView
     private val clockEditHint: TextView // "drag/pinch/tap" hint shown while editing the clock
     private val shimmer: ShimmerView
@@ -427,6 +428,24 @@ class SlideshowController(
         exp.rightMargin = Ui.dp(context, 28f)
         clockExit.layoutParams = exp
 
+        broadcastBanner = TextView(context)
+        broadcastBanner.setTextColor(Color.WHITE)
+        broadcastBanner.typeface = Ui.medium(context)
+        broadcastBanner.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+        broadcastBanner.gravity = Gravity.CENTER
+        broadcastBanner.background = Ui.roundRect(0xA0000000.toInt(), Ui.dp(context, 22f)).apply {
+            setStroke(Ui.dp(context, 2f), 0xFFD4AF37.toInt())
+        }
+        broadcastBanner.setPadding(Ui.dp(context, 24f), Ui.dp(context, 12f), Ui.dp(context, 24f), Ui.dp(context, 12f))
+        broadcastBanner.visibility = View.GONE
+        val bblp = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+        )
+        bblp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        bblp.topMargin = Ui.dp(context, 28f)
+        broadcastBanner.layoutParams = bblp
+
         if (!showClock) {
             clockBox.visibility = View.GONE
         }
@@ -491,6 +510,7 @@ class SlideshowController(
         root.addView(bottomScrim)
         root.addView(status)
         root.addView(info)
+        root.addView(broadcastBanner)
         root.addView(clockBox)
         root.addView(clockOnlyBox)
         root.addView(clockEditHint)
@@ -1375,6 +1395,16 @@ class SlideshowController(
      * Mirrors the Portal night-mode "only show clock in low light" behaviour. Driven by
      * the ambient light sensor in [SlideshowComposeActivity].
      */
+    fun setBroadcastMessage(msg: String) {
+        val message = msg.trim()
+        if (message.isEmpty()) {
+            broadcastBanner.visibility = View.GONE
+        } else {
+            broadcastBanner.text = message
+            broadcastBanner.visibility = View.VISIBLE
+        }
+    }
+
     fun setClockOnly(on: Boolean) {
         if (clockOnly == on) {
             return
