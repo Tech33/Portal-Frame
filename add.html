@@ -58,7 +58,7 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    input[type="text"] {
+    input[type="text"], input[type="url"] {
       width: 100%;
       padding: 16px;
       border: 1px solid #2C2C2E;
@@ -70,13 +70,51 @@
       outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
-    input[type="text"]:focus {
+    input[type="text"]:focus, input[type="url"]:focus {
       border-color: #007AFF;
       box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
     }
     input[disabled] {
       opacity: 0.5;
       cursor: not-allowed;
+    }
+    
+    .input-container {
+      position: relative;
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+    .paste-tooltip {
+      position: absolute;
+      background: #007AFF;
+      color: #FFFFFF;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 100;
+      bottom: 58px;
+      left: 10px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(5px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .paste-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 20px;
+      border-width: 6px;
+      border-style: solid;
+      border-color: #007AFF transparent transparent transparent;
+    }
+    .paste-tooltip.show {
+      opacity: 1;
+      transform: translateY(0);
     }
     #paste-btn {
       background-color: #2C2C2E;
@@ -157,9 +195,10 @@
 
     <div class="field-group">
       <label for="url">Shared Album Link</label>
-      <div style="display: flex; gap: 8px; width: 100%;">
-        <input type="text" id="url" placeholder="https://photos.app.goo.gl/..." autocomplete="off" style="flex: 1;">
-        <button id="paste-btn" onclick="pasteFromClipboard()">📋 Paste</button>
+      <div class="input-container">
+        <div id="paste-tooltip" class="paste-tooltip">Tap here, then select "Paste"</div>
+        <input type="url" id="url" placeholder="https://photos.app.goo.gl/..." autocomplete="off" style="flex: 1;" enterkeyhint="done">
+        <button id="paste-btn" type="button" onclick="pasteFromClipboard()">📋 Paste</button>
       </div>
     </div>
 
@@ -188,20 +227,35 @@
 
       try {
         if (!navigator.clipboard || !navigator.clipboard.readText) {
-          alert("Your browser does not support automatic clipboard pasting. Please long-press the text box and select 'Paste' manually.");
+          showPasteFallback();
           return;
         }
         const text = await navigator.clipboard.readText();
-        if (text) {
+        if (text && text.trim().startsWith('http')) {
           urlInput.value = text.trim();
+          hidePasteFallback();
         } else {
-          statusBox.innerText = 'Clipboard is empty. Please copy the link from WhatsApp or Photos first!';
-          statusBox.classList.add('error');
+          showPasteFallback();
         }
       } catch (err) {
         console.error("Failed to read clipboard:", err);
-        alert("Could not read clipboard. Please ensure clipboard permissions are allowed, or long-press the text box to paste manually.");
+        showPasteFallback();
       }
+    }
+
+    function showPasteFallback() {
+      const urlInput = document.getElementById('url');
+      const tooltip = document.getElementById('paste-tooltip');
+      urlInput.focus();
+      tooltip.classList.add('show');
+      setTimeout(() => {
+        tooltip.classList.remove('show');
+      }, 4000);
+    }
+
+    function hidePasteFallback() {
+      const tooltip = document.getElementById('paste-tooltip');
+      tooltip.classList.remove('show');
     }
 
     async function importKey(keyStr) {
