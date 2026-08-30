@@ -410,12 +410,12 @@ class SlideshowController(
         clockExit.text = "Exit"
         clockExit.setTextColor(Color.WHITE)
         clockExit.typeface = Ui.medium(context)
-        clockExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        clockExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
         clockExit.gravity = Gravity.CENTER
-        clockExit.background = Ui.roundRect(0x33000000, Ui.dp(context, 14f)).apply {
+        clockExit.background = Ui.roundRect(0x33000000, Ui.dp(context, 26f)).apply {
             setStroke(Ui.dp(context, 1f), 0x55FFFFFF)
         }
-        clockExit.setPadding(Ui.dp(context, 18f), Ui.dp(context, 10f), Ui.dp(context, 18f), Ui.dp(context, 10f))
+        clockExit.setPadding(Ui.dp(context, 32f), Ui.dp(context, 16f), Ui.dp(context, 32f), Ui.dp(context, 16f))
         clockExit.visibility = View.GONE
         clockExit.setOnClickListener { onDismiss?.run() }
         val exp = FrameLayout.LayoutParams(
@@ -502,6 +502,7 @@ class SlideshowController(
         root.addView(actionMenuCard)
         clockBox.post { applyClockTransformNow() } // apply saved position/size once laid out
         dateLine.post { applyDateTransformNow() } // apply saved date position/size once laid out
+        clockOnlyBox.post { applyClockOnlyTransformNow() }
 
         // Run clock/night + weather + shimmer from the start so they're alive even
         // during the initial "Loading…" wait before the first photo arrives.
@@ -614,6 +615,31 @@ class SlideshowController(
             .apply()
     }
 
+    fun applyClockOnlyTransform() {
+        val p = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        clockOnlyDx = p.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_DX, ConfigReceiver.DEFAULT_CLOCK_ONLY_DX)
+        clockOnlyDy = p.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_DY, ConfigReceiver.DEFAULT_CLOCK_ONLY_DY)
+        clockOnlyScale = p.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_SCALE, ConfigReceiver.DEFAULT_CLOCK_ONLY_SCALE)
+        clockOnlyBox.post { applyClockOnlyTransformNow() }
+    }
+
+    private fun applyClockOnlyTransformNow() {
+        clockOnlyBox.pivotX = clockOnlyBox.width / 2f
+        clockOnlyBox.pivotY = clockOnlyBox.height / 2f
+        clockOnlyBox.scaleX = clockOnlyScale
+        clockOnlyBox.scaleY = clockOnlyScale
+        clockOnlyBox.translationX = clockOnlyDx * reqW
+        clockOnlyBox.translationY = clockOnlyDy * reqH
+    }
+
+    private fun persistClockOnlyTransform() {
+        context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE).edit()
+            .putFloat(ConfigReceiver.KEY_CLOCK_ONLY_DX, clockOnlyDx)
+            .putFloat(ConfigReceiver.KEY_CLOCK_ONLY_DY, clockOnlyDy)
+            .putFloat(ConfigReceiver.KEY_CLOCK_ONLY_SCALE, clockOnlyScale)
+            .apply()
+    }
+
     fun applyDateTransform() {
         val p = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         dateDx = p.getFloat(ConfigReceiver.KEY_DATE_DX, ConfigReceiver.DEFAULT_DATE_DX)
@@ -641,6 +667,15 @@ class SlideshowController(
 
     /** True if (x,y) in root coords falls on the clock (its scaled bounds, padded for easy grab). */
     private fun isOnClock(x: Float, y: Float): Boolean {
+        if (clockOnly) {
+            if (clockOnlyBox.width == 0) return false
+            val pad = Ui.dp(context, 24f)
+            val cx = clockOnlyBox.left + clockOnlyBox.translationX + clockOnlyBox.width / 2f
+            val cy = clockOnlyBox.top + clockOnlyBox.translationY + clockOnlyBox.height / 2f
+            val halfW = clockOnlyBox.width / 2f * clockOnlyScale + pad
+            val halfH = clockOnlyBox.height / 2f * clockOnlyScale + pad
+            return x >= cx - halfW && x <= cx + halfW && y >= cy - halfH && y <= cy + halfH
+        }
         if (clockBox.width == 0) return false
         val pad = Ui.dp(context, 24f)
         val cx = clockBox.left + clockBox.translationX + clockBox.width / 2f
@@ -669,8 +704,14 @@ class SlideshowController(
 
     private fun enterClockEdit() {
         editingClock = true
-        clockBox.background = Ui.roundRect(0x33000000, Ui.dp(context, 14f)).apply {
-            setStroke(Ui.dp(context, 2f), Ui.BLUE)
+        if (clockOnly) {
+            clockOnlyBox.background = Ui.roundRect(0x33000000, Ui.dp(context, 14f)).apply {
+                setStroke(Ui.dp(context, 2f), Ui.BLUE)
+            }
+        } else {
+            clockBox.background = Ui.roundRect(0x33000000, Ui.dp(context, 14f)).apply {
+                setStroke(Ui.dp(context, 2f), Ui.BLUE)
+            }
         }
         clockEditHint.animate().cancel()
         clockEditHint.text = "Drag to move · pinch to resize · tap to finish"
@@ -680,11 +721,16 @@ class SlideshowController(
 
     private fun exitClockEdit() {
         editingClock = false
-        clockBox.background = null
+        if (clockOnly) {
+            clockOnlyBox.background = null
+            persistClockOnlyTransform()
+        } else {
+            clockBox.background = null
+            persistClockTransform()
+        }
         clockEditHint.animate().cancel()
         clockEditHint.visibility = View.GONE
         clockEditHint.alpha = 1f
-        persistClockTransform()
     }
 
     private fun initPlayButton() {
@@ -940,6 +986,20 @@ class SlideshowController(
 
     /** Move the clock by a touch delta, clamped so its centre stays on screen. */
     private fun dragClockBy(dx: Float, dy: Float) {
+        if (clockOnly) {
+            val baseCx = clockOnlyBox.left + clockOnlyBox.width / 2f
+            val baseCy = clockOnlyBox.top + clockOnlyBox.height / 2f
+            val edge = Ui.dp(context, 8f).toFloat()
+            val w = if (reqW > 0) reqW.toFloat() else clockOnlyBox.rootView.width.toFloat()
+            val h = if (reqH > 0) reqH.toFloat() else clockOnlyBox.rootView.height.toFloat()
+            val tx = (clockOnlyBox.translationX + dx).coerceIn(edge - baseCx, w - edge - baseCx)
+            val ty = (clockOnlyBox.translationY + dy).coerceIn(edge - baseCy, h - edge - baseCy)
+            clockOnlyBox.translationX = tx
+            clockOnlyBox.translationY = ty
+            if (w > 0) clockOnlyDx = tx / w
+            if (h > 0) clockOnlyDy = ty / h
+            return
+        }
         val baseCx = clockBox.left + clockBox.width / 2f
         val baseCy = clockBox.top + clockBox.height / 2f
         val edge = Ui.dp(context, 8f).toFloat()
@@ -954,6 +1014,13 @@ class SlideshowController(
     }
 
     private fun applyClockScale() {
+        if (clockOnly) {
+            clockOnlyBox.pivotX = clockOnlyBox.width / 2f
+            clockOnlyBox.pivotY = clockOnlyBox.height / 2f
+            clockOnlyBox.scaleX = clockOnlyScale
+            clockOnlyBox.scaleY = clockOnlyScale
+            return
+        }
         clockBox.pivotX = clockBox.width / 2f
         clockBox.pivotY = clockBox.height / 2f
         clockBox.scaleX = clockScale
@@ -1021,7 +1088,7 @@ class SlideshowController(
                         if (!editingClock && !editingDate) {
                             // Long-press ON the clock → grab it for edit; ON date → edit date; elsewhere → settings.
                             val onClock = isOnClock(e.x, e.y)
-                            val onDate = isOnDate(e.x, e.y)
+                            val onDate = if (clockOnly) false else isOnDate(e.x, e.y)
                             if (onClock || onDate || onSettings != null) {
                                 val pl = Runnable {
                                     pendingLong = null
@@ -1039,7 +1106,7 @@ class SlideshowController(
                             cancelLong()
                             pinching = true
                             pinchStartDist = twoPointerDist(e)
-                            pinchBaseScale = clockScale
+                            pinchBaseScale = if (clockOnly) clockOnlyScale else clockScale
                         } else if (editingDate) {
                             cancelLong()
                             datePinching = true
@@ -1053,8 +1120,13 @@ class SlideshowController(
                             if (pinching && e.pointerCount >= 2) {
                                 val d = twoPointerDist(e)
                                 if (pinchStartDist > 0f) {
-                                    clockScale = (pinchBaseScale * d / pinchStartDist)
-                                        .coerceIn(CLOCK_SCALE_MIN, CLOCK_SCALE_MAX)
+                                    if (clockOnly) {
+                                        clockOnlyScale = (pinchBaseScale * d / pinchStartDist)
+                                            .coerceIn(CLOCK_SCALE_MIN, CLOCK_SCALE_MAX)
+                                    } else {
+                                        clockScale = (pinchBaseScale * d / pinchStartDist)
+                                            .coerceIn(CLOCK_SCALE_MIN, CLOCK_SCALE_MAX)
+                                    }
                                     applyClockScale()
                                 }
                             } else {
@@ -1090,7 +1162,7 @@ class SlideshowController(
                     }
                     MotionEvent.ACTION_POINTER_UP -> {
                         if (editingClock && pinching) {
-                            persistClockTransform()
+                            if (clockOnly) persistClockOnlyTransform() else persistClockTransform()
                             pinching = false
                             // Continue dragging with whichever pointer remains (avoid a jump).
                             val rem = if (e.actionIndex == 0) 1 else 0
@@ -1114,7 +1186,7 @@ class SlideshowController(
                             ) {
                                 exitClockEdit() // a clean tap finishes editing
                             } else {
-                                persistClockTransform() // a drag/pinch ended — stay in edit mode
+                                if (clockOnly) persistClockOnlyTransform() else persistClockTransform() // a drag/pinch ended — stay in edit mode
                             }
                             pinching = false
                         } else if (editingDate) {
@@ -1159,7 +1231,7 @@ class SlideshowController(
                     }
                     MotionEvent.ACTION_CANCEL -> {
                         cancelLong()
-                        if (editingClock) { pinching = false; persistClockTransform() }
+                        if (editingClock) { pinching = false; if (clockOnly) persistClockOnlyTransform() else persistClockTransform() }
                         else if (editingDate) { datePinching = false; persistDateTransform() }
                         return true
                     }
@@ -1312,6 +1384,7 @@ class SlideshowController(
             handler.removeCallbacks(autoTick) // pause advancing
             shimmer.stopSweep()
             blank() // photos -> black
+            applyClockOnlyTransform()
             clockBox.visibility = View.GONE // hide the bottom overlay clock
             clockOnlyBox.visibility = View.VISIBLE // big centered clock instead
             clockExit.visibility = View.VISIBLE
