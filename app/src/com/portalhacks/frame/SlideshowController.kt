@@ -716,15 +716,15 @@ class SlideshowController(
         val settingsBtn = TextView(context).apply {
             text = "Settings"
             setTextColor(0xFFFFFFFF.toInt())
-            textSize = 16f
+            textSize = 20f
             typeface = Ui.medium(context)
             gravity = Gravity.CENTER
-            val paddingH = Ui.dp(context, 20f)
-            val paddingV = Ui.dp(context, 10f)
+            val paddingH = Ui.dp(context, 32f)
+            val paddingV = Ui.dp(context, 16f)
             setPadding(paddingH, paddingV, paddingH, paddingV)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0x55000000)
-                cornerRadius = Ui.dp(context, 22f).toFloat()
+                cornerRadius = Ui.dp(context, 26f).toFloat()
                 setStroke(Ui.dp(context, 1f), 0x80FFFFFF.toInt())
             }
             isClickable = true
@@ -737,15 +737,15 @@ class SlideshowController(
         val exitBtn = TextView(context).apply {
             text = "Exit"
             setTextColor(0xFFFFFFFF.toInt())
-            textSize = 16f
+            textSize = 20f
             typeface = Ui.medium(context)
             gravity = Gravity.CENTER
-            val paddingH = Ui.dp(context, 24f)
-            val paddingV = Ui.dp(context, 10f)
+            val paddingH = Ui.dp(context, 36f)
+            val paddingV = Ui.dp(context, 16f)
             setPadding(paddingH, paddingV, paddingH, paddingV)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0x55FF3B30.toInt())
-                cornerRadius = Ui.dp(context, 22f).toFloat()
+                cornerRadius = Ui.dp(context, 26f).toFloat()
                 setStroke(Ui.dp(context, 1f), 0x80FF3B30.toInt())
             }
             isClickable = true
@@ -769,6 +769,55 @@ class SlideshowController(
         menuContainer.addView(settingsBtn, lpSettings)
         menuContainer.addView(exitBtn, lpExit)
         playButtonOverlay.addView(menuContainer)
+
+        // Left Navigation Arrow Button
+        val leftArrowBtn = TextView(context).apply {
+            text = "‹"
+            setTextColor(Color.WHITE)
+            textSize = 32f
+            gravity = Gravity.CENTER
+            val size = Ui.dp(context, 56f)
+            layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                gravity = Gravity.CENTER_VERTICAL or Gravity.START
+                leftMargin = Ui.dp(context, 32f)
+            }
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x55000000)
+                setStroke(Ui.dp(context, 1f), 0x80FFFFFF.toInt())
+            }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                showPrevious()
+            }
+        }
+
+        // Right Navigation Arrow Button
+        val rightArrowBtn = TextView(context).apply {
+            text = "›"
+            setTextColor(Color.WHITE)
+            textSize = 32f
+            gravity = Gravity.CENTER
+            val size = Ui.dp(context, 56f)
+            layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                gravity = Gravity.CENTER_VERTICAL or Gravity.END
+                rightMargin = Ui.dp(context, 32f)
+            }
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x55000000)
+                setStroke(Ui.dp(context, 1f), 0x80FFFFFF.toInt())
+            }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                showNext()
+            }
+        }
+
+        playButtonOverlay.addView(leftArrowBtn)
+        playButtonOverlay.addView(rightArrowBtn)
 
         // Central Pause Indicator
         val centerContainer = LinearLayout(context).apply {
@@ -1087,10 +1136,22 @@ class SlideshowController(
                             } else if (abs(dx) < TAP_SLOP && abs(dy) < TAP_SLOP &&
                                 dt < TAP_TIMEOUT_MS
                             ) {
-                                if (slideshowPaused) {
-                                    resumeSlideshow()
+                                if (clockOnly) {
+                                    // In low-light clock mode, center tap does nothing
                                 } else {
-                                    pauseSlideshow()
+                                    val width = v.width
+                                    val tapX = e.x
+                                    if (tapX < width * 0.25f) {
+                                        showPrevious()
+                                    } else if (tapX > width * 0.75f) {
+                                        showNext()
+                                    } else {
+                                        if (slideshowPaused) {
+                                            resumeSlideshow()
+                                        } else {
+                                            pauseSlideshow()
+                                        }
+                                    }
                                 }
                             }
                         }
