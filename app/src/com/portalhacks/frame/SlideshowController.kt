@@ -268,7 +268,7 @@ class SlideshowController(
         status = TextView(context).apply {
             setTextColor(Color.WHITE)
             typeface = Ui.medium(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * fontScale)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setShadowLayer(8f, 0f, 1f, Color.BLACK)
             gravity = Gravity.CENTER
             background = Ui.roundRect(0xCC1C1C1E.toInt(), Ui.dp(context, 20f)).apply {
@@ -286,14 +286,12 @@ class SlideshowController(
         }
         status.layoutParams = sp
 
-        // Lower-right: photo date / memories / location caption with high-contrast frosted backing.
+        // Lower-right: photo date / memories / location caption — floating directly over the photo like the clock widget.
         info = TextView(context).apply {
-            setTextColor(Color.WHITE)
+            setTextColor(0xFFF0F0F0.toInt())
             typeface = Ui.medium(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f * fontScale)
-            setShadowLayer(10f, 0f, 2f, Color.BLACK)
-            background = Ui.roundRect(0x66000000, Ui.dp(context, 16f))
-            setPadding(Ui.dp(context, 16f), Ui.dp(context, 8f), Ui.dp(context, 16f), Ui.dp(context, 8f))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+            setShadowLayer(8f, 0f, 1f, Color.BLACK)
         }
         val ip = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -314,7 +312,7 @@ class SlideshowController(
         clock = TextView(context)
         clock.setTextColor(Color.WHITE)
         clock.typeface = Ui.clockFace(context) // match the Portal native clock
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 80f * fontScale)
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 80f)
         clock.setShadowLayer(12f, 0f, 2f, Color.BLACK)
         clock.includeFontPadding = false
         val moonPx = Ui.dp(context, 22f)
@@ -324,7 +322,7 @@ class SlideshowController(
         dateLine = TextView(context)
         dateLine.setTextColor(0xFFF0F0F0.toInt())
         dateLine.typeface = Ui.medium(context)
-        dateLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f * fontScale)
+        dateLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
         dateLine.setShadowLayer(8f, 0f, 1f, Color.BLACK)
         clockBox = LinearLayout(context)
         clockBox.orientation = LinearLayout.VERTICAL
@@ -390,7 +388,7 @@ class SlideshowController(
         bigDate = TextView(context)
         bigDate.setTextColor(0xFF9AA0AE.toInt())
         bigDate.typeface = Ui.medium(context)
-        bigDate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f * fontScale)
+        bigDate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
         bigDate.gravity = Gravity.CENTER_HORIZONTAL
         bigDate.setShadowLayer(8f, 0f, 1f, Color.BLACK)
         bigDate.setSingleLine(true)
@@ -422,7 +420,7 @@ class SlideshowController(
         clockExit.text = "Exit"
         clockExit.setTextColor(Color.WHITE)
         clockExit.typeface = Ui.medium(context)
-        clockExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f * fontScale)
+        clockExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
         clockExit.gravity = Gravity.CENTER
         clockExit.background = Ui.roundRect(0x33000000, Ui.dp(context, 26f)).apply {
             setStroke(Ui.dp(context, 1f), 0x55FFFFFF)
@@ -439,16 +437,28 @@ class SlideshowController(
         exp.rightMargin = Ui.dp(context, 28f)
         clockExit.layoutParams = exp
 
-        broadcastBanner = TextView(context)
-        broadcastBanner.setTextColor(Color.WHITE)
-        broadcastBanner.typeface = Ui.medium(context)
-        broadcastBanner.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f * fontScale)
-        broadcastBanner.gravity = Gravity.CENTER
-        broadcastBanner.background = Ui.roundRect(0xA0000000.toInt(), Ui.dp(context, 22f)).apply {
-            setStroke(Ui.dp(context, 2f), 0xFFD4AF37.toInt())
+        broadcastBanner = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            typeface = Ui.medium(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            gravity = Gravity.CENTER
+            background = Ui.roundRect(0x55000000, Ui.dp(context, 22f)).apply {
+                setStroke(Ui.dp(context, 1f), 0x66FFD700)
+            }
+            setPadding(Ui.dp(context, 24f), Ui.dp(context, 12f), Ui.dp(context, 24f), Ui.dp(context, 12f))
+            visibility = View.GONE
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                prefs.edit().putBoolean("broadcast_dismissed_$todayStr", true).apply()
+                animate().alpha(0f).setDuration(400).withEndAction {
+                    visibility = View.GONE
+                    alpha = 1f
+                }
+            }
         }
-        broadcastBanner.setPadding(Ui.dp(context, 24f), Ui.dp(context, 12f), Ui.dp(context, 24f), Ui.dp(context, 12f))
-        broadcastBanner.visibility = View.GONE
         val bblp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -1414,9 +1424,36 @@ class SlideshowController(
         val message = msg.trim()
         if (message.isEmpty()) {
             broadcastBanner.visibility = View.GONE
-        } else {
+            return
+        }
+
+        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+        val lastMsg = prefs.getString("last_broadcast_msg", null)
+        val lastDate = prefs.getString("last_broadcast_date", null)
+        val dismissed = prefs.getBoolean("broadcast_dismissed_$todayStr", false)
+
+        if (message != lastMsg) {
+            // New broadcast message received
+            prefs.edit()
+                .putString("last_broadcast_msg", message)
+                .putString("last_broadcast_date", todayStr)
+                .putBoolean("broadcast_dismissed_$todayStr", false)
+                .apply()
             broadcastBanner.text = message
-            broadcastBanner.visibility = View.VISIBLE
+            broadcastBanner.alpha = 1f
+            broadcastBanner.visibility = if (!clockOnly) View.VISIBLE else View.GONE
+        } else {
+            // Same message: verify it belongs to today's local date and hasn't been dismissed
+            if (lastDate == todayStr && !dismissed) {
+                broadcastBanner.text = message
+                broadcastBanner.alpha = 1f
+                broadcastBanner.visibility = if (!clockOnly) View.VISIBLE else View.GONE
+            } else {
+                // Expired next day or dismissed by user
+                broadcastBanner.visibility = View.GONE
+            }
         }
     }
 
@@ -1431,6 +1468,7 @@ class SlideshowController(
             blank() // photos -> black
             applyClockOnlyTransform()
             clockBox.visibility = View.GONE // hide the bottom overlay clock
+            broadcastBanner.visibility = View.GONE
             clockOnlyBox.visibility = View.VISIBLE // big centered clock instead
             clockExit.visibility = View.VISIBLE
             startClock() // ensure ticking + populate the big clock now
@@ -1441,6 +1479,11 @@ class SlideshowController(
                 shimmer.startSweep()
             }
             clockBox.visibility = if (showClock) View.VISIBLE else View.GONE
+            val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+            val lastMsg = prefs.getString("last_broadcast_msg", "") ?: ""
+            if (lastMsg.isNotEmpty()) {
+                setBroadcastMessage(lastMsg)
+            }
             if (running && items.isNotEmpty()) {
                 showImmediate(index) // resume photos + auto-advance
             }
