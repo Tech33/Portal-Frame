@@ -470,21 +470,22 @@ class PhotosActivity : Activity() {
         cloudPollRunnable = poll
         main.post(poll)
 
+        val fontScale = Ui.fontScale(this)
         val f = FrameLayout(this)
         f.setBackgroundColor(Color.BLACK)
 
-        val boxSize = Ui.dp(this, 300f)
-        val boxTop = Ui.dp(this, 64f)
+        val boxSize = Ui.dp(this, 280f)
+        val boxTop = Ui.dp(this, 56f)
 
-        // QR Code display container
+        // QR Code display container with Apple squircle border
         val qrImage = ImageView(this)
         qrImage.scaleType = ImageView.ScaleType.FIT_CENTER
-        val border = Ui.roundRect(0xFFFFFFFF.toInt(), Ui.dp(this, 20f))
+        val border = Ui.roundRect(0xFFFFFFFF.toInt(), Ui.dp(this, 24f))
         qrImage.background = border
         val pad = Ui.dp(this, 16f)
         qrImage.setPadding(pad, pad, pad, pad)
 
-        val qrBitmap = generateQrCode(cloudUrl, 300)
+        val qrBitmap = generateQrCode(cloudUrl, 280)
         if (qrBitmap != null) {
             qrImage.setImageBitmap(qrBitmap)
         }
@@ -497,12 +498,11 @@ class PhotosActivity : Activity() {
         val colW = Math.min(Ui.dp(this, 640f), resources.displayMetrics.widthPixels - Ui.dp(this, 48f))
 
         val title = TextView(this)
-        title.text = "Add an album"
-        title.setTextColor(0xFFF0F0F0.toInt())
+        title.text = "Add an Album"
+        title.setTextColor(Color.WHITE)
         title.typeface = Ui.bold(this)
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f * fontScale)
         title.gravity = Gravity.CENTER_HORIZONTAL
-        title.setShadowLayer(8f, 0f, 1f, Color.BLACK)
         val titleLp = FrameLayout.LayoutParams(colW, WRAP)
         titleLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         titleLp.topMargin = Ui.dp(this, 16f)
@@ -521,28 +521,28 @@ class PhotosActivity : Activity() {
             helperText += "\n\nOffline backup: visit http://$ip:8080 on the same Wi-Fi"
         }
         subtitle.text = helperText
-        subtitle.setTextColor(0xFFD2D2D2.toInt())
+        subtitle.setTextColor(0xFFE5E5EA.toInt())
         subtitle.typeface = Ui.medium(this)
-        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * fontScale)
         subtitle.gravity = Gravity.CENTER_HORIZONTAL
-        subtitle.setLineSpacing(Ui.dp(this, 3f).toFloat(), 1f)
-        subtitle.setShadowLayer(8f, 0f, 1f, Color.BLACK)
+        subtitle.setLineSpacing(Ui.dp(this, 4f).toFloat(), 1f)
         val subLp = LinearLayout.LayoutParams(MATCH, WRAP)
         subLp.topMargin = Ui.dp(this, 8f)
         belowBox.addView(subtitle, subLp)
 
         val manualHeading = sectionHeading("Or enter the link manually")
         val manualHeadingLp = LinearLayout.LayoutParams(MATCH, WRAP)
-        manualHeadingLp.topMargin = Ui.dp(this, 36f)
+        manualHeadingLp.topMargin = Ui.dp(this, 32f)
         belowBox.addView(manualHeading, manualHeadingLp)
 
         val edit = Ui.field(this, "Paste a Google Photos or iCloud link")
         edit.setSingleLine(true)
+        edit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f * fontScale)
         edit.inputType = InputType.TYPE_CLASS_TEXT or
             InputType.TYPE_TEXT_VARIATION_URI or
             InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         belowBox.addView(edit)
-        val done = pillButton("Done", Ui.BLUE, 0xFFF0F0F0.toInt()) { addTypedAlbum(edit) }
+        val done = pillButton("Done", Ui.BLUE, Color.WHITE) { addTypedAlbum(edit) }
         val doneLp = LinearLayout.LayoutParams(WRAP, WRAP)
         doneLp.topMargin = Ui.dp(this, 14f)
         doneLp.gravity = Gravity.END
@@ -551,7 +551,7 @@ class PhotosActivity : Activity() {
 
         val belowLp = FrameLayout.LayoutParams(colW, WRAP)
         belowLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-        belowLp.topMargin = boxTop + boxSize + Ui.dp(this, 24f)
+        belowLp.topMargin = boxTop + boxSize + Ui.dp(this, 20f)
         f.addView(belowBox, belowLp)
 
         root.addView(f)

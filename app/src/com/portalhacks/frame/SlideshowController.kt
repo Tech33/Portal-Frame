@@ -224,6 +224,7 @@ class SlideshowController(
         clockOnlyDx = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_DX, ConfigReceiver.DEFAULT_CLOCK_ONLY_DX)
         clockOnlyDy = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_DY, ConfigReceiver.DEFAULT_CLOCK_ONLY_DY)
         clockOnlyScale = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_SCALE, ConfigReceiver.DEFAULT_CLOCK_ONLY_SCALE)
+        val fontScale = Ui.fontScale(context)
         monthYearFmt.timeZone = TimeZone.getTimeZone("UTC")
 
         root.setBackgroundColor(Color.BLACK)
@@ -263,27 +264,37 @@ class SlideshowController(
         bsp.gravity = Gravity.BOTTOM
         bottomScrim.layoutParams = bsp
 
-        // Loading / error hint — moved to the top so it doesn't fight the clock.
-        status = TextView(context)
-        status.setTextColor(Ui.TEXT_MUTED)
-        status.typeface = Ui.medium(context)
-        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-        status.setShadowLayer(6f, 0f, 1f, Color.BLACK)
+        // Loading / error hint / pause badge — sleek iOS floating capsule at top center.
+        status = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            typeface = Ui.medium(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * fontScale)
+            setShadowLayer(8f, 0f, 1f, Color.BLACK)
+            gravity = Gravity.CENTER
+            background = Ui.roundRect(0xCC1C1C1E.toInt(), Ui.dp(context, 20f)).apply {
+                setStroke(Ui.dp(context, 1f), 0x33FFFFFF)
+            }
+            setPadding(Ui.dp(context, 20f), Ui.dp(context, 10f), Ui.dp(context, 20f), Ui.dp(context, 10f))
+            visibility = View.GONE
+        }
         val sp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
-        )
-        sp.gravity = Gravity.TOP or Gravity.START
-        sp.leftMargin = margin
-        sp.topMargin = Ui.dp(context, 24f)
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            topMargin = Ui.dp(context, 28f)
+        }
         status.layoutParams = sp
 
-        // Lower-right: photo date (and location when available).
-        info = TextView(context)
-        info.setTextColor(0xFFF0F0F0.toInt())
-        info.typeface = Ui.medium(context)
-        info.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
-        info.setShadowLayer(8f, 0f, 1f, Color.BLACK)
+        // Lower-right: photo date / memories / location caption with high-contrast frosted backing.
+        info = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            typeface = Ui.medium(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f * fontScale)
+            setShadowLayer(10f, 0f, 2f, Color.BLACK)
+            background = Ui.roundRect(0x66000000, Ui.dp(context, 16f))
+            setPadding(Ui.dp(context, 16f), Ui.dp(context, 8f), Ui.dp(context, 16f), Ui.dp(context, 8f))
+        }
         val ip = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -303,7 +314,7 @@ class SlideshowController(
         clock = TextView(context)
         clock.setTextColor(Color.WHITE)
         clock.typeface = Ui.clockFace(context) // match the Portal native clock
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 80f)
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 80f * fontScale)
         clock.setShadowLayer(12f, 0f, 2f, Color.BLACK)
         clock.includeFontPadding = false
         val moonPx = Ui.dp(context, 22f)
@@ -313,7 +324,7 @@ class SlideshowController(
         dateLine = TextView(context)
         dateLine.setTextColor(0xFFF0F0F0.toInt())
         dateLine.typeface = Ui.medium(context)
-        dateLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+        dateLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f * fontScale)
         dateLine.setShadowLayer(8f, 0f, 1f, Color.BLACK)
         clockBox = LinearLayout(context)
         clockBox.orientation = LinearLayout.VERTICAL
@@ -379,7 +390,7 @@ class SlideshowController(
         bigDate = TextView(context)
         bigDate.setTextColor(0xFF9AA0AE.toInt())
         bigDate.typeface = Ui.medium(context)
-        bigDate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+        bigDate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f * fontScale)
         bigDate.gravity = Gravity.CENTER_HORIZONTAL
         bigDate.setShadowLayer(8f, 0f, 1f, Color.BLACK)
         bigDate.setSingleLine(true)
@@ -411,7 +422,7 @@ class SlideshowController(
         clockExit.text = "Exit"
         clockExit.setTextColor(Color.WHITE)
         clockExit.typeface = Ui.medium(context)
-        clockExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+        clockExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f * fontScale)
         clockExit.gravity = Gravity.CENTER
         clockExit.background = Ui.roundRect(0x33000000, Ui.dp(context, 26f)).apply {
             setStroke(Ui.dp(context, 1f), 0x55FFFFFF)
@@ -431,7 +442,7 @@ class SlideshowController(
         broadcastBanner = TextView(context)
         broadcastBanner.setTextColor(Color.WHITE)
         broadcastBanner.typeface = Ui.medium(context)
-        broadcastBanner.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+        broadcastBanner.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f * fontScale)
         broadcastBanner.gravity = Gravity.CENTER
         broadcastBanner.background = Ui.roundRect(0xA0000000.toInt(), Ui.dp(context, 22f)).apply {
             setStroke(Ui.dp(context, 2f), 0xFFD4AF37.toInt())
@@ -541,7 +552,9 @@ class SlideshowController(
     }
 
     fun setStatusHint(text: String?) {
-        status.text = text
+        val t = text ?: ""
+        status.text = t
+        status.visibility = if (t.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
     }
 
     fun pauseSlideshow() {
@@ -552,7 +565,8 @@ class SlideshowController(
         handler.removeCallbacks(autoTick)
         refreshActionMenuLabels()
         if (running && items.isNotEmpty()) {
-            status.text = "Paused on current photo"
+            status.text = "⏸️  Paused on current photo"
+            status.visibility = if (!clockOnly) View.VISIBLE else View.GONE
         }
         showPlayButtonOverlay()
     }
@@ -565,6 +579,7 @@ class SlideshowController(
         refreshActionMenuLabels()
         if (running && items.isNotEmpty()) {
             status.text = ""
+            status.visibility = View.GONE
             scheduleAuto()
         }
         hidePlayButtonOverlay()
@@ -1520,7 +1535,10 @@ class SlideshowController(
                 index = i
                 curIsPair = isPair
                 status.text = ""
-                info.text = captionOf(i)
+                status.visibility = View.GONE
+                val captionText = if (isPair) captionForPair(i, j) else captionOf(i)
+                info.text = captionText
+                info.visibility = if (captions && captionText.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
                 noteShown(i)
                 if (isPair) {
                     noteShown(j)
@@ -1568,7 +1586,10 @@ class SlideshowController(
             index = next
             curIsPair = isPair
             status.text = ""
-            info.text = captionOf(next)
+            status.visibility = View.GONE
+            val captionText = if (isPair) captionForPair(next, j) else captionOf(next)
+            info.text = captionText
+            info.visibility = if (captions && captionText.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
             noteShown(next)
             if (isPair) {
                 noteShown(j)
@@ -1870,14 +1891,35 @@ class SlideshowController(
     }
 
     private fun captionOf(i: Int): String {
+        if (i < 0 || i >= items.size) return ""
         val s = items[i]
-        if (s.caption != null) {
-            return s.caption // explicit override (e.g. an "On this day" badge)
+        val timeStr = if (s.caption != null) {
+            s.caption // explicit override (e.g. an "On this day" badge)
+        } else if (s.timeMs != Slide.NO_DATE) {
+            relativeTime(s.timeMs)
+        } else {
+            ""
         }
-        return if (s.timeMs == Slide.NO_DATE) "" else relativeTime(s.timeMs)
+        val loc = s.location?.trim()
+        return if (!loc.isNullOrEmpty() && timeStr.isNotEmpty()) {
+            "📍 $loc · $timeStr"
+        } else if (!loc.isNullOrEmpty()) {
+            "📍 $loc"
+        } else {
+            timeStr
+        }
     }
 
-    /** "Today" / "Yesterday" / "N days|weeks|months ago", or "MMM yyyy" past a year. */
+    private fun captionForPair(i: Int, j: Int): String {
+        val c1 = captionOf(i)
+        if (j < 0 || j >= items.size) return c1
+        val c2 = captionOf(j)
+        if (c1.isEmpty()) return c2
+        if (c2.isEmpty() || c1 == c2) return c1
+        return "$c1  ·  $c2"
+    }
+
+    /** Granular relative memory milestones: "Today", "Yesterday", "N days ago", "1/2/3/4 weeks ago", "N months ago", "MMM yyyy". */
     private fun relativeTime(timeMs: Long): String {
         val now = System.currentTimeMillis()
         val todayDays = (now + TimeZone.getDefault().getOffset(now)) / 86400000L
@@ -1891,13 +1933,13 @@ class SlideshowController(
         if (days < 7) {
             return "$days days ago"
         }
-        if (days < 45) {
-            val w = Math.round(days / 7.0)
-            return if (w <= 1) "1 week ago" else "$w weeks ago"
+        if (days < 35) {
+            val w = Math.max(1, Math.round(days / 7.0).toInt())
+            return if (w == 1) "1 week ago" else "$w weeks ago"
         }
         if (days < 365) {
-            val m = Math.round(days / 30.0)
-            return if (m <= 1) "1 month ago" else "$m months ago"
+            val m = Math.max(1, Math.round(days / 30.0).toInt())
+            return if (m == 1) "1 month ago" else "$m months ago"
         }
         return monthYearFmt.format(Date(timeMs))
     }

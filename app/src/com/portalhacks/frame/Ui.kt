@@ -35,33 +35,45 @@ import kotlin.math.roundToInt
  */
 internal object Ui {
 
-    // ---- Palette: Portal platform tokens, dark theme (never pure #000/#FFF) ----
-    const val BLUE = 0xFF1990FF.toInt()          // primary actions, selected
-    const val BLUE_PRESSED = 0xFF1877F2.toInt()  // pressed
-    const val GREEN = 0xFF6CD64F.toInt()         // success
-    const val RED = 0xFFFA484E.toInt()           // error / destructive
-    const val BG = 0xFF1A1A1A.toInt()            // app background
-    const val SURFACE = 0xFF2B2B2B.toInt()       // cards / secondary buttons
-    const val SURFACE_PRESSED = 0xFF3A3A3A.toInt()
-    const val FIELD = 0xFF202020.toInt()         // input fields
-    const val ON_PRIMARY = 0xFFF0F0F0.toInt()    // text on blue (near-white)
-    const val TEXT = 0xFFEDEDED.toInt()          // headings
-    const val TEXT_BODY = 0xFFDADADA.toInt()     // body
-    const val TEXT_MUTED = 0xFFBEC6DC.toInt()    // captions / secondary
-    const val HAIRLINE = 0x22FFFFFF
+    // ---- Palette: Apple iOS 18 System Dark tokens ----
+    const val BLUE = 0xFF0A84FF.toInt()          // iOS System Blue
+    const val BLUE_PRESSED = 0xFF0056B3.toInt()  // pressed
+    const val GREEN = 0xFF30D158.toInt()         // iOS System Green
+    const val ORANGE = 0xFFFF9F0A.toInt()        // iOS System Orange
+    const val RED = 0xFFFF453A.toInt()           // iOS System Red
+    const val INDIGO = 0xFF5E5CE6.toInt()        // iOS System Indigo / Purple
+    const val BG = 0xFF000000.toInt()            // iOS Pure Black (OLED contrast)
+    const val SURFACE = 0xFF1C1C1E.toInt()       // iOS Elevated Dark background (cards)
+    const val SURFACE_PRESSED = 0xFF2C2C2E.toInt()
+    const val FIELD = 0xFF2C2C2E.toInt()         // input fields
+    const val ON_PRIMARY = 0xFFFFFFFF.toInt()    // white
+    const val TEXT = 0xFFFFFFFF.toInt()          // primary headings
+    const val TEXT_BODY = 0xFFE5E5EA.toInt()     // body
+    const val TEXT_MUTED = 0xFF8E8E93.toInt()    // captions / secondary
+    const val HAIRLINE = 0x338E8E93
 
     // Illustration palette (icons / decorative)
-    const val SLATE = 0xFFB9CAD2.toInt()
-    const val TEAL = 0xFF6BCEBB.toInt()
-    const val LIME = 0xFFA3CE71.toInt()
-    const val LEMON = 0xFFFCD872.toInt()
-    const val ORANGE = 0xFFF7923B.toInt()
-    const val TOMATO = 0xFFFB724B.toInt()
-    const val PINK = 0xFFEC7EBD.toInt()
+    const val SLATE = 0xFF8E8E93.toInt()
+    const val TEAL = 0xFF64D2FF.toInt()
+    const val LIME = 0xFF30D158.toInt()
+    const val LEMON = 0xFFFFD60A.toInt()
+    const val PINK = 0xFFFF375F.toInt()
 
     const val TOP_INSET_DP = 72    // reserve for Portal's top system overlay
     const val MAX_W_DP = 760       // centred content column
     const val MAX_W_WIDE_DP = 1160 // wide two-column layouts
+
+    fun fontScale(c: Context): Float {
+        return try {
+            val prefs = c.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+            val s = prefs.getFloat(ConfigReceiver.KEY_FONT_SCALE, ConfigReceiver.DEFAULT_FONT_SCALE)
+            if (s > 0.5f) s else 1.0f
+        } catch (_: Exception) {
+            1.0f
+        }
+    }
+
+    fun scaledSp(c: Context, baseSp: Float): Float = baseSp * fontScale(c)
 
     // ---- Inter typefaces (bundled in assets; graceful fallback) ----
     private var sRegular: Typeface? = null

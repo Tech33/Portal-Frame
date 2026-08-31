@@ -103,6 +103,7 @@ class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            val fontScaleState = rememberPrefFloat(ConfigReceiver.KEY_FONT_SCALE, ConfigReceiver.DEFAULT_FONT_SCALE)
             MaterialTheme(
                 colorScheme = darkColorScheme(
                     primary = PortalColors.Blue,
@@ -110,9 +111,9 @@ class SettingsActivity : ComponentActivity() {
                     background = PortalColors.Bg,
                     surface = PortalColors.Surface,
                 ),
-                typography = rememberInterTypography(this),
+                typography = rememberInterTypography(this, fontScaleState.value),
             ) {
-                SettingsScreen()
+                SettingsScreen(fontScaleState)
             }
         }
     }
@@ -245,6 +246,23 @@ class SettingsActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun rememberPrefFloat(key: String, defaultValue: Float): MutableState<Float> {
+        val state = remember(key) { mutableStateOf(prefs.getFloat(key, defaultValue)) }
+        DisposableEffect(key) {
+            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+                if (changedKey == key) {
+                    state.value = prefs.getFloat(key, defaultValue)
+                }
+            }
+            prefs.registerOnSharedPreferenceChangeListener(listener)
+            onDispose {
+                prefs.unregisterOnSharedPreferenceChangeListener(listener)
+            }
+        }
+        return state
+    }
+
+    @Composable
     private fun rememberPrefBoolean(key: String, defaultValue: Boolean): MutableState<Boolean> {
         val state = remember(key) { mutableStateOf(prefs.getBoolean(key, defaultValue)) }
         DisposableEffect(key) {
@@ -332,7 +350,7 @@ class SettingsActivity : ComponentActivity() {
     // ----------------------------------------------------------------- UI
 
     @Composable
-    private fun SettingsScreen() {
+    private fun SettingsScreen(fontScaleState: MutableState<Float>) {
         val ctx = LocalContext.current
         var showNightClockDialog by remember { mutableStateOf(false) }
         var showAdbDialog by remember { mutableStateOf(false) }
@@ -387,7 +405,7 @@ class SettingsActivity : ComponentActivity() {
 
         // Card groups, so the layout can be one or two columns by available width.
         val sourceCards: @Composable () -> Unit = {
-            Card("Screensaver") {
+            Card("Screensaver status") {
                 val active = isScreensaverActive
                 val protectedMode = Screensaver.canWrite(ctx)
                 Body(
@@ -401,21 +419,21 @@ class SettingsActivity : ComponentActivity() {
                     },
                 )
                 Spacer(Modifier.height(12.dp))
+                PrimaryBtn("▶ Start screensaver now") { startScreensaverNow() }
+                Spacer(Modifier.height(10.dp))
                 if (active) {
-                    PrimaryBtn("Re-assert screensaver") {
+                    SecondaryBtn("Re-assert screensaver lock") {
                         enableScreensaver()
                         isScreensaverActive = isOurScreensaver()
                     }
                     Spacer(Modifier.height(10.dp))
-                    SecondaryBtn("Change screensaver") { openScreensaver() }
+                    SecondaryBtn("Change screensaver in system settings") { openScreensaver() }
                 } else {
                     PrimaryBtn("Use as screensaver") {
                         enableScreensaver()
                         isScreensaverActive = isOurScreensaver()
                     }
                 }
-                Spacer(Modifier.height(10.dp))
-                SecondaryBtn("Start screensaver now") { startScreensaverNow() }
 
                 if (!protectedMode) {
                     Spacer(Modifier.height(16.dp))
@@ -447,90 +465,8 @@ class SettingsActivity : ComponentActivity() {
                     )
                 }
             }
-            Card("Updates") {
-                Body("Installed: $installedVersion")
-                Spacer(Modifier.height(8.dp))
-                Body(
-                    "Frame checks GitHub for a newer signed APK. You'll need to allow " +
-                        "Frame to install updates once (Android will prompt you).",
-                )
-                if (updateStatus.isNotEmpty()) {
-                    Spacer(Modifier.height(12.dp))
-                    Body(updateStatus)
-                }
-                pendingUpdate?.releaseNotes?.let { notes ->
-                    Spacer(Modifier.height(8.dp))
-                    Body(notes)
-                }
-                Spacer(Modifier.height(12.dp))
-                SecondaryBtn(
-                    if (checkingUpdate) "Checking…" else "Check for updates",
-                    enabled = !checkingUpdate && !downloadingUpdate,
-                ) {
-                    checkingUpdate = true
-                    updateStatus = ""
-                    checkForUpdates { manifest, status ->
-                        checkingUpdate = false
-                        pendingUpdate = manifest
-                        updateStatus = status
-                        prefs.edit()
-                            .putLong(ConfigReceiver.KEY_LAST_UPDATE_CHECK_MS, System.currentTimeMillis())
-                            .apply()
-                    }
-                }
-                pendingUpdate?.let { manifest ->
-                    Spacer(Modifier.height(10.dp))
-                    PrimaryBtn(
-                        if (downloadingUpdate) "Downloading…" else "Download and install ${manifest.versionName}",
-                        enabled = !downloadingUpdate,
-                    ) {
-                        downloadingUpdate = true
-                        downloadAndInstallUpdate(
-                            manifest = manifest,
-                            onStatus = { updateStatus = it },
-                            onFinished = { downloadingUpdate = false },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                ToggleRow(
-                    "Check automatically",
-                    ConfigReceiver.KEY_UPDATE_AUTO_CHECK,
-                    ConfigReceiver.DEFAULT_UPDATE_AUTO_CHECK,
-                    subtitle = "When you open Settings (at most once every 6 hours).",
-                    iconRes = R.drawable.ic_reset,
-                    iconBg = Color(0xFF007AFF),
-                )
-                Spacer(Modifier.height(16.dp))
-                Divider()
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "Revert & Uninstall",
-                    color = PortalColors.Text,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Removes the Frame app and lets you return your Portal to its stock state.",
-                    color = PortalColors.Text.copy(alpha = 0.6f),
-                    fontSize = 13.sp
-                )
-                Spacer(Modifier.height(12.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0x22FF3B30))
-                        .border(1.dp, Color(0x30FF3B30), RoundedCornerShape(16.dp))
-                        .clickable { showUninstallConfirmDialog = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Uninstall Frame", color = Color(0xFFFF453A), fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            Card(if (hasAlbum) "Albums" else "No albums yet") {
+
+            Card(if (hasAlbum) "Photo albums" else "No albums yet") {
                 if (hasAlbum) {
                     if (albumRefreshStatus.isNotEmpty()) {
                         Body(albumRefreshStatus)
@@ -553,7 +489,7 @@ class SettingsActivity : ComponentActivity() {
                     
                     val albumPlaybackState = rememberPrefString(ConfigReceiver.KEY_ALBUM_PLAYBACK, ConfigReceiver.DEFAULT_ALBUM_PLAYBACK)
                     CycleRow(
-                        "Album playback",
+                        "Album playback order",
                         albumPlaybackLabel(
                             albumPlaybackState.value ?: ConfigReceiver.DEFAULT_ALBUM_PLAYBACK,
                         ),
@@ -584,13 +520,55 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
                 }
                 // One add-album screen — scan a QR or paste a link there.
-                PrimaryBtn("Add album") { gotoPhotos("scan") }
+                PrimaryBtn("＋ Add album with Phone (QR Code)") { gotoPhotos("scan") }
+            }
+
+            Card("Display & accessibility") {
+                TextSizeSelectorRow(fontScaleState)
+                Divider()
+                ToggleRow(
+                    "Photo crop to fill",
+                    ConfigReceiver.KEY_ZOOM_FILL,
+                    false,
+                    subtitle = "Crop single photos to fill screen vs showing whole photo with blurred fill.",
+                    iconRes = R.drawable.ic_zoom,
+                    iconBg = PortalColors.Indigo,
+                )
+                Divider()
+                ToggleRow(
+                    "Face-aware framing",
+                    ConfigReceiver.KEY_FACE,
+                    true,
+                    subtitle = "Centers people and faces during cinematic pan & zoom.",
+                    iconRes = R.drawable.ic_face,
+                    iconBg = PortalColors.Orange,
+                )
+                Divider()
+                ToggleRow(
+                    "Ambient color glow",
+                    ConfigReceiver.KEY_AMBIENT,
+                    true,
+                    subtitle = "Tints screen edge glow to each photo's mood colors.",
+                    iconRes = R.drawable.ic_ambient,
+                    iconBg = PortalColors.Red,
+                )
+                Divider()
+                ToggleRow(
+                    "Auto-enhance photos",
+                    ConfigReceiver.KEY_ENHANCE,
+                    ConfigReceiver.DEFAULT_ENHANCE,
+                    subtitle = "Applies real-time color and contrast vibrance.",
+                    iconRes = R.drawable.ic_enhance,
+                    iconBg = PortalColors.Orange,
+                )
             }
         }
         val settingsCards: @Composable () -> Unit = {
             LivePreviewCard()
-            Card("Slideshow options") {
+            Card("Slideshow playback") {
                 DurationSliderRow(iconRes = R.drawable.ic_duration, iconBg = Color(0xFF5856D6))
+                Divider()
+                TransitionSelectorRow(iconRes = R.drawable.ic_transition, iconBg = Color(0xFF34C759))
                 Divider()
                 ToggleRow("Shuffle photos", ConfigReceiver.KEY_SHUFFLE, false, iconRes = R.drawable.ic_shuffle, iconBg = Color(0xFF007AFF))
                 Divider()
@@ -598,37 +576,45 @@ class SettingsActivity : ComponentActivity() {
                     "Recent photos first",
                     ConfigReceiver.KEY_RECENT_FIRST,
                     ConfigReceiver.DEFAULT_RECENT_FIRST,
-                    subtitle = "Show recently taken photos first (only applies when Shuffle is off)",
+                    subtitle = "Show recently taken photos first in chronological order.",
                     iconRes = R.drawable.ic_clock_format,
                     iconBg = Color(0xFF5856D6)
                 )
                 Divider()
-                TransitionSelectorRow(iconRes = R.drawable.ic_transition, iconBg = Color(0xFF34C759))
-                Divider()
-                ToggleRow("Pair photos to fill the screen", ConfigReceiver.KEY_PAIRS, false, iconRes = R.drawable.ic_pairs, iconBg = Color(0xFFFF9500))
-                Divider()
                 ToggleRow(
-                    "Zoom single photos to fill",
-                    ConfigReceiver.KEY_ZOOM_FILL,
-                    false,
-                    subtitle = "Crop a single photo to fill the screen. Off: show the whole photo " +
-                        "over a blurred fill. Paired photos always fill.",
-                    iconRes = R.drawable.ic_zoom,
-                    iconBg = Color(0xFFAF52DE),
+                    "Smart photo pairing",
+                    ConfigReceiver.KEY_PAIRS,
+                    true,
+                    subtitle = "Pairs two photos side-by-side to fill the display.",
+                    iconRes = R.drawable.ic_pairs,
+                    iconBg = Color(0xFFFF9500),
                 )
                 Divider()
-                ToggleRow("Cinematic motion", ConfigReceiver.KEY_KEN_BURNS, true, iconRes = R.drawable.ic_motion, iconBg = Color(0xFFFF2D55))
+                ToggleRow(
+                    "Photo captions & location",
+                    ConfigReceiver.KEY_CAPTIONS,
+                    true,
+                    subtitle = "Shows relative date and location metadata overlay.",
+                    iconRes = R.drawable.ic_captions,
+                    iconBg = Color(0xFF5AC8FA),
+                )
                 Divider()
-                ToggleRow("Photo captions", ConfigReceiver.KEY_CAPTIONS, true, iconRes = R.drawable.ic_captions, iconBg = Color(0xFF5AC8FA))
-            }
-            Card("Smart framing & quality") {
-                ToggleRow("Face-aware framing", ConfigReceiver.KEY_FACE, true, iconRes = R.drawable.ic_face, iconBg = Color(0xFFFF9500))
+                ToggleRow(
+                    "On This Day memories",
+                    ConfigReceiver.KEY_ON_THIS_DAY,
+                    true,
+                    subtitle = "Surfaces anniversary memories taken on today's date.",
+                    iconRes = R.drawable.ic_memories,
+                    iconBg = Color(0xFF34C759),
+                )
                 Divider()
-                ToggleRow("Auto-enhance photos", ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE, iconRes = R.drawable.ic_enhance, iconBg = Color(0xFFFFCC00))
-                Divider()
-                ToggleRow("Ambient color glow", ConfigReceiver.KEY_AMBIENT, true, iconRes = R.drawable.ic_ambient, iconBg = Color(0xFFFF2D55))
-                Divider()
-                ToggleRow("On This Day memories", ConfigReceiver.KEY_ON_THIS_DAY, true, iconRes = R.drawable.ic_memories, iconBg = Color(0xFF34C759))
+                ToggleRow(
+                    "Cinematic pan & zoom",
+                    ConfigReceiver.KEY_KEN_BURNS,
+                    true,
+                    iconRes = R.drawable.ic_motion,
+                    iconBg = Color(0xFFFF2D55),
+                )
             }
             Card("Clock & overlay options") {
                 ToggleRow(
@@ -767,6 +753,89 @@ class SettingsActivity : ComponentActivity() {
                         )
                     }
                     Spacer(Modifier.height(8.dp))
+                }
+            }
+
+            Card("Software update & system") {
+                Body("Installed: $installedVersion")
+                Spacer(Modifier.height(8.dp))
+                Body(
+                    "Frame checks GitHub for signed updates. You can download and install directly with one tap.",
+                )
+                if (updateStatus.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Body(updateStatus)
+                }
+                pendingUpdate?.releaseNotes?.let { notes ->
+                    Spacer(Modifier.height(8.dp))
+                    Body(notes)
+                }
+                Spacer(Modifier.height(12.dp))
+                SecondaryBtn(
+                    if (checkingUpdate) "Checking…" else "Check for updates",
+                    enabled = !checkingUpdate && !downloadingUpdate,
+                ) {
+                    checkingUpdate = true
+                    updateStatus = ""
+                    checkForUpdates { manifest, status ->
+                        checkingUpdate = false
+                        pendingUpdate = manifest
+                        updateStatus = status
+                        prefs.edit()
+                            .putLong(ConfigReceiver.KEY_LAST_UPDATE_CHECK_MS, System.currentTimeMillis())
+                            .apply()
+                    }
+                }
+                pendingUpdate?.let { manifest ->
+                    Spacer(Modifier.height(10.dp))
+                    PrimaryBtn(
+                        if (downloadingUpdate) "Downloading…" else "Download and install ${manifest.versionName}",
+                        enabled = !downloadingUpdate,
+                    ) {
+                        downloadingUpdate = true
+                        downloadAndInstallUpdate(
+                            manifest = manifest,
+                            onStatus = { updateStatus = it },
+                            onFinished = { downloadingUpdate = false },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                ToggleRow(
+                    "Check automatically",
+                    ConfigReceiver.KEY_UPDATE_AUTO_CHECK,
+                    ConfigReceiver.DEFAULT_UPDATE_AUTO_CHECK,
+                    subtitle = "When you open Settings (at most once every 6 hours).",
+                    iconRes = R.drawable.ic_reset,
+                    iconBg = Color(0xFF007AFF),
+                )
+                Spacer(Modifier.height(16.dp))
+                Divider()
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Revert & Uninstall",
+                    color = PortalColors.Text,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Removes the Frame app and lets you return your Portal to its stock state.",
+                    color = PortalColors.Text.copy(alpha = 0.6f),
+                    fontSize = 13.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0x22FF3B30))
+                        .border(1.dp, Color(0x30FF3B30), RoundedCornerShape(16.dp))
+                        .clickable { showUninstallConfirmDialog = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Uninstall Frame", color = Color(0xFFFF453A), fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1547,6 +1616,72 @@ class SettingsActivity : ComponentActivity() {
                 .background(Color(0x2AFFFFFF))
                 .padding(horizontal = 10.dp, vertical = 6.dp),
         )
+    }
+
+    @Composable
+    private fun TextSizeSelectorRow(fontScaleState: MutableState<Float>) {
+        val currentScale = fontScaleState.value
+        val scales = listOf(
+            1.0f to "Standard",
+            1.15f to "Medium",
+            1.30f to "Large",
+            1.50f to "Extra Large",
+        )
+
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                RowIcon(R.drawable.ic_captions, PortalColors.Indigo)
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Universal text size",
+                        color = PortalColors.Text,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "Enlarges clock, photo captions, and settings for distant or elderly reading.",
+                        color = PortalColors.TextMuted,
+                        fontSize = 13.sp,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(PortalColors.Field)
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                scales.forEach { (scale, label) ->
+                    val selected = (currentScale - scale).let { it >= -0.05f && it <= 0.05f }
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) PortalColors.Surface else Color.Transparent)
+                            .then(if (selected) Modifier.border(1.dp, PortalColors.Hairline, RoundedCornerShape(8.dp)) else Modifier)
+                            .clickable {
+                                prefs.edit().putFloat(ConfigReceiver.KEY_FONT_SCALE, scale).apply()
+                                fontScaleState.value = scale
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            label,
+                            color = if (selected) PortalColors.Blue else PortalColors.TextMuted,
+                            fontSize = 13.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+        }
     }
 
     /**

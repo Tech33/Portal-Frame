@@ -12,6 +12,7 @@ class Slide @JvmOverloads constructor(
     @JvmField val caption: String?, // caption override, or null to derive from timeMs
     @JvmField val timeMs: Long = NO_DATE, // capture instant (tz-adjusted) or NO_DATE
     @JvmField val portrait: Boolean = false,
+    @JvmField val location: String? = null,
 ) {
     companion object {
         /** Sentinel for "no capture date available" (e.g. bundled sample slides). */

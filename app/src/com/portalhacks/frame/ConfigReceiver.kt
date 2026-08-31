@@ -147,6 +147,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_CLOCK_ONLY_SCALE = "clock_only_scale"
         const val KEY_UPDATE_AUTO_CHECK = "update_auto_check" // check GitHub on Settings open
         const val KEY_LAST_UPDATE_CHECK_MS = "last_update_check_ms"
+        const val KEY_FONT_SCALE = "font_scale" // float multiplier for universal text sizing (1.0f, 1.15f, 1.30f, 1.50f)
 
         /** Stable URL — always serves the latest release's version.json asset. */
         const val UPDATE_MANIFEST_URL =
@@ -189,6 +190,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_CLOCK_ONLY_DY = 0f
         const val DEFAULT_CLOCK_ONLY_SCALE = 1f
         const val DEFAULT_UPDATE_AUTO_CHECK = true
+        const val DEFAULT_FONT_SCALE = 1.0f
 
         // ADB-settable boolean extras (extra name -> pref key) for quick testing, e.g.
         //   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --ez ken_burns false
