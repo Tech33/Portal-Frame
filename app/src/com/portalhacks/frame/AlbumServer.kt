@@ -1,6 +1,7 @@
 package com.portalhacks.frame
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.util.Log
 import org.json.JSONArray
@@ -147,15 +148,15 @@ class AlbumServer(
                     val msg = parseFormParam(bodyStr, "message") ?: parseJsonMessage(bodyStr) ?: ""
                     val sanitized = sanitizeHtml(msg.trim().take(200))
                     prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, sanitized).apply()
-                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", sanitized))
-                    MqttManager.getInstance(appContext).publishAllStates()
+                    context.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", sanitized))
+                    MqttManager.getInstance(context).publishAllStates()
                     sendResponse(socket, 200, "Success", "text/html; charset=utf-8", getMessageSuccessHtml(sanitized).toByteArray(Charsets.UTF_8))
                 }
 
                 method == "POST" && (rawPath == "/api/message/clear" || rawPath == "/message/clear") -> {
                     prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
-                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE))
-                    MqttManager.getInstance(appContext).publishAllStates()
+                    context.sendBroadcast(Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE))
+                    MqttManager.getInstance(context).publishAllStates()
                     sendResponse(socket, 200, "Success", "application/json; charset=utf-8", "{\"status\":\"cleared\"}".toByteArray(Charsets.UTF_8))
                 }
 
@@ -880,102 +881,6 @@ class AlbumServer(
         """.trimIndent()
     }
 
-    private fun getAddAlbumHtml(): String {
-        return """
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Add Album to Frame</title>
-              <style>
-                body {
-                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                  background-color: #121212;
-                  color: #E0E0E0;
-                  margin: 0;
-                  padding: 24px;
-                  display: flex;
-                  flex-direction: column;
-                  align-items: center;
-                  justify-content: center;
-                  min-height: 100vh;
-                  box-sizing: border-box;
-                }
-                .card {
-                  background-color: #1E1E1E;
-                  border-radius: 16px;
-                  padding: 32px 24px;
-                  width: 100%;
-                  max-width: 400px;
-                  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-                  box-sizing: border-box;
-                  border: 1px solid #2C2C2C;
-                }
-                h1 {
-                  font-size: 22px;
-                  margin: 0 0 8px 0;
-                  color: #FFFFFF;
-                  font-weight: 600;
-                  text-align: center;
-                }
-                p {
-                  font-size: 14px;
-                  color: #A0A0A0;
-                  margin: 0 0 24px 0;
-                  text-align: center;
-                  line-height: 1.5;
-                }
-                label {
-                  display: block;
-                  font-size: 13px;
-                  color: #888888;
-                  margin-bottom: 8px;
-                  font-weight: 500;
-                }
-                input[type="text"] {
-                  width: 100%;
-                  padding: 14px;
-                  border: 1px solid #333333;
-                  background-color: #151515;
-                  color: #FFFFFF;
-                  border-radius: 10px;
-                  font-size: 15px;
-                  box-sizing: border-box;
-                  margin-bottom: 20px;
-                  outline: none;
-                  transition: border-color 0.2s;
-                }
-                input[type="text"]:focus {
-                  border-color: #0078FF;
-                }
-                button {
-                  width: 100%;
-                  padding: 14px;
-                  background-color: #0078FF;
-                  color: #FFFFFF;
-                  border: none;
-                  border-radius: 10px;
-                  font-size: 16px;
-                  font-weight: 600;
-                  cursor: pointer;
-                  transition: background-color 0.2s;
-                }
-                button:hover {
-                  background-color: #0066D6;
-                }
-                .footer {
-                  margin-top: 24px;
-                  font-size: 12px;
-                  color: #666666;
-                  text-align: center;
-                }
-              </style>
-            </head>
-            <body>
-              <div class="card">
-                <h1>Add Shared Album</h1>
-                <p>Paste the shared album link from Google Photos or iCloud to display it on your Portal.</p>
-                <form method="POST" action="/add">
     private fun parseFormParam(body: String, key: String): String? {
         val pairs = body.split("&")
         for (pair in pairs) {

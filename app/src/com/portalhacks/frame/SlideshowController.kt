@@ -1595,6 +1595,29 @@ class SlideshowController(
         }
     }
 
+    fun next() {
+        if (!running || items.isEmpty()) return
+        val step = if (curIsPair) 2 else 1
+        val next = if (index + step >= items.size) {
+            if (shuffle && items.size > 2) smartShuffle(items)
+            0
+        } else {
+            index + step
+        }
+        transitionTo(next, transitionDurationMs)
+    }
+
+    fun prev() {
+        if (!running || items.isEmpty()) return
+        val step = if (curIsPair) 2 else 1
+        val prev = if (index - step < 0) {
+            (items.size - step).coerceAtLeast(0)
+        } else {
+            index - step
+        }
+        transitionTo(prev, transitionDurationMs)
+    }
+
     private val autoTick = Runnable {
         if (running && items.isNotEmpty()) {
             val step = if (curIsPair) 2 else 1
