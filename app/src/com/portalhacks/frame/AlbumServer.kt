@@ -191,7 +191,7 @@ class AlbumServer(
                     val enabledAlbums = Albums.enabled(prefs)
                     val status = JSONObject()
                         .put("status", "ok")
-                        .put("version", "1.6.0")
+                        .put("version", UpdateChecker.currentVersionName(context))
                         .put("port", port)
                         .put("haBridgeMode", prefs.getBoolean(ConfigReceiver.KEY_HA_BRIDGE_MODE, ConfigReceiver.DEFAULT_HA_BRIDGE_MODE))
                         .put("mqttEnabled", prefs.getBoolean(ConfigReceiver.KEY_MQTT_ENABLED, ConfigReceiver.DEFAULT_MQTT_ENABLED))

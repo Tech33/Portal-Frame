@@ -250,7 +250,7 @@ class MqttManager private constructor(context: Context) {
             .put("name", deviceName)
             .put("model", "Meta Portal")
             .put("manufacturer", "Meta")
-            .put("sw_version", "1.6.0")
+            .put("sw_version", UpdateChecker.currentVersionName(appContext))
 
         // 1. Screen Power Switch
         publishJson(
