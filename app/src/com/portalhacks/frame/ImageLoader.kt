@@ -188,7 +188,8 @@ class ImageLoader(context: Context) {
         o.inJustDecodeBounds = true
         BitmapFactory.decodeFile(path, o)
         o.inSampleSize = sampleSize(o.outWidth, o.outHeight, reqW, reqH)
-        o.inPreferredConfig = Bitmap.Config.RGB_565
+        o.inPreferredConfig = Bitmap.Config.ARGB_8888
+        o.inDither = true
         o.inJustDecodeBounds = false
         return BitmapFactory.decodeFile(path, o)
     }
@@ -201,7 +202,8 @@ class ImageLoader(context: Context) {
         BitmapFactory.decodeStream(`in`, null, o)
         `in`.close()
         o.inSampleSize = sampleSize(o.outWidth, o.outHeight, reqW, reqH)
-        o.inPreferredConfig = Bitmap.Config.RGB_565
+        o.inPreferredConfig = Bitmap.Config.ARGB_8888
+        o.inDither = true
         o.inJustDecodeBounds = false
         `in` = ctx.assets.open(assetPath)
         val b = BitmapFactory.decodeStream(`in`, null, o)
@@ -214,7 +216,10 @@ class ImageLoader(context: Context) {
             return 1
         }
         var s = 1
-        while (w / (s * 2) >= reqW && h / (s * 2) >= reqH) {
+        // Maintain at least 1.5x resolution headroom so Ken Burns zoom and pans stay razor-sharp
+        val targetW = (reqW * 1.5f).roundToInt()
+        val targetH = (reqH * 1.5f).roundToInt()
+        while (w / (s * 2) >= targetW && h / (s * 2) >= targetH) {
             s *= 2
         }
         return s
@@ -286,7 +291,7 @@ class ImageLoader(context: Context) {
             }
             val out = Bitmap.createBitmap(screenW, screenH, Bitmap.Config.ARGB_8888)
             val c = Canvas(out)
-            val p = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+            val p = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
             drawComposed(c, p, src, 0, 0, screenW, screenH, zoomFill)
             if (src != out) {
                 src.recycle()
@@ -305,7 +310,7 @@ class ImageLoader(context: Context) {
         ): Bitmap {
             val out = Bitmap.createBitmap(screenW, screenH, Bitmap.Config.ARGB_8888)
             val c = Canvas(out)
-            val p = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+            val p = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
             val seam = Paint()
             seam.color = Color.BLACK
             if (stackVertical) {

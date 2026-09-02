@@ -3,9 +3,14 @@ package com.portalhacks.frame
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.net.Uri
 import android.provider.Settings
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import java.net.NetworkInterface
+import java.util.Collections
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -358,6 +363,8 @@ class SettingsActivity : ComponentActivity() {
         var showNightClockDialog by remember { mutableStateOf(false) }
         var showAdbDialog by remember { mutableStateOf(false) }
         var showUninstallConfirmDialog by remember { mutableStateOf(false) }
+        var showMqttConfigDialog by remember { mutableStateOf(false) }
+        var showHaUrlDialog by remember { mutableStateOf(false) }
         var refreshingAlbums by remember { mutableStateOf(false) }
         var albumRefreshStatus by remember { mutableStateOf("") }
         var checkingUpdate by remember { mutableStateOf(false) }
@@ -406,67 +413,67 @@ class SettingsActivity : ComponentActivity() {
             }
         }
 
-        // Card groups, so the layout can be one or two columns by available width.
-        val sourceCards: @Composable () -> Unit = {
-            Card("Screensaver status") {
-                val active = isScreensaverActive
-                val protectedMode = Screensaver.canWrite(ctx)
-                Body(
-                    when {
-                        active && protectedMode ->
-                            "✓ Frame is locked as your screensaver and protected against overrides."
-                        active ->
-                            "✓ Frame is set as your screensaver. Other apps can still override it."
-                        else ->
-                            "Tap below so your photos show when the Portal is idle."
-                    },
-                )
-                Spacer(Modifier.height(12.dp))
-                PrimaryBtn("▶ Start screensaver now") { startScreensaverNow() }
-                Spacer(Modifier.height(10.dp))
-                if (active) {
-                    SecondaryBtn("Re-assert screensaver lock") {
-                        enableScreensaver()
-                        isScreensaverActive = isOurScreensaver()
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    SecondaryBtn("Change screensaver in system settings") { openScreensaver() }
-                } else {
-                    PrimaryBtn("Use as screensaver") {
-                        enableScreensaver()
-                        isScreensaverActive = isOurScreensaver()
-                    }
-                }
+        var showMessageQrDialog by remember { mutableStateOf(false) }
+        val customMessageState = rememberPrefString(ConfigReceiver.KEY_CUSTOM_MESSAGE, ConfigReceiver.DEFAULT_CUSTOM_MESSAGE)
 
-                if (!protectedMode) {
-                    Spacer(Modifier.height(16.dp))
-                    Divider()
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        "🔒 Protected Mode Inactive",
-                        color = PortalColors.Text,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Other apps can override your screensaver choice. Grant Frame secure settings permission via ADB to enable Protected Mode.",
-                        color = PortalColors.Text.copy(alpha = 0.6f),
-                        fontSize = 13.sp
-                    )
+        // Card groups balanced for Meta Portal wide landscape screen:
+        // Left Column: Live Preview -> Software Update -> Albums -> Custom Announcement -> Screensaver Status
+        val sourceCards: @Composable () -> Unit = {
+            LivePreviewCard()
+
+            Card("Software update & system") {
+                Body("Installed: $installedVersion")
+                Spacer(Modifier.height(8.dp))
+                Body(
+                    "Frame checks GitHub for signed updates. You can download and install directly with one tap.",
+                )
+                if (updateStatus.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
-                    SecondaryBtn("How to enable Protected Mode") {
-                        showAdbDialog = true
-                    }
-                } else {
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        "✓ Protected Mode Active (Immortal)",
-                        color = PortalColors.Blue,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Body(updateStatus)
                 }
+                pendingUpdate?.releaseNotes?.let { notes ->
+                    Spacer(Modifier.height(8.dp))
+                    Body(notes)
+                }
+                Spacer(Modifier.height(12.dp))
+                SecondaryBtn(
+                    if (checkingUpdate) "Checking…" else "Check for updates",
+                    enabled = !checkingUpdate && !downloadingUpdate,
+                ) {
+                    checkingUpdate = true
+                    updateStatus = ""
+                    checkForUpdates { manifest, status ->
+                        checkingUpdate = false
+                        pendingUpdate = manifest
+                        updateStatus = status
+                        prefs.edit()
+                            .putLong(ConfigReceiver.KEY_LAST_UPDATE_CHECK_MS, System.currentTimeMillis())
+                            .apply()
+                    }
+                }
+                pendingUpdate?.let { manifest ->
+                    Spacer(Modifier.height(10.dp))
+                    PrimaryBtn(
+                        if (downloadingUpdate) "Downloading…" else "Download and install ${manifest.versionName}",
+                        enabled = !downloadingUpdate,
+                    ) {
+                        downloadingUpdate = true
+                        downloadAndInstallUpdate(
+                            manifest = manifest,
+                            onStatus = { updateStatus = it },
+                            onFinished = { downloadingUpdate = false },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                ToggleRow(
+                    "Check automatically",
+                    ConfigReceiver.KEY_UPDATE_AUTO_CHECK,
+                    ConfigReceiver.DEFAULT_UPDATE_AUTO_CHECK,
+                    subtitle = "When you open Settings (at most once every 6 hours).",
+                    iconRes = R.drawable.ic_reset,
+                    iconBg = Color(0xFF007AFF),
+                )
             }
 
             Card(if (hasAlbum) "Photo albums" else "No albums yet") {
@@ -526,48 +533,106 @@ class SettingsActivity : ComponentActivity() {
                 PrimaryBtn("＋ Add album with Phone (QR Code)") { gotoPhotos("scan") }
             }
 
-            Card("Display & accessibility") {
-                TextSizeSelectorRow(fontScaleState)
-                Divider()
-                ToggleRow(
-                    "Photo crop to fill",
-                    ConfigReceiver.KEY_ZOOM_FILL,
-                    false,
-                    subtitle = "Crop single photos to fill screen vs showing whole photo with blurred fill.",
-                    iconRes = R.drawable.ic_zoom,
-                    iconBg = PortalColors.Indigo,
+            Card("Custom Announcement Banner") {
+                val curMsg = customMessageState.value?.trim() ?: ""
+                if (curMsg.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0x22007AFF), RoundedCornerShape(10.dp))
+                            .border(1.dp, Color(0x44007AFF), RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        Column {
+                            Text("Active Banner:", color = Color(0xFF64D2FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(4.dp))
+                            Text(curMsg, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                } else {
+                    Body("Display a custom floating banner for birthdays, celebrations, or welcome notes.")
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                PrimaryBtn("📱 Set Announcement with Phone (QR Code)") {
+                    showMessageQrDialog = true
+                }
+                if (curMsg.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    SecondaryBtn("✕ Clear Active Banner") {
+                        prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
+                        customMessageState.value = ""
+                        sendBroadcast(Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE))
+                        MqttManager.getInstance(ctx).publishAllStates()
+                    }
+                }
+            }
+
+            Card("Screensaver status & Protected Mode") {
+                val active = isScreensaverActive
+                val protectedMode = Screensaver.canWrite(ctx)
+                Body(
+                    when {
+                        active && protectedMode ->
+                            "✓ Frame is locked as your screensaver and protected against overrides."
+                        active ->
+                            "✓ Frame is set as your screensaver. Other apps can still override it."
+                        else ->
+                            "Tap below so your photos show when the Portal is idle."
+                    },
                 )
-                Divider()
-                ToggleRow(
-                    "Face-aware framing",
-                    ConfigReceiver.KEY_FACE,
-                    true,
-                    subtitle = "Centers people and faces during cinematic pan & zoom.",
-                    iconRes = R.drawable.ic_face,
-                    iconBg = PortalColors.Orange,
-                )
-                Divider()
-                ToggleRow(
-                    "Ambient color glow",
-                    ConfigReceiver.KEY_AMBIENT,
-                    true,
-                    subtitle = "Tints screen edge glow to each photo's mood colors.",
-                    iconRes = R.drawable.ic_ambient,
-                    iconBg = PortalColors.Red,
-                )
-                Divider()
-                ToggleRow(
-                    "Auto-enhance photos",
-                    ConfigReceiver.KEY_ENHANCE,
-                    ConfigReceiver.DEFAULT_ENHANCE,
-                    subtitle = "Applies real-time color and contrast vibrance.",
-                    iconRes = R.drawable.ic_enhance,
-                    iconBg = PortalColors.Orange,
-                )
+                Spacer(Modifier.height(12.dp))
+                PrimaryBtn("▶ Start screensaver now") { startScreensaverNow() }
+                Spacer(Modifier.height(10.dp))
+                if (active) {
+                    SecondaryBtn("Re-assert screensaver lock") {
+                        enableScreensaver()
+                        isScreensaverActive = isOurScreensaver()
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    SecondaryBtn("Change screensaver in system settings") { openScreensaver() }
+                } else {
+                    PrimaryBtn("Use as screensaver") {
+                        enableScreensaver()
+                        isScreensaverActive = isOurScreensaver()
+                    }
+                }
+
+                if (!protectedMode) {
+                    Spacer(Modifier.height(16.dp))
+                    Divider()
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "🔒 Protected Mode Inactive",
+                        color = PortalColors.Text,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Other apps can override your screensaver choice. Grant Frame secure settings permission via ADB to enable Protected Mode.",
+                        color = PortalColors.Text.copy(alpha = 0.6f),
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    SecondaryBtn("How to enable Protected Mode") {
+                        showAdbDialog = true
+                    }
+                } else {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "✓ Protected Mode Active (Immortal)",
+                        color = PortalColors.Blue,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
+
+        // Right Column: Playback -> Display & Accessibility -> Clock & Weather -> Night Mode -> Chime -> MQTT & HA -> Revert/Uninstall
         val settingsCards: @Composable () -> Unit = {
-            LivePreviewCard()
             Card("Slideshow playback") {
                 DurationSliderRow(iconRes = R.drawable.ic_duration, iconBg = Color(0xFF5856D6))
                 Divider()
@@ -619,6 +684,47 @@ class SettingsActivity : ComponentActivity() {
                     iconBg = Color(0xFFFF2D55),
                 )
             }
+
+            Card("Display & accessibility") {
+                TextSizeSelectorRow(fontScaleState)
+                Divider()
+                ToggleRow(
+                    "Photo crop to fill",
+                    ConfigReceiver.KEY_ZOOM_FILL,
+                    false,
+                    subtitle = "Crop single photos to fill screen vs showing whole photo with blurred fill.",
+                    iconRes = R.drawable.ic_zoom,
+                    iconBg = PortalColors.Indigo,
+                )
+                Divider()
+                ToggleRow(
+                    "Face-aware framing",
+                    ConfigReceiver.KEY_FACE,
+                    true,
+                    subtitle = "Centers people and faces during cinematic pan & zoom.",
+                    iconRes = R.drawable.ic_face,
+                    iconBg = PortalColors.Orange,
+                )
+                Divider()
+                ToggleRow(
+                    "Ambient color glow",
+                    ConfigReceiver.KEY_AMBIENT,
+                    true,
+                    subtitle = "Tints screen edge glow to each photo's mood colors.",
+                    iconRes = R.drawable.ic_ambient,
+                    iconBg = PortalColors.Red,
+                )
+                Divider()
+                ToggleRow(
+                    "Auto-enhance photos",
+                    ConfigReceiver.KEY_ENHANCE,
+                    ConfigReceiver.DEFAULT_ENHANCE,
+                    subtitle = "Applies real-time color and contrast vibrance.",
+                    iconRes = R.drawable.ic_enhance,
+                    iconBg = PortalColors.Orange,
+                )
+            }
+
             Card("Clock & overlay options") {
                 ToggleRow(
                     "Clock & weather", ConfigReceiver.KEY_CLOCK, true,
@@ -639,7 +745,7 @@ class SettingsActivity : ComponentActivity() {
                     value = "Reset",
                     iconRes = R.drawable.ic_reset,
                     iconBg = Color(0xFFFF3B30),
-                    subtitle = "💡 Tip: While playing the slideshow, you can long-press the clock or date (or the centered clock at night) to drag and pinch-to-zoom. Tap here to reset all overlays.",
+                    subtitle = "💡 Tip: While playing the slideshow, you can long-press the clock or date to drag and pinch-to-zoom. Tap here to reset all overlays.",
                 ) {
                     prefs.edit()
                         .putFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
@@ -656,8 +762,8 @@ class SettingsActivity : ComponentActivity() {
                 Divider()
                 
                 ToggleRow(
-                    "Show battery percentage", ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY,
-                    subtitle = "Appends the battery level and status to the date overlay on Portal Go.",
+                    "Show battery status & level", ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY,
+                    subtitle = "Shows dynamic battery pill icon, level %, and charging indicator on Portal Go status line.",
                     iconRes = R.drawable.ic_battery,
                     iconBg = Color(0xFF34C759),
                 )
@@ -673,6 +779,7 @@ class SettingsActivity : ComponentActivity() {
                     prefs.edit().putBoolean(ConfigReceiver.KEY_WEATHER_FAHRENHEIT, !tempFahrenheitState.value).apply()
                 }
             }
+
             Card("Night mode (Clock only)") {
                 ToggleRow(
                     label = "Only clock in low light",
@@ -686,7 +793,7 @@ class SettingsActivity : ComponentActivity() {
                     label = "Scheduled full-screen night clock",
                     key = ConfigReceiver.KEY_NIGHT_CLOCK,
                     def = ConfigReceiver.DEFAULT_NIGHT_CLOCK,
-                    subtitle = "Show a full-screen clock with AM/PM, an Exit button, and a line like Fri, 19 Jun 14°  ☁️ Cloudy instead of photos.",
+                    subtitle = "Show a full-screen clock with AM/PM, an Exit button, and status line instead of photos.",
                     iconRes = R.drawable.ic_night_clock,
                     iconBg = Color(0xFF5856D6),
                     onClickOverride = { checked ->
@@ -725,6 +832,7 @@ class SettingsActivity : ComponentActivity() {
                 Divider()
                 ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true, iconRes = R.drawable.ic_night_warmth, iconBg = Color(0xFFFF9500))
             }
+
             Card("Hourly chime") {
                 ToggleRow(
                     label = "Hourly chime",
@@ -759,145 +867,112 @@ class SettingsActivity : ComponentActivity() {
                 }
             }
 
-            Card("Home Assistant & Kiosk Bridge") {
+            Card("Home Assistant & MQTT Integration") {
                 ToggleRow(
-                    label = "Home Assistant / Bridge Mode",
-                    key = ConfigReceiver.KEY_HA_BRIDGE_MODE,
-                    def = ConfigReceiver.DEFAULT_HA_BRIDGE_MODE,
-                    subtitle = "Prevents screensaver fighting with portal-ha-bridge by serving photos locally via webview.",
+                    label = "Native Home Assistant MQTT",
+                    key = ConfigReceiver.KEY_MQTT_ENABLED,
+                    def = ConfigReceiver.DEFAULT_MQTT_ENABLED,
+                    subtitle = "Auto-discovers Screen Power, Brightness, Volume, Battery, Announcements, and Photo Controls directly into Home Assistant without extra apps.",
                     iconRes = R.drawable.ic_ambient,
                     iconBg = Color(0xFF007AFF),
-                )
-                Spacer(Modifier.height(10.dp))
-                Body("Local Slideshow URL for portal-ha-bridge Screensaver or Home Assistant Webpage Cards:")
-                Spacer(Modifier.height(8.dp))
-
-                val clipboard = LocalClipboardManager.current
-                val localUrl = "http://127.0.0.1:8080/slideshow"
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF1C1C1E), RoundedCornerShape(10.dp))
-                        .border(1.dp, Color(0xFF2C2C2E), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = localUrl,
-                            color = Color(0xFF34C759),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Box(
-                            modifier = Modifier
-                                .background(Color(0xFF007AFF), RoundedCornerShape(6.dp))
-                                .clickable {
-                                    clipboard.setText(AnnotatedString(localUrl))
-                                    Toast.makeText(this@SettingsActivity, "URL copied to clipboard ✓", Toast.LENGTH_SHORT).show()
-                                }
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                "Copy",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                    onClickOverride = { enabled ->
+                        prefs.edit().putBoolean(ConfigReceiver.KEY_MQTT_ENABLED, enabled).apply()
+                        if (enabled) {
+                            MqttManager.getInstance(ctx).start()
+                        } else {
+                            MqttManager.getInstance(ctx).stop()
                         }
                     }
-                }
-                Spacer(Modifier.height(10.dp))
-                Body("💡 Paste this URL into portal-ha-bridge Settings → Screensaver URL to display Frame smoothly on idle without any foreground conflicts.")
-            }
-
-            Card("Software update & system") {
-                Body("Installed: $installedVersion")
-                Spacer(Modifier.height(8.dp))
-                Body(
-                    "Frame checks GitHub for signed updates. You can download and install directly with one tap.",
                 )
-                if (updateStatus.isNotEmpty()) {
+
+                val mqttEnabledState = rememberPrefBoolean(ConfigReceiver.KEY_MQTT_ENABLED, ConfigReceiver.DEFAULT_MQTT_ENABLED)
+                if (mqttEnabledState.value) {
                     Spacer(Modifier.height(12.dp))
-                    Body(updateStatus)
-                }
-                pendingUpdate?.releaseNotes?.let { notes ->
-                    Spacer(Modifier.height(8.dp))
-                    Body(notes)
-                }
-                Spacer(Modifier.height(12.dp))
-                SecondaryBtn(
-                    if (checkingUpdate) "Checking…" else "Check for updates",
-                    enabled = !checkingUpdate && !downloadingUpdate,
-                ) {
-                    checkingUpdate = true
-                    updateStatus = ""
-                    checkForUpdates { manifest, status ->
-                        checkingUpdate = false
-                        pendingUpdate = manifest
-                        updateStatus = status
-                        prefs.edit()
-                            .putLong(ConfigReceiver.KEY_LAST_UPDATE_CHECK_MS, System.currentTimeMillis())
-                            .apply()
+                    Column(Modifier.padding(start = 16.dp)) {
+                        val host = prefs.getString(ConfigReceiver.KEY_MQTT_HOST, "") ?: ""
+                        val port = prefs.getInt(ConfigReceiver.KEY_MQTT_PORT, 1883)
+                        val user = prefs.getString(ConfigReceiver.KEY_MQTT_USER, "") ?: ""
+                        
+                        Body("Broker: ${if (host.isEmpty()) "Not configured" else "$host:$port"}")
+                        if (user.isNotEmpty()) Body("User: $user")
+                        Spacer(Modifier.height(8.dp))
+                        SecondaryBtn("Configure MQTT Connection") {
+                            // Show MQTT dialog or open quick field
+                            showMqttConfigDialog = true
+                        }
                     }
+                    Spacer(Modifier.height(12.dp))
+                    Divider()
                 }
-                pendingUpdate?.let { manifest ->
-                    Spacer(Modifier.height(10.dp))
-                    PrimaryBtn(
-                        if (downloadingUpdate) "Downloading…" else "Download and install ${manifest.versionName}",
-                        enabled = !downloadingUpdate,
-                    ) {
-                        downloadingUpdate = true
-                        downloadAndInstallUpdate(
-                            manifest = manifest,
-                            onStatus = { updateStatus = it },
-                            onFinished = { downloadingUpdate = false },
+
+                Spacer(Modifier.height(12.dp))
+                ToggleRow(
+                    label = "Embedded Home Assistant Dashboard",
+                    key = ConfigReceiver.KEY_HA_EMBEDDED,
+                    def = ConfigReceiver.DEFAULT_HA_EMBEDDED,
+                    subtitle = "Access your full Home Assistant Lovelace dashboard on demand with an auto-return timer.",
+                    iconRes = R.drawable.ic_motion,
+                    iconBg = Color(0xFF34C759),
+                )
+
+                val haEmbeddedState = rememberPrefBoolean(ConfigReceiver.KEY_HA_EMBEDDED, ConfigReceiver.DEFAULT_HA_EMBEDDED)
+                if (haEmbeddedState.value) {
+                    Spacer(Modifier.height(12.dp))
+                    Column(Modifier.padding(start = 16.dp)) {
+                        val haUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, "") ?: ""
+                        val timeout = prefs.getInt(ConfigReceiver.KEY_HA_IDLE_TIMEOUT_SEC, ConfigReceiver.DEFAULT_HA_IDLE_TIMEOUT_SEC)
+
+                        Body("Dashboard URL: ${if (haUrl.isEmpty()) "Tap below to set URL" else haUrl}")
+                        Spacer(Modifier.height(8.dp))
+                        SecondaryBtn("Set Home Assistant URL") {
+                            showHaUrlDialog = true
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        val timeoutLabel = when (timeout) {
+                            30 -> "30 seconds"
+                            60 -> "1 minute"
+                            120 -> "2 minutes"
+                            300 -> "5 minutes"
+                            else -> "$timeout seconds"
+                        }
+                        CycleRow("Return to photos on idle", timeoutLabel, iconRes = R.drawable.ic_duration, iconBg = Color(0xFF8E8E93)) {
+                            val next = when (timeout) {
+                                30 -> 60
+                                60 -> 120
+                                120 -> 300
+                                else -> 30
+                            }
+                            prefs.edit().putInt(ConfigReceiver.KEY_HA_IDLE_TIMEOUT_SEC, next).apply()
+                        }
+                        Divider()
+                        ToggleRow(
+                            "Floating Dashboard button",
+                            ConfigReceiver.KEY_HA_BUTTON,
+                            ConfigReceiver.DEFAULT_HA_BUTTON,
+                            subtitle = "Corner button on the photo slideshow to quickly open Home Assistant.",
+                            iconRes = R.drawable.ic_ambient,
+                            iconBg = Color(0xFF007AFF),
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                ToggleRow(
-                    "Check automatically",
-                    ConfigReceiver.KEY_UPDATE_AUTO_CHECK,
-                    ConfigReceiver.DEFAULT_UPDATE_AUTO_CHECK,
-                    subtitle = "When you open Settings (at most once every 6 hours).",
-                    iconRes = R.drawable.ic_reset,
-                    iconBg = Color(0xFF007AFF),
-                )
-                Spacer(Modifier.height(16.dp))
-                Divider()
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "Revert & Uninstall",
-                    color = PortalColors.Text,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
+            }
+
+            Card("Revert & Uninstall") {
+                Body(
                     "Removes the Frame app and lets you return your Portal to its stock state.",
-                    color = PortalColors.Text.copy(alpha = 0.6f),
-                    fontSize = 13.sp
                 )
                 Spacer(Modifier.height(12.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .height(52.dp)
+                        .clip(RoundedCornerShape(14.dp))
                         .background(Color(0x22FF3B30))
-                        .border(1.dp, Color(0x30FF3B30), RoundedCornerShape(16.dp))
+                        .border(1.dp, Color(0x30FF3B30), RoundedCornerShape(14.dp))
                         .clickable { showUninstallConfirmDialog = true },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Uninstall Frame", color = Color(0xFFFF453A), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("Uninstall Frame", color = Color(0xFFFF453A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -976,6 +1051,30 @@ class SettingsActivity : ComponentActivity() {
                 }
             )
         }
+
+        if (showMessageQrDialog) {
+            MessageQrDialog(
+                onDismiss = {
+                    showMessageQrDialog = false
+                }
+            )
+        }
+
+        if (showMqttConfigDialog) {
+            MqttConfigDialog(
+                onDismiss = {
+                    showMqttConfigDialog = false
+                }
+            )
+        }
+
+        if (showHaUrlDialog) {
+            HaUrlDialog(
+                onDismiss = {
+                    showHaUrlDialog = false
+                }
+            )
+        }
     }
 
     @Composable
@@ -1027,6 +1126,274 @@ class SettingsActivity : ComponentActivity() {
             containerColor = PortalColors.Surface,
             shape = RoundedCornerShape(16.dp)
         )
+    }
+
+    @Composable
+    private fun MessageQrDialog(onDismiss: () -> Unit) {
+        val ip = remember { getLocalIpAddress() }
+        val messageUrl = if (ip != null) "http://$ip:8080/message" else "http://127.0.0.1:8080/message"
+        val qrBitmap = remember(messageUrl) { generateQrBitmap(messageUrl, 380) }
+        var inputMsg by remember { mutableStateOf("") }
+        val ctx = LocalContext.current
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Text("Post Announcement Banner", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (qrBitmap != null) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "Message QR Code",
+                            modifier = Modifier
+                                .size(180.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White)
+                                .padding(8.dp)
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "Scan with your phone to type an announcement",
+                            color = PortalColors.TextMuted,
+                            fontSize = 13.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            messageUrl,
+                            color = Color(0xFF64D2FF),
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Divider()
+                    Spacer(Modifier.height(16.dp))
+                    Text("Or enter message directly:", color = PortalColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Start))
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = inputMsg,
+                        onValueChange = { inputMsg = it },
+                        placeholder = { Text("🎉 Happy Birthday! 🎂", color = Color.Gray, fontSize = 14.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = PortalColors.Blue,
+                            unfocusedBorderColor = Color(0xFF38383A)
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val text = inputMsg.trim()
+                        if (text.isNotEmpty()) {
+                            prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, text).apply()
+                            ctx.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", text))
+                            MqttManager.getInstance(ctx).publishAllStates()
+                        }
+                        onDismiss()
+                    }
+                ) {
+                    Text("Post Banner", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Close", color = PortalColors.Text.copy(alpha = 0.6f))
+                }
+            },
+            containerColor = PortalColors.Surface,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    @Composable
+    private fun MqttConfigDialog(onDismiss: () -> Unit) {
+        val ctx = LocalContext.current
+        var host by remember { mutableStateOf(prefs.getString(ConfigReceiver.KEY_MQTT_HOST, "") ?: "") }
+        var portStr by remember { mutableStateOf(prefs.getInt(ConfigReceiver.KEY_MQTT_PORT, 1883).toString()) }
+        var user by remember { mutableStateOf(prefs.getString(ConfigReceiver.KEY_MQTT_USER, "") ?: "") }
+        var pass by remember { mutableStateOf(prefs.getString(ConfigReceiver.KEY_MQTT_PASS, "") ?: "") }
+        var prefix by remember { mutableStateOf(prefs.getString(ConfigReceiver.KEY_MQTT_TOPIC_PREFIX, "portal") ?: "portal") }
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Text("Configure MQTT Broker", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    Text("Broker Host / IP:", color = PortalColors.TextMuted, fontSize = 13.sp)
+                    Spacer(Modifier.height(4.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = host,
+                        onValueChange = { host = it },
+                        placeholder = { Text("192.168.1.50 or homeassistant.local", color = Color.Gray, fontSize = 14.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text("Broker Port:", color = PortalColors.TextMuted, fontSize = 13.sp)
+                    Spacer(Modifier.height(4.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = portStr,
+                        onValueChange = { portStr = it },
+                        placeholder = { Text("1883 (or 8883 for SSL)", color = Color.Gray, fontSize = 14.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text("Username (Optional):", color = PortalColors.TextMuted, fontSize = 13.sp)
+                    Spacer(Modifier.height(4.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = user,
+                        onValueChange = { user = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text("Password (Optional):", color = PortalColors.TextMuted, fontSize = 13.sp)
+                    Spacer(Modifier.height(4.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = pass,
+                        onValueChange = { pass = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text("Topic Prefix:", color = PortalColors.TextMuted, fontSize = 13.sp)
+                    Spacer(Modifier.height(4.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = prefix,
+                        onValueChange = { prefix = it },
+                        placeholder = { Text("portal", color = Color.Gray, fontSize = 14.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val p = portStr.toIntOrNull() ?: 1883
+                        prefs.edit()
+                            .putString(ConfigReceiver.KEY_MQTT_HOST, host.trim())
+                            .putInt(ConfigReceiver.KEY_MQTT_PORT, p)
+                            .putString(ConfigReceiver.KEY_MQTT_USER, user.trim())
+                            .putString(ConfigReceiver.KEY_MQTT_PASS, pass.trim())
+                            .putString(ConfigReceiver.KEY_MQTT_TOPIC_PREFIX, prefix.trim().ifEmpty { "portal" })
+                            .apply()
+                        MqttManager.getInstance(ctx).apply {
+                            stop()
+                            start()
+                        }
+                        onDismiss()
+                    }
+                ) {
+                    Text("Save & Connect", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = PortalColors.Text.copy(alpha = 0.6f))
+                }
+            },
+            containerColor = PortalColors.Surface,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    @Composable
+    private fun HaUrlDialog(onDismiss: () -> Unit) {
+        var haUrl by remember { mutableStateOf(prefs.getString(ConfigReceiver.KEY_HA_URL, "") ?: "") }
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Text("Home Assistant Dashboard URL", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        "Enter the full URL of your Lovelace dashboard:",
+                        color = PortalColors.TextMuted,
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = haUrl,
+                        onValueChange = { haUrl = it },
+                        placeholder = { Text("http://192.168.1.50:8123/lovelace/portal", color = Color.Gray, fontSize = 14.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        prefs.edit().putString(ConfigReceiver.KEY_HA_URL, haUrl.trim()).apply()
+                        onDismiss()
+                    }
+                ) {
+                    Text("Save", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = PortalColors.Text.copy(alpha = 0.6f))
+                }
+            },
+            containerColor = PortalColors.Surface,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    private fun generateQrBitmap(text: String, sizePx: Int): Bitmap? {
+        return try {
+            val bitMatrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, sizePx, sizePx)
+            val w = bitMatrix.width
+            val h = bitMatrix.height
+            val pixels = IntArray(w * h)
+            for (y in 0 until h) {
+                val offset = y * w
+                for (x in 0 until w) {
+                    pixels[offset + x] = if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                }
+            }
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            bmp.setPixels(pixels, 0, w, 0, 0, w, h)
+            bmp
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun getLocalIpAddress(): String? {
+        try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (intf in interfaces) {
+                val addrs = Collections.list(intf.inetAddresses)
+                for (addr in addrs) {
+                    if (!addr.isLoopbackAddress) {
+                        val sAddr = addr.hostAddress
+                        if (sAddr != null && sAddr.indexOf(':') < 0) {
+                            return sAddr
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return null
     }
 
     @Composable

@@ -9,9 +9,11 @@ import android.graphics.Bitmap
 import android.os.BatteryManager
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
@@ -141,6 +143,8 @@ class SlideshowController(
     private var animGen = 0L
     private var onDismiss: Runnable? = null
     private var onSettings: Runnable? = null
+    private var onOpenHomeAssistant: Runnable? = null
+    private lateinit var haButton: ImageView
     private var clockOnly = false // low-light mode: black screen, clock only
     private var lastChimedHour = -1
 
@@ -539,6 +543,8 @@ class SlideshowController(
         initPlayButton()
         root.addView(playButtonOverlay)
         root.addView(clockExit)
+        initHaButton()
+        root.addView(haButton)
         root.addView(actionMenuBackdrop)
         root.addView(actionMenuCard)
         clockBox.post { applyClockTransformNow() } // apply saved position/size once laid out
@@ -550,6 +556,29 @@ class SlideshowController(
         startClock()
         startWeather()
         shimmer.startSweep()
+        checkCustomMessage()
+    }
+
+    private fun initHaButton() {
+        haButton = ImageView(context).apply {
+            setImageResource(R.drawable.ic_ambient)
+            setColorFilter(Color.WHITE)
+            background = Ui.roundRect(0x66000000, Ui.dp(context, 20f)).apply {
+                setStroke(Ui.dp(context, 1f), 0x33FFFFFF)
+            }
+            setPadding(Ui.dp(context, 10f), Ui.dp(context, 10f), Ui.dp(context, 10f), Ui.dp(context, 10f))
+            val lp = FrameLayout.LayoutParams(Ui.dp(context, 44f), Ui.dp(context, 44f)).apply {
+                gravity = Gravity.TOP or Gravity.START
+                topMargin = Ui.dp(context, 24f)
+                leftMargin = Ui.dp(context, 24f)
+            }
+            layoutParams = lp
+            val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+            val haEnabled = prefs.getBoolean(ConfigReceiver.KEY_HA_EMBEDDED, ConfigReceiver.DEFAULT_HA_EMBEDDED)
+            val showBtn = prefs.getBoolean(ConfigReceiver.KEY_HA_BUTTON, ConfigReceiver.DEFAULT_HA_BUTTON)
+            visibility = if (haEnabled && showBtn) View.VISIBLE else View.GONE
+            setOnClickListener { onOpenHomeAssistant?.run() }
+        }
     }
 
     fun setOnDismiss(onDismiss: Runnable?) {
@@ -559,6 +588,28 @@ class SlideshowController(
     /** Long-press anywhere on the slideshow runs this (used to open Photos setup). */
     fun setOnSettings(onSettings: Runnable?) {
         this.onSettings = onSettings
+    }
+
+    fun setOnOpenHomeAssistant(onOpenHomeAssistant: Runnable?) {
+        this.onOpenHomeAssistant = onOpenHomeAssistant
+    }
+
+    fun checkCustomMessage() {
+        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val customMsg = prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "")?.trim() ?: ""
+        if (customMsg.isNotEmpty()) {
+            broadcastBanner.text = customMsg
+            broadcastBanner.alpha = 1f
+            broadcastBanner.visibility = if (!clockOnly) View.VISIBLE else View.GONE
+        } else {
+            broadcastBanner.visibility = View.GONE
+        }
+
+        if (::haButton.isInitialized) {
+            val haEnabled = prefs.getBoolean(ConfigReceiver.KEY_HA_EMBEDDED, ConfigReceiver.DEFAULT_HA_EMBEDDED)
+            val showBtn = prefs.getBoolean(ConfigReceiver.KEY_HA_BUTTON, ConfigReceiver.DEFAULT_HA_BUTTON)
+            haButton.visibility = if (haEnabled && showBtn && !clockOnly) View.VISIBLE else View.GONE
+        }
     }
 
     fun setStatusHint(text: String?) {
@@ -2143,24 +2194,34 @@ class SlideshowController(
         clock.text = time
         trimLeftBearing(clock)
 
-        val w = weather
-        if (w == null) {
-            dateLine.text = date + getBatterySuffix()
-        } else if (w.moon) {
-            // Clear night: draw a blue crescent (color emoji can't be tinted) + temp.
-            val sb = SpannableStringBuilder("$date   ")
-            val s = sb.length
+        val showBattery = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+            .getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
+
+        val sb = SpannableStringBuilder()
+        if (showBattery && batteryLevel >= 0) {
+            val batDrawable = BatteryPillDrawable(batteryLevel, batteryIsCharging)
+            val dpW = Ui.dp(context, 22f)
+            val dpH = Ui.dp(context, 11f)
+            batDrawable.setBounds(0, 0, dpW, dpH)
             sb.append(" ")
-            sb.setSpan(
-                ImageSpan(moonDrawable, ImageSpan.ALIGN_CENTER),
-                s, s + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
-            sb.append("  ").append(w.temp.toString()).append("°")
-            sb.append(getBatterySuffix())
-            dateLine.text = sb
-        } else {
-            dateLine.text = date + "   " + w.label() + getBatterySuffix()
+            sb.setSpan(ImageSpan(batDrawable, ImageSpan.ALIGN_CENTER), 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            sb.append(" $batteryLevel % | ")
         }
+        sb.append(date)
+
+        val w = weather
+        if (w != null) {
+            if (w.moon) {
+                sb.append("   ")
+                val startIdx = sb.length
+                sb.append(" ")
+                sb.setSpan(ImageSpan(moonDrawable, ImageSpan.ALIGN_CENTER), startIdx, startIdx + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                sb.append("  ${w.temp}°")
+            } else {
+                sb.append("   ${w.label()}")
+            }
+        }
+        dateLine.text = sb
         trimLeftBearing(dateLine)
     }
 
@@ -2704,4 +2765,65 @@ class SlideshowController(
             return max * (8f - h) / 2f // 06:00–08:00
         }
     }
+}
+
+/**
+ * Native vector battery pill drawable matching Meta Portal Go layout:
+ * Rounded outline + terminal cap + proportional dynamic colored fill.
+ */
+class BatteryPillDrawable(private val level: Int, private val isCharging: Boolean) : Drawable() {
+    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f
+        color = Color.WHITE
+    }
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = when {
+            isCharging -> Color.rgb(52, 199, 89)
+            level > 20 -> Color.rgb(52, 199, 89)
+            level > 10 -> Color.rgb(255, 204, 0)
+            else -> Color.rgb(255, 59, 48)
+        }
+    }
+
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        val w = b.width().toFloat()
+        val h = b.height().toFloat()
+        val capW = 2.5f
+        val capH = h * 0.45f
+        val bodyW = w - capW - 1.5f
+        val radius = 3.5f
+
+        // Body outline
+        val bodyRect = RectF(b.left.toFloat(), b.top.toFloat(), b.left + bodyW, b.top + h)
+        canvas.drawRoundRect(bodyRect, radius, radius, strokePaint)
+
+        // Terminal cap on right
+        val capTop = b.top + (h - capH) / 2f
+        val capRect = RectF(b.left + bodyW + 0.5f, capTop, b.left + w, capTop + capH)
+        canvas.drawRoundRect(capRect, 1.5f, 1.5f, fillPaint)
+
+        // Inner battery level fill
+        val pad = 3f
+        val fillMaxW = bodyW - pad * 2
+        val pct = (level.coerceIn(0, 100) / 100f)
+        val fillW = (fillMaxW * pct).coerceAtLeast(1f)
+        val fillRect = RectF(b.left + pad, b.top + pad, b.left + pad + fillW, b.top + h - pad)
+        canvas.drawRoundRect(fillRect, 2f, 2f, fillPaint)
+    }
+
+    override fun setAlpha(alpha: Int) {
+        strokePaint.alpha = alpha
+        fillPaint.alpha = alpha
+    }
+
+    override fun setColorFilter(colorFilter: ColorFilter?) {
+        strokePaint.colorFilter = colorFilter
+        fillPaint.colorFilter = colorFilter
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 }

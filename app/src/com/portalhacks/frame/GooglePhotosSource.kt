@@ -27,7 +27,7 @@ internal object GooglePhotosSource : PhotoProvider {
             url.startsWith("https://photos.google.com/share/")
 
     private const val TAG = "PortalFrame"
-    private const val IMG_WIDTH = 1280
+    private const val IMG_WIDTH = 2560
 
     // Start of each media item: ["<AF1Qip mediaKey>",["https://lh3...
     private val ITEM: Pattern = Pattern.compile(

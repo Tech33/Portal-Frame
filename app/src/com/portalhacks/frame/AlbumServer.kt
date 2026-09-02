@@ -128,12 +128,43 @@ class AlbumServer(
                     }
                 }
 
+                // Message banner web form
+                method == "GET" && rawPath == "/message" -> {
+                    val currentMsg = prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "") ?: ""
+                    sendResponse(socket, 200, "OK", "text/html; charset=utf-8", getMessageHtml(currentMsg).toByteArray(Charsets.UTF_8))
+                }
+
+                // Submit or clear custom message banner
+                method == "POST" && (rawPath == "/message" || rawPath == "/api/message") -> {
+                    val body = CharArray(contentLength.coerceAtMost(64 * 1024))
+                    var read = 0
+                    while (read < body.size) {
+                        val n = reader.read(body, read, body.size - read)
+                        if (n == -1) break
+                        read += n
+                    }
+                    val bodyStr = String(body)
+                    val msg = parseFormParam(bodyStr, "message") ?: parseJsonMessage(bodyStr) ?: ""
+                    val sanitized = sanitizeHtml(msg.trim().take(200))
+                    prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, sanitized).apply()
+                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", sanitized))
+                    MqttManager.getInstance(appContext).publishAllStates()
+                    sendResponse(socket, 200, "Success", "text/html; charset=utf-8", getMessageSuccessHtml(sanitized).toByteArray(Charsets.UTF_8))
+                }
+
+                method == "POST" && (rawPath == "/api/message/clear" || rawPath == "/message/clear") -> {
+                    prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
+                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE))
+                    MqttManager.getInstance(appContext).publishAllStates()
+                    sendResponse(socket, 200, "Success", "application/json; charset=utf-8", "{\"status\":\"cleared\"}".toByteArray(Charsets.UTF_8))
+                }
+
                 // Save clock/date transform config from webview drag & pinch
                 method == "POST" && rawPath == "/api/config" -> {
-                    val body = CharArray(contentLength)
+                    val body = CharArray(contentLength.coerceAtMost(64 * 1024))
                     var read = 0
-                    while (read < contentLength) {
-                        val n = reader.read(body, read, contentLength - read)
+                    while (read < body.size) {
+                        val n = reader.read(body, read, body.size - read)
                         if (n == -1) break
                         read += n
                     }
@@ -141,12 +172,12 @@ class AlbumServer(
                     try {
                         val json = JSONObject(bodyStr)
                         val editor = prefs.edit()
-                        if (json.has("clock_dx")) editor.putFloat(ConfigReceiver.KEY_CLOCK_DX, json.getDouble("clock_dx").toFloat())
-                        if (json.has("clock_dy")) editor.putFloat(ConfigReceiver.KEY_CLOCK_DY, json.getDouble("clock_dy").toFloat())
-                        if (json.has("clock_scale")) editor.putFloat(ConfigReceiver.KEY_CLOCK_SCALE, json.getDouble("clock_scale").toFloat())
-                        if (json.has("clock_only_dx")) editor.putFloat(ConfigReceiver.KEY_CLOCK_ONLY_DX, json.getDouble("clock_only_dx").toFloat())
-                        if (json.has("clock_only_dy")) editor.putFloat(ConfigReceiver.KEY_CLOCK_ONLY_DY, json.getDouble("clock_only_dy").toFloat())
-                        if (json.has("clock_only_scale")) editor.putFloat(ConfigReceiver.KEY_CLOCK_ONLY_SCALE, json.getDouble("clock_only_scale").toFloat())
+                        if (json.has("clock_dx")) editor.putFloat(ConfigReceiver.KEY_CLOCK_DX, json.getDouble("clock_dx").toFloat().coerceIn(-1.0f, 1.0f))
+                        if (json.has("clock_dy")) editor.putFloat(ConfigReceiver.KEY_CLOCK_DY, json.getDouble("clock_dy").toFloat().coerceIn(-1.0f, 1.0f))
+                        if (json.has("clock_scale")) editor.putFloat(ConfigReceiver.KEY_CLOCK_SCALE, json.getDouble("clock_scale").toFloat().coerceIn(0.5f, 3.0f))
+                        if (json.has("clock_only_dx")) editor.putFloat(ConfigReceiver.KEY_CLOCK_ONLY_DX, json.getDouble("clock_only_dx").toFloat().coerceIn(-1.0f, 1.0f))
+                        if (json.has("clock_only_dy")) editor.putFloat(ConfigReceiver.KEY_CLOCK_ONLY_DY, json.getDouble("clock_only_dy").toFloat().coerceIn(-1.0f, 1.0f))
+                        if (json.has("clock_only_scale")) editor.putFloat(ConfigReceiver.KEY_CLOCK_ONLY_SCALE, json.getDouble("clock_only_scale").toFloat().coerceIn(0.5f, 3.0f))
                         editor.apply()
                         sendResponse(socket, 200, "OK", "application/json", "{\"status\":\"saved\"}".toByteArray(Charsets.UTF_8))
                     } catch (e: Exception) {
@@ -159,9 +190,10 @@ class AlbumServer(
                     val enabledAlbums = Albums.enabled(prefs)
                     val status = JSONObject()
                         .put("status", "ok")
-                        .put("version", "1.5.24")
+                        .put("version", "1.6.0")
                         .put("port", port)
                         .put("haBridgeMode", prefs.getBoolean(ConfigReceiver.KEY_HA_BRIDGE_MODE, ConfigReceiver.DEFAULT_HA_BRIDGE_MODE))
+                        .put("mqttEnabled", prefs.getBoolean(ConfigReceiver.KEY_MQTT_ENABLED, ConfigReceiver.DEFAULT_MQTT_ENABLED))
                         .put("albumsCount", enabledAlbums.size)
                         .put("slideshowUrl", "http://127.0.0.1:$port/slideshow")
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", status.toString().toByteArray(Charsets.UTF_8))
@@ -174,10 +206,10 @@ class AlbumServer(
 
                 // Submit new album URL
                 method == "POST" && (rawPath == "/add" || rawPath == "/api/add") -> {
-                    val body = CharArray(contentLength)
+                    val body = CharArray(contentLength.coerceAtMost(64 * 1024))
                     var read = 0
-                    while (read < contentLength) {
-                        val n = reader.read(body, read, contentLength - read)
+                    while (read < body.size) {
+                        val n = reader.read(body, read, body.size - read)
                         if (n == -1) break
                         read += n
                     }
@@ -944,12 +976,388 @@ class AlbumServer(
                 <h1>Add Shared Album</h1>
                 <p>Paste the shared album link from Google Photos or iCloud to display it on your Portal.</p>
                 <form method="POST" action="/add">
+    private fun parseFormParam(body: String, key: String): String? {
+        val pairs = body.split("&")
+        for (pair in pairs) {
+            val parts = pair.split("=")
+            if (parts.size == 2 && parts[0] == key) {
+                return try {
+                    URLDecoder.decode(parts[1], "UTF-8")
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+        return null
+    }
+
+    private fun parseJsonMessage(body: String): String? {
+        return try {
+            val json = JSONObject(body)
+            if (json.has("message")) json.getString("message") else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun sanitizeHtml(s: String): String {
+        return s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#x27;")
+    }
+
+    private fun getAddAlbumHtml(): String {
+        return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+              <title>Add Album to Frame</title>
+              <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+                  background-color: #0E0E10;
+                  color: #FFFFFF;
+                  padding: 24px;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  min-height: 100vh;
+                }
+                .card {
+                  background-color: #1C1C1E;
+                  border-radius: 20px;
+                  padding: 32px 24px;
+                  width: 100%;
+                  max-width: 440px;
+                  box-shadow: 0 16px 36px rgba(0,0,0,0.5);
+                  border: 1px solid rgba(255,255,255,0.1);
+                }
+                h1 {
+                  font-size: 22px;
+                  margin-bottom: 8px;
+                  font-weight: 700;
+                  text-align: center;
+                }
+                p {
+                  font-size: 14px;
+                  color: #8E8E93;
+                  margin-bottom: 24px;
+                  text-align: center;
+                  line-height: 1.5;
+                }
+                label {
+                  display: block;
+                  font-size: 13px;
+                  color: #A1A1A6;
+                  margin-bottom: 8px;
+                  font-weight: 600;
+                }
+                input[type="text"] {
+                  width: 100%;
+                  padding: 16px;
+                  border: 1px solid #38383A;
+                  background-color: #2C2C2E;
+                  color: #FFFFFF;
+                  border-radius: 12px;
+                  font-size: 15px;
+                  margin-bottom: 12px;
+                  outline: none;
+                  transition: border-color 0.2s;
+                }
+                input[type="text"]:focus {
+                  border-color: #007AFF;
+                }
+                .btn-row {
+                  display: flex;
+                  gap: 10px;
+                  margin-bottom: 16px;
+                }
+                .btn-secondary {
+                  flex: 1;
+                  padding: 12px;
+                  background-color: #2C2C2E;
+                  color: #FFFFFF;
+                  border: 1px solid #38383A;
+                  border-radius: 10px;
+                  font-size: 14px;
+                  font-weight: 600;
+                  cursor: pointer;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 6px;
+                }
+                .btn-primary {
+                  width: 100%;
+                  padding: 16px;
+                  background-color: #007AFF;
+                  color: #FFFFFF;
+                  border: none;
+                  border-radius: 12px;
+                  font-size: 16px;
+                  font-weight: 600;
+                  cursor: pointer;
+                  box-shadow: 0 4px 14px rgba(0,122,255,0.4);
+                }
+                .footer {
+                  margin-top: 24px;
+                  font-size: 12px;
+                  color: #636366;
+                  text-align: center;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <h1>Add Shared Album</h1>
+                <p>Paste the shared album link from Google Photos or iCloud to display it on your Portal.</p>
+                <form method="POST" action="/add">
                   <label for="url">Album Link</label>
                   <input type="text" id="url" name="url" placeholder="https://photos.app.goo.gl/..." required autocomplete="off" autofocus>
-                  <button type="submit">Add to Frame</button>
+                  <div class="btn-row">
+                    <button type="button" class="btn-secondary" onclick="pasteClipboard()">📋 Paste</button>
+                    <button type="button" class="btn-secondary" onclick="clearField()">✕ Clear</button>
+                  </div>
+                  <button type="submit" class="btn-primary">Add to Frame</button>
                 </form>
               </div>
-              <div class="footer">Portal Frame Screensaver</div>
+              <div class="footer">Meta Portal Frame</div>
+
+              <script>
+                async function pasteClipboard() {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    if (text) { document.getElementById('url').value = text; }
+                  } catch (_) {}
+                }
+                function clearField() {
+                  document.getElementById('url').value = '';
+                  document.getElementById('url').focus();
+                }
+              </script>
+            </body>
+            </html>
+        """.trimIndent()
+    }
+
+    private fun getMessageHtml(currentMsg: String): String {
+        val safeCurrent = sanitizeHtml(currentMsg)
+        return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+              <title>Post Announcement to Frame</title>
+              <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+                  background-color: #0E0E10;
+                  color: #FFFFFF;
+                  padding: 24px;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  min-height: 100vh;
+                }
+                .card {
+                  background-color: #1C1C1E;
+                  border-radius: 20px;
+                  padding: 32px 24px;
+                  width: 100%;
+                  max-width: 440px;
+                  box-shadow: 0 16px 36px rgba(0,0,0,0.5);
+                  border: 1px solid rgba(255,255,255,0.1);
+                }
+                h1 {
+                  font-size: 22px;
+                  margin-bottom: 8px;
+                  font-weight: 700;
+                  text-align: center;
+                }
+                p {
+                  font-size: 14px;
+                  color: #8E8E93;
+                  margin-bottom: 20px;
+                  text-align: center;
+                  line-height: 1.5;
+                }
+                .active-box {
+                  background: rgba(0, 122, 255, 0.15);
+                  border: 1px solid rgba(0, 122, 255, 0.35);
+                  border-radius: 12px;
+                  padding: 12px 16px;
+                  margin-bottom: 20px;
+                  font-size: 14px;
+                  color: #64D2FF;
+                  text-align: center;
+                }
+                label {
+                  display: block;
+                  font-size: 13px;
+                  color: #A1A1A6;
+                  margin-bottom: 8px;
+                  font-weight: 600;
+                }
+                textarea {
+                  width: 100%;
+                  padding: 14px;
+                  border: 1px solid #38383A;
+                  background-color: #2C2C2E;
+                  color: #FFFFFF;
+                  border-radius: 12px;
+                  font-size: 15px;
+                  min-height: 90px;
+                  margin-bottom: 12px;
+                  outline: none;
+                  resize: none;
+                  font-family: inherit;
+                }
+                textarea:focus {
+                  border-color: #007AFF;
+                }
+                .emoji-bar {
+                  display: flex;
+                  gap: 8px;
+                  margin-bottom: 16px;
+                  overflow-x: auto;
+                  padding-bottom: 4px;
+                }
+                .emoji-btn {
+                  padding: 6px 12px;
+                  background: #2C2C2E;
+                  border: 1px solid #38383A;
+                  border-radius: 20px;
+                  font-size: 16px;
+                  cursor: pointer;
+                }
+                .btn-row {
+                  display: flex;
+                  gap: 10px;
+                  margin-top: 6px;
+                }
+                .btn-primary {
+                  flex: 2;
+                  padding: 16px;
+                  background-color: #007AFF;
+                  color: #FFFFFF;
+                  border: none;
+                  border-radius: 12px;
+                  font-size: 16px;
+                  font-weight: 600;
+                  cursor: pointer;
+                  box-shadow: 0 4px 14px rgba(0,122,255,0.4);
+                }
+                .btn-clear {
+                  flex: 1;
+                  padding: 16px;
+                  background-color: #FF3B30;
+                  color: #FFFFFF;
+                  border: none;
+                  border-radius: 12px;
+                  font-size: 15px;
+                  font-weight: 600;
+                  cursor: pointer;
+                }
+                .footer {
+                  margin-top: 24px;
+                  font-size: 12px;
+                  color: #636366;
+                  text-align: center;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <h1>Post Announcement</h1>
+                <p>Display a custom banner on the Portal Frame (e.g. birthdays, welcome notes, or celebrations).</p>
+                ${if (safeCurrent.isNotEmpty()) "<div class=\"active-box\"><strong>Currently active:</strong><br>$safeCurrent</div>" else ""}
+                <form method="POST" action="/message">
+                  <label for="message">Banner Message</label>
+                  <textarea id="message" name="message" placeholder="🎉 Happy 30th Birthday Sarah! 🎂" required autofocus></textarea>
+                  <div class="emoji-bar">
+                    <button type="button" class="emoji-btn" onclick="addEmoji('🎉')">🎉</button>
+                    <button type="button" class="emoji-btn" onclick="addEmoji('🎂')">🎂</button>
+                    <button type="button" class="emoji-btn" onclick="addEmoji('❤️')">❤️</button>
+                    <button type="button" class="emoji-btn" onclick="addEmoji('✨')">✨</button>
+                    <button type="button" class="emoji-btn" onclick="addEmoji('🏡')">🏡</button>
+                    <button type="button" class="emoji-btn" onclick="addEmoji('⭐')">⭐</button>
+                  </div>
+                  <div class="btn-row">
+                    <button type="submit" class="btn-primary">Post Banner</button>
+                    <button type="button" class="btn-clear" onclick="clearMessage()">✕ Clear</button>
+                  </div>
+                </form>
+              </div>
+              <div class="footer">Meta Portal Frame</div>
+
+              <script>
+                function addEmoji(e) {
+                  const ta = document.getElementById('message');
+                  ta.value += e;
+                  ta.focus();
+                }
+                async function clearMessage() {
+                  try {
+                    await fetch('/api/message/clear', { method: 'POST' });
+                    window.location.reload();
+                  } catch (_) {}
+                }
+              </script>
+            </body>
+            </html>
+        """.trimIndent()
+    }
+
+    private fun getMessageSuccessHtml(msg: String): String {
+        return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Message Posted</title>
+              <style>
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                  background-color: #0E0E10;
+                  color: #E0E0E0;
+                  padding: 24px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  min-height: 100vh;
+                  box-sizing: border-box;
+                }
+                .card {
+                  background-color: #1C1C1E;
+                  border-radius: 20px;
+                  padding: 40px 24px;
+                  width: 100%;
+                  max-width: 400px;
+                  box-shadow: 0 16px 36px rgba(0,0,0,0.5);
+                  border: 1px solid rgba(255,255,255,0.1);
+                  text-align: center;
+                }
+                .icon { font-size: 48px; color: #34C759; margin-bottom: 16px; }
+                h1 { font-size: 22px; margin-bottom: 8px; color: #FFFFFF; font-weight: 700; }
+                p { font-size: 15px; color: #8E8E93; line-height: 1.5; margin-bottom: 20px; }
+                a { display: inline-block; padding: 12px 24px; background: #007AFF; color: #FFF; border-radius: 10px; text-decoration: none; font-weight: 600; }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <div class="icon">✓</div>
+                <h1>Banner Posted!</h1>
+                <p>Your message is now floating live on the Portal Frame:</p>
+                <p style="color: #FFFFFF; font-weight: 600;">"$msg"</p>
+                <a href="/message">Back</a>
+              </div>
             </body>
             </html>
         """.trimIndent()

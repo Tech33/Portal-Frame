@@ -150,6 +150,28 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_FONT_SCALE = "font_scale" // float multiplier for universal text sizing (1.0f, 1.15f, 1.30f, 1.50f)
         const val KEY_HA_BRIDGE_MODE = "ha_bridge_mode" // Home Assistant & portal-ha-bridge web kiosk mode
 
+        // MQTT and Embedded Home Assistant keys
+        const val KEY_MQTT_ENABLED = "mqtt_enabled"
+        const val KEY_MQTT_HOST = "mqtt_host"
+        const val KEY_MQTT_PORT = "mqtt_port"
+        const val KEY_MQTT_USER = "mqtt_user"
+        const val KEY_MQTT_PASS = "mqtt_pass"
+        const val KEY_MQTT_TOPIC_PREFIX = "mqtt_topic_prefix"
+
+        const val KEY_CUSTOM_MESSAGE = "custom_overlay_message"
+        const val KEY_HA_EMBEDDED = "ha_embedded"
+        const val KEY_HA_URL = "ha_url"
+        const val KEY_HA_IDLE_TIMEOUT_SEC = "ha_idle_timeout_sec"
+        const val KEY_HA_BUTTON = "ha_button"
+
+        // Broadcast Intent Actions
+        const val ACTION_SHOW_DASHBOARD = "com.portalhacks.frame.SHOW_DASHBOARD"
+        const val ACTION_SHOW_SLIDESHOW = "com.portalhacks.frame.SHOW_SLIDESHOW"
+        const val ACTION_NEXT_PHOTO = "com.portalhacks.frame.NEXT_PHOTO"
+        const val ACTION_PREV_PHOTO = "com.portalhacks.frame.PREV_PHOTO"
+        const val ACTION_SET_MESSAGE = "com.portalhacks.frame.SET_MESSAGE"
+        const val ACTION_CLEAR_MESSAGE = "com.portalhacks.frame.CLEAR_MESSAGE"
+
         /** Stable URL — always serves the latest release's version.json asset. */
         const val UPDATE_MANIFEST_URL =
             "https://github.com/Tech33/Portal-Frame/releases/latest/download/version.json"
@@ -194,8 +216,20 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_FONT_SCALE = 1.0f
         const val DEFAULT_HA_BRIDGE_MODE = false
 
-        // ADB-settable boolean extras (extra name -> pref key) for quick testing, e.g.
-        //   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --ez ken_burns false
+        const val DEFAULT_MQTT_ENABLED = false
+        const val DEFAULT_MQTT_HOST = ""
+        const val DEFAULT_MQTT_PORT = 1883
+        const val DEFAULT_MQTT_USER = ""
+        const val DEFAULT_MQTT_PASS = ""
+        const val DEFAULT_MQTT_TOPIC_PREFIX = "portal"
+
+        const val DEFAULT_CUSTOM_MESSAGE = ""
+        const val DEFAULT_HA_EMBEDDED = false
+        const val DEFAULT_HA_URL = ""
+        const val DEFAULT_HA_IDLE_TIMEOUT_SEC = 60
+        const val DEFAULT_HA_BUTTON = true
+
+        // ADB-settable boolean extras (extra name -> pref key) for quick testing
         private val BOOL_EXTRAS = arrayOf(
             arrayOf("shuffle", KEY_SHUFFLE), arrayOf("pairs", KEY_PAIRS), arrayOf("ken_burns", KEY_KEN_BURNS),
             arrayOf("clock", KEY_CLOCK), arrayOf("weather_fahrenheit", KEY_WEATHER_FAHRENHEIT),
@@ -207,9 +241,10 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("chime", KEY_CHIME),
             arrayOf("recent_first", KEY_RECENT_FIRST),
             arrayOf("ha_bridge_mode", KEY_HA_BRIDGE_MODE),
+            arrayOf("mqtt_enabled", KEY_MQTT_ENABLED),
+            arrayOf("ha_embedded", KEY_HA_EMBEDDED),
+            arrayOf("ha_button", KEY_HA_BUTTON),
         )
-
-        // Per-album photo caches are managed by AlbumCache (keyed by album URL).
 
         /** True for a recognised shared-album HTTPS link (Google Photos or iCloud). */
         fun isAlbumUrl(s: String?): Boolean = PhotoSources.matches(s)

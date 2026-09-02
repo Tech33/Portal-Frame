@@ -542,12 +542,51 @@ class PhotosActivity : Activity() {
             InputType.TYPE_TEXT_VARIATION_URI or
             InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         belowBox.addView(edit)
-        val done = pillButton("Done", Ui.BLUE, Color.WHITE) { addTypedAlbum(edit) }
-        val doneLp = LinearLayout.LayoutParams(WRAP, WRAP)
-        doneLp.topMargin = Ui.dp(this, 14f)
-        doneLp.gravity = Gravity.END
-        done.layoutParams = doneLp
-        belowBox.addView(done)
+
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val lp = LinearLayout.LayoutParams(MATCH, WRAP).apply {
+                topMargin = Ui.dp(this@PhotosActivity, 14f)
+            }
+            layoutParams = lp
+        }
+
+        val pasteBtn = pillButton("📋 Paste", 0xFF2C2C2E.toInt(), Color.WHITE) {
+            try {
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = cm.primaryClip
+                if (clip != null && clip.itemCount > 0) {
+                    val text = clip.getItemAt(0).text?.toString()?.trim()
+                    if (!text.isNullOrEmpty()) {
+                        edit.setText(text)
+                        edit.setSelection(text.length)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to read clipboard", e)
+            }
+        }
+        val pasteLp = LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+            rightMargin = Ui.dp(this@PhotosActivity, 8f)
+        }
+        buttonRow.addView(pasteBtn, pasteLp)
+
+        val clearBtn = pillButton("✕ Clear", 0xFF2C2C2E.toInt(), Color.WHITE) {
+            edit.setText("")
+        }
+        val clearLp = LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+            rightMargin = Ui.dp(this@PhotosActivity, 8f)
+        }
+        buttonRow.addView(clearBtn, clearLp)
+
+        val doneBtn = pillButton("Done", Ui.BLUE, Color.WHITE) {
+            addTypedAlbum(edit)
+        }
+        val doneLp = LinearLayout.LayoutParams(0, WRAP, 1.2f)
+        buttonRow.addView(doneBtn, doneLp)
+
+        belowBox.addView(buttonRow)
 
         val belowLp = FrameLayout.LayoutParams(colW, WRAP)
         belowLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL

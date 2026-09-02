@@ -1,8 +1,11 @@
 package com.portalhacks.frame
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Configuration
+import android.graphics.Color
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -11,13 +14,17 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.util.TypedValue
+import android.view.GestureDetector
+import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
+import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.view.GestureDetector
-import android.view.MotionEvent
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -82,6 +89,24 @@ class SlideshowComposeActivity : ComponentActivity() {
         }
     }
 
+    private var haWebView: WebView? = null
+    private var haContainer: FrameLayout? = null
+    private val haIdleHandler = Handler(Looper.getMainLooper())
+    private val haIdleRunnable = Runnable { hideHomeAssistant() }
+
+    private val commandReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ConfigReceiver.ACTION_SHOW_DASHBOARD -> showHomeAssistant()
+                ConfigReceiver.ACTION_SHOW_SLIDESHOW -> hideHomeAssistant()
+                ConfigReceiver.ACTION_NEXT_PHOTO -> controller.next()
+                ConfigReceiver.ACTION_PREV_PHOTO -> controller.prev()
+                ConfigReceiver.ACTION_SET_MESSAGE,
+                ConfigReceiver.ACTION_CLEAR_MESSAGE -> controller.checkCustomMessage()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(
@@ -90,8 +115,6 @@ class SlideshowComposeActivity : ComponentActivity() {
                 or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
                 or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
         )
-        // Honor the Portal's own brightness: don't override the window brightness, so the
-        // system's adaptive/manual brightness (and its light sensor) governs the frame.
         window.attributes = window.attributes.apply {
             screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
@@ -113,6 +136,9 @@ class SlideshowComposeActivity : ComponentActivity() {
             setOnSettings {
                 startActivity(Intent(this@SlideshowComposeActivity, SettingsActivity::class.java))
             }
+            setOnOpenHomeAssistant {
+                showHomeAssistant()
+            }
         }
         root.addView(slideshowContainer)
 
@@ -129,6 +155,8 @@ class SlideshowComposeActivity : ComponentActivity() {
                 builtInZoomControls = false
                 useWideViewPort = true
                 loadWithOverviewMode = true
+                allowFileAccessFromFileURLs = false
+                allowUniversalAccessFromFileURLs = false
             }
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
@@ -140,6 +168,23 @@ class SlideshowComposeActivity : ComponentActivity() {
         }
         flipWebView = webView
         root.addView(webView)
+
+        // 3. Build Embedded Home Assistant Dashboard Container & WebView
+        buildHomeAssistantView(root)
+
+        // Register Command Receiver
+        val cmdFilter = IntentFilter().apply {
+            addAction(ConfigReceiver.ACTION_SHOW_DASHBOARD)
+            addAction(ConfigReceiver.ACTION_SHOW_SLIDESHOW)
+            addAction(ConfigReceiver.ACTION_NEXT_PHOTO)
+            addAction(ConfigReceiver.ACTION_PREV_PHOTO)
+            addAction(ConfigReceiver.ACTION_SET_MESSAGE)
+            addAction(ConfigReceiver.ACTION_CLEAR_MESSAGE)
+        }
+        registerReceiver(commandReceiver, cmdFilter)
+
+        // Start MQTT if enabled
+        MqttManager.startIfEnabled(this)
 
         // GestureDetector to dismiss/exit screensaver or open settings from the WebView flip clock
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
@@ -165,6 +210,105 @@ class SlideshowComposeActivity : ComponentActivity() {
 
         setContent {
             AndroidView(factory = { root }, modifier = Modifier.fillMaxSize())
+        }
+    }
+
+    private fun buildHomeAssistantView(root: FrameLayout) {
+        val container = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            visibility = View.GONE
+            alpha = 0f
+            setBackgroundColor(Color.BLACK)
+        }
+
+        val webView = WebView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                databaseEnabled = true
+                displayZoomControls = false
+                builtInZoomControls = false
+                useWideViewPort = true
+                loadWithOverviewMode = true
+                allowFileAccessFromFileURLs = false
+                allowUniversalAccessFromFileURLs = false
+            }
+            CookieManager.getInstance().setAcceptCookie(true)
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = false
+            }
+        }
+
+        // Floating "✕ Photos" button to return to slideshow
+        val closeBtn = TextView(this).apply {
+            text = "✕ Photos"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Ui.bold(this@SlideshowComposeActivity)
+            background = Ui.roundRect(0xAA000000.toInt(), Ui.dp(this@SlideshowComposeActivity, 16f))
+            setPadding(Ui.dp(this@SlideshowComposeActivity, 14f), Ui.dp(this@SlideshowComposeActivity, 8f), Ui.dp(this@SlideshowComposeActivity, 14f), Ui.dp(this@SlideshowComposeActivity, 8f))
+            val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.TOP or Gravity.END
+                topMargin = Ui.dp(this@SlideshowComposeActivity, 16f)
+                rightMargin = Ui.dp(this@SlideshowComposeActivity, 16f)
+            }
+            layoutParams = lp
+            setOnClickListener { hideHomeAssistant() }
+        }
+
+        container.addView(webView)
+        container.addView(closeBtn)
+        root.addView(container)
+
+        haContainer = container
+        haWebView = webView
+
+        // Touch resets HA idle watchdog
+        webView.setOnTouchListener { _, _ ->
+            resetHaIdleTimer()
+            false
+        }
+    }
+
+    private fun showHomeAssistant() {
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val haUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, ConfigReceiver.DEFAULT_HA_URL)?.trim() ?: ""
+        if (haUrl.isEmpty()) {
+            return
+        }
+
+        val container = haContainer ?: return
+        val webView = haWebView ?: return
+
+        if (webView.url != haUrl) {
+            webView.loadUrl(haUrl)
+        }
+
+        container.visibility = View.VISIBLE
+        container.animate().alpha(1f).setDuration(300).start()
+        resetHaIdleTimer()
+    }
+
+    private fun hideHomeAssistant() {
+        haIdleHandler.removeCallbacks(haIdleRunnable)
+        haContainer?.animate()?.alpha(0f)?.setDuration(300)?.withEndAction {
+            haContainer?.visibility = View.GONE
+        }?.start()
+    }
+
+    private fun resetHaIdleTimer() {
+        haIdleHandler.removeCallbacks(haIdleRunnable)
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val timeoutSec = prefs.getInt(ConfigReceiver.KEY_HA_IDLE_TIMEOUT_SEC, ConfigReceiver.DEFAULT_HA_IDLE_TIMEOUT_SEC)
+        if (timeoutSec > 0) {
+            haIdleHandler.postDelayed(haIdleRunnable, timeoutSec * 1000L)
         }
     }
 
@@ -254,10 +398,31 @@ class SlideshowComposeActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         flipWebView?.onPause()
+        haWebView?.onPause()
         sensorManager.unregisterListener(lightListener)
         handler.removeCallbacks(refreshTick)
         handler.removeCallbacks(scheduleTick)
         controller.stop()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            unregisterReceiver(commandReceiver)
+        } catch (_: Exception) {}
+        haIdleHandler.removeCallbacksAndMessages(null)
+        handler.removeCallbacksAndMessages(null)
+        sensorManager.unregisterListener(lightListener)
+        haWebView?.apply {
+            loadUrl("about:blank")
+            stopLoading()
+            destroy()
+        }
+        flipWebView?.apply {
+            loadUrl("about:blank")
+            stopLoading()
+            destroy()
+        }
     }
 
     private fun applyClockOnlyMode() {
