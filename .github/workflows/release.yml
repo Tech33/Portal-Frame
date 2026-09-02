@@ -67,7 +67,18 @@ jobs:
           FRAME_KEY_PASSWORD: ${{ secrets.FRAME_KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:assembleRelease --no-daemon --info --stacktrace
+          ./gradlew :app:assembleRelease --no-daemon --info --stacktrace 2>&1 | tee /tmp/build.log
+
+      - name: Publish failure diagnostics
+        if: failure()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B debug/ci-error
+          cp /tmp/build.log ci_error.txt 2>/dev/null || true
+          git add ci_error.txt
+          git commit -m "ci: diagnostic error log [skip ci]"
+          git push origin debug/ci-error --force
 
       - name: Re-sign APK with V1+V2 (Meta Portal compatibility)
         env:
