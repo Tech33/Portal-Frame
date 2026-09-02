@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -245,7 +246,7 @@ class MqttManager private constructor(context: Context) {
     private fun publishAutoDiscovery() {
         val prefix = getPrefix()
         val devInfo = JSONObject()
-            .put("identifiers", arrayListOf(deviceId))
+            .put("identifiers", JSONArray().put(deviceId))
             .put("name", deviceName)
             .put("model", "Meta Portal")
             .put("manufacturer", "Meta")
