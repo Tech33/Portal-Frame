@@ -634,7 +634,8 @@ class PhotosActivity : Activity() {
     }
 
     private fun startServer(url: String) {
-        server = AlbumServer(8080) { inputUrl ->
+        val s = AlbumServer.startServer(this, 8080)
+        s.setOnUrlReceived { inputUrl ->
             var success = false
             if (isPhotosLink(inputUrl)) {
                 Albums.add(prefs(), inputUrl)
@@ -649,11 +650,15 @@ class PhotosActivity : Activity() {
             }
             success
         }
-        server?.start()
+        server = s
     }
 
     private fun stopServer() {
-        server?.stop()
+        server?.setOnUrlReceived(null)
+        val prefs = prefs()
+        if (!prefs.getBoolean(ConfigReceiver.KEY_HA_BRIDGE_MODE, ConfigReceiver.DEFAULT_HA_BRIDGE_MODE)) {
+            // Keep running if HA bridge mode is active, otherwise can shut down
+        }
         server = null
     }
 

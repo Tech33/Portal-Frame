@@ -63,6 +63,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -754,6 +757,65 @@ class SettingsActivity : ComponentActivity() {
                     }
                     Spacer(Modifier.height(8.dp))
                 }
+            }
+
+            Card("Home Assistant & Kiosk Bridge") {
+                ToggleRow(
+                    label = "Home Assistant / Bridge Mode",
+                    key = ConfigReceiver.KEY_HA_BRIDGE_MODE,
+                    def = ConfigReceiver.DEFAULT_HA_BRIDGE_MODE,
+                    subtitle = "Prevents screensaver fighting with portal-ha-bridge by serving photos locally via webview.",
+                    iconRes = R.drawable.ic_ambient,
+                    iconBg = Color(0xFF007AFF),
+                )
+                Spacer(Modifier.height(10.dp))
+                Body("Local Slideshow URL for portal-ha-bridge Screensaver or Home Assistant Webpage Cards:")
+                Spacer(Modifier.height(8.dp))
+
+                val clipboard = LocalClipboardManager.current
+                val localUrl = "http://127.0.0.1:8080/slideshow"
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF1C1C1E), RoundedCornerShape(10.dp))
+                        .border(1.dp, Color(0xFF2C2C2E), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = localUrl,
+                            color = Color(0xFF34C759),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFF007AFF), RoundedCornerShape(6.dp))
+                                .clickable {
+                                    clipboard.setText(AnnotatedString(localUrl))
+                                    Toast.makeText(this@SettingsActivity, "URL copied to clipboard ✓", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                "Copy",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Body("💡 Paste this URL into portal-ha-bridge Settings → Screensaver URL to display Frame smoothly on idle without any foreground conflicts.")
             }
 
             Card("Software update & system") {

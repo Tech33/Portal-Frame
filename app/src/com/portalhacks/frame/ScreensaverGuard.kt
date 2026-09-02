@@ -60,6 +60,11 @@ object Screensaver {
      */
     fun claim(ctx: Context): Boolean {
         if (!canWrite(ctx)) return false
+        val prefs = ctx.getSharedPreferences("portalframe", Context.MODE_PRIVATE)
+        if (prefs.getBoolean(ConfigReceiver.KEY_HA_BRIDGE_MODE, ConfigReceiver.DEFAULT_HA_BRIDGE_MODE)) {
+            // In Home Assistant / Bridge Mode, portal-ha-bridge manages the screensaver slot.
+            return false
+        }
         return try {
             Settings.Secure.putString(ctx.contentResolver, COMPONENTS, COMPONENT)
             Settings.Secure.putInt(ctx.contentResolver, ENABLED, 1)
@@ -90,7 +95,9 @@ class ScreensaverGuardService : Service() {
     private val checkRunnable = object : Runnable {
         override fun run() {
             val ctx = this@ScreensaverGuardService
-            if (!Screensaver.isOurs(ctx)) {
+            val prefs = ctx.getSharedPreferences("portalframe", Context.MODE_PRIVATE)
+            val haMode = prefs.getBoolean(ConfigReceiver.KEY_HA_BRIDGE_MODE, ConfigReceiver.DEFAULT_HA_BRIDGE_MODE)
+            if (!haMode && !Screensaver.isOurs(ctx)) {
                 if (Screensaver.claim(ctx)) {
                     Log.i(TAG, "guard periodic: reclaimed screensaver settings")
                 }
@@ -103,10 +110,18 @@ class ScreensaverGuardService : Service() {
         super.onCreate()
         startForeground(NOTIF_ID, buildNotification())
 
+        // Always ensure local AlbumServer is listening for Kiosk / Home Assistant / QR requests
+        AlbumServer.startServer(this)
+
+        val prefs = getSharedPreferences("portalframe", Context.MODE_PRIVATE)
+        val haMode = prefs.getBoolean(ConfigReceiver.KEY_HA_BRIDGE_MODE, ConfigReceiver.DEFAULT_HA_BRIDGE_MODE)
+
         val obs = object : ContentObserver(handler) {
             override fun onChange(selfChange: Boolean) {
                 val ctx = this@ScreensaverGuardService
-                if (!Screensaver.isOurs(ctx) && Screensaver.claim(ctx)) {
+                val isHa = getSharedPreferences("portalframe", Context.MODE_PRIVATE)
+                    .getBoolean(ConfigReceiver.KEY_HA_BRIDGE_MODE, ConfigReceiver.DEFAULT_HA_BRIDGE_MODE)
+                if (!isHa && !Screensaver.isOurs(ctx) && Screensaver.claim(ctx)) {
                     Log.i(TAG, "guard: reclaimed the screensaver slot")
                 }
             }
@@ -125,8 +140,10 @@ class ScreensaverGuardService : Service() {
         )
         observer = obs
 
-        // Claim immediately in case the slot was already taken before we started.
-        Screensaver.claim(this)
+        // Claim immediately if not in HA Bridge mode
+        if (!haMode) {
+            Screensaver.claim(this)
+        }
 
         // Start periodic check loop
         handler.post(checkRunnable)
@@ -136,7 +153,11 @@ class ScreensaverGuardService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Screensaver.claim(this)
+        AlbumServer.startServer(this)
+        val prefs = getSharedPreferences("portalframe", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(ConfigReceiver.KEY_HA_BRIDGE_MODE, ConfigReceiver.DEFAULT_HA_BRIDGE_MODE)) {
+            Screensaver.claim(this)
+        }
         return START_STICKY
     }
 

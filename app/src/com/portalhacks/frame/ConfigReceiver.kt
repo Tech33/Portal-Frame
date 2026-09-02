@@ -148,6 +148,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_UPDATE_AUTO_CHECK = "update_auto_check" // check GitHub on Settings open
         const val KEY_LAST_UPDATE_CHECK_MS = "last_update_check_ms"
         const val KEY_FONT_SCALE = "font_scale" // float multiplier for universal text sizing (1.0f, 1.15f, 1.30f, 1.50f)
+        const val KEY_HA_BRIDGE_MODE = "ha_bridge_mode" // Home Assistant & portal-ha-bridge web kiosk mode
 
         /** Stable URL — always serves the latest release's version.json asset. */
         const val UPDATE_MANIFEST_URL =
@@ -191,6 +192,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_CLOCK_ONLY_SCALE = 1f
         const val DEFAULT_UPDATE_AUTO_CHECK = true
         const val DEFAULT_FONT_SCALE = 1.0f
+        const val DEFAULT_HA_BRIDGE_MODE = false
 
         // ADB-settable boolean extras (extra name -> pref key) for quick testing, e.g.
         //   adb shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --ez ken_burns false
@@ -204,6 +206,7 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("battery", KEY_BATTERY),
             arrayOf("chime", KEY_CHIME),
             arrayOf("recent_first", KEY_RECENT_FIRST),
+            arrayOf("ha_bridge_mode", KEY_HA_BRIDGE_MODE),
         )
 
         // Per-album photo caches are managed by AlbumCache (keyed by album URL).

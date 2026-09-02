@@ -6,6 +6,7 @@ import android.content.Intent
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent?) {
+        AlbumServer.startServer(ctx)
         ScreensaverGuardService.startIfEnabled(ctx)
     }
 }
