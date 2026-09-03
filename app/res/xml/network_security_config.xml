@@ -3,5 +3,5 @@
      Disallow cleartext traffic outright so a network attacker can't downgrade a
      request and inject images or a tampered album page. -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

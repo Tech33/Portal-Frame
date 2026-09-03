@@ -2,6 +2,7 @@ package com.portalhacks.frame
 
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.Handler
@@ -24,9 +25,11 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLSocketFactory
+import kotlin.concurrent.thread
 
 /**
- * Lightweight, zero-dependency native MQTT 3.1.1 client for Portal-Frame.
+ * Pure Kotlin MQTT 3.1.1 Client with zero external dependencies.
+ *
  * Automatically discovers all device controls (Screen, Brightness, Volume, Battery,
  * Custom Messages, Photo Controls, Dashboard) into Home Assistant.
  */
@@ -40,6 +43,8 @@ class MqttManager private constructor(context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val isRunning = AtomicBoolean(false)
+    private var clientThread: Thread? = null
+    private val writeLock = Any()
     private var socket: Socket? = null
     private var outStream: DataOutputStream? = null
     private var inStream: DataInputStream? = null
@@ -75,13 +80,20 @@ class MqttManager private constructor(context: Context) {
 
     fun start() {
         if (isRunning.compareAndSet(false, true)) {
-            executor.execute { runClientLoop() }
+            clientThread = thread(name = "PortalFrame-MqttClient") { runClientLoop() }
         }
     }
 
     fun stop() {
-        isRunning.set(false)
-        executor.execute { closeSocket() }
+        if (isRunning.compareAndSet(true, false)) {
+            try {
+                val prefix = getPrefix()
+                publishSync("$prefix/availability", "offline".toByteArray(StandardCharsets.UTF_8), retain = true)
+            } catch (_: Exception) {}
+            closeSocket()
+            clientThread?.interrupt()
+            clientThread = null
+        }
     }
 
     private fun closeSocket() {
@@ -103,7 +115,7 @@ class MqttManager private constructor(context: Context) {
 
             if (host.isEmpty()) {
                 Log.i(TAG, "MQTT enabled but host is blank. Sleeping...")
-                Thread.sleep(10000)
+                try { Thread.sleep(10000) } catch (_: InterruptedException) { break }
                 continue
             }
 
@@ -120,22 +132,24 @@ class MqttManager private constructor(context: Context) {
 
                 val out = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
                 val inS = DataInputStream(BufferedInputStream(s.getInputStream()))
-                outStream = out
+                synchronized(writeLock) {
+                    outStream = out
+                }
                 inStream = inS
 
                 // Send CONNECT
                 sendConnect(out, deviceId, user, pass)
 
                 // Read CONNACK
-                val ackType = inS.readUnsignedByte()
-                val ackLen = readRemainingLength(inS)
-                val flags = inS.readUnsignedByte()
+                inS.readUnsignedByte()
+                readRemainingLength(inS)
+                inS.readUnsignedByte()
                 val retCode = inS.readUnsignedByte()
 
                 if (retCode != 0) {
                     Log.w(TAG, "MQTT connection rejected with code $retCode")
                     closeSocket()
-                    Thread.sleep(backoffMs)
+                    try { Thread.sleep(backoffMs) } catch (_: InterruptedException) { break }
                     backoffMs = (backoffMs * 2).coerceAtMost(60000L)
                     continue
                 }
@@ -143,20 +157,24 @@ class MqttManager private constructor(context: Context) {
                 Log.i(TAG, "Connected to Home Assistant MQTT Broker ✓")
                 backoffMs = 3000L
 
-                // Publish HA Auto-Discovery
+                // 1. Publish LWT availability status as online
+                val prefix = getPrefix()
+                publishSync("$prefix/availability", "online".toByteArray(StandardCharsets.UTF_8), retain = true)
+
+                // 2. Publish HA Auto-Discovery
                 publishAutoDiscovery()
 
-                // Subscribe to command topics
+                // 3. Subscribe to command topics
                 subscribeToCommands()
 
-                // Publish initial states
+                // 4. Publish initial states
                 publishAllStates()
 
-                // Start read loop & ping ticker
+                // Start ping ticker
                 val pingRunnable = object : Runnable {
                     override fun run() {
                         if (isRunning.get() && socket != null) {
-                            executor.execute { sendPing() }
+                            sendPing()
                             mainHandler.postDelayed(this, 30000)
                         }
                     }
@@ -167,23 +185,28 @@ class MqttManager private constructor(context: Context) {
                 while (isRunning.get() && socket != null) {
                     val header = inS.readUnsignedByte()
                     val msgType = (header shr 4) and 0x0F
+                    val qos = (header shr 1) and 0x03
                     val len = readRemainingLength(inS)
                     val payload = ByteArray(len)
                     inS.readFully(payload)
 
                     when (msgType) {
-                        3 -> handlePublish(payload) // PUBLISH
+                        3 -> handlePublish(header, qos, payload) // PUBLISH
                         13 -> {} // PINGRESP
                         else -> {}
                     }
                 }
 
             } catch (e: Exception) {
-                if (isRunning.get()) {
-                    Log.w(TAG, "MQTT connection dropped (${e.message}). Reconnecting in ${backoffMs / 1000}s...")
-                }
+                if (!isRunning.get()) break
+                Log.w(TAG, "MQTT error or disconnection: ${e.message}")
+            } finally {
                 closeSocket()
-                Thread.sleep(backoffMs)
+                try {
+                    Thread.sleep(backoffMs)
+                } catch (_: InterruptedException) {
+                    break
+                }
                 backoffMs = (backoffMs * 2).coerceAtMost(60000L)
             }
         }
@@ -208,24 +231,27 @@ class MqttManager private constructor(context: Context) {
         if (pass.isNotEmpty()) pOut.writeUTF(pass)
 
         val body = payload.toByteArray()
-        out.writeByte(0x10) // CONNECT
-        writeRemainingLength(out, body.size)
-        out.write(body)
-        out.flush()
+        synchronized(writeLock) {
+            out.writeByte(0x10) // CONNECT
+            writeRemainingLength(out, body.size)
+            out.write(body)
+            out.flush()
+        }
     }
 
     private fun sendPing() {
         try {
-            outStream?.let { out ->
-                out.writeByte(0xC0) // PINGREQ
-                out.writeByte(0x00)
-                out.flush()
+            synchronized(writeLock) {
+                outStream?.let { out ->
+                    out.writeByte(0xC0) // PINGREQ
+                    out.writeByte(0x00)
+                    out.flush()
+                }
             }
         } catch (_: Exception) {}
     }
 
     private fun subscribeToCommands() {
-        val out = outStream ?: return
         val prefix = getPrefix()
         val topic = "$prefix/#"
 
@@ -236,11 +262,26 @@ class MqttManager private constructor(context: Context) {
         pOut.writeByte(0) // QoS 0
 
         val body = payload.toByteArray()
-        out.writeByte(0x82) // SUBSCRIBE
-        writeRemainingLength(out, body.size)
-        out.write(body)
-        out.flush()
+        synchronized(writeLock) {
+            val out = outStream ?: return
+            out.writeByte(0x82) // SUBSCRIBE
+            writeRemainingLength(out, body.size)
+            out.write(body)
+            out.flush()
+        }
         Log.i(TAG, "Subscribed to $topic")
+    }
+
+    private fun sendPubAck(packetId: Int) {
+        try {
+            synchronized(writeLock) {
+                val out = outStream ?: return
+                out.writeByte(0x40) // PUBACK
+                out.writeByte(0x02) // Remaining length = 2
+                out.writeShort(packetId)
+                out.flush()
+            }
+        } catch (_: Exception) {}
     }
 
     private fun publishAutoDiscovery() {
@@ -252,21 +293,24 @@ class MqttManager private constructor(context: Context) {
             .put("manufacturer", "Meta")
             .put("sw_version", UpdateChecker.currentVersionName(appContext))
 
+        val avail = "$prefix/availability"
+
         // 1. Screen Power Switch
         publishJson(
-            "homeassistant/switch/${deviceId}_screen/config",
+            "homeassistant/switch/$deviceId/screen/config",
             JSONObject()
                 .put("name", "Screen")
                 .put("unique_id", "${deviceId}_screen")
                 .put("state_topic", "$prefix/screen/state")
                 .put("command_topic", "$prefix/screen/set")
+                .put("availability_topic", avail)
                 .put("icon", "mdi:monitor")
                 .put("device", devInfo)
         )
 
         // 2. Screen Brightness Light
         publishJson(
-            "homeassistant/light/${deviceId}_brightness/config",
+            "homeassistant/light/$deviceId/brightness/config",
             JSONObject()
                 .put("name", "Brightness")
                 .put("unique_id", "${deviceId}_brightness")
@@ -275,18 +319,19 @@ class MqttManager private constructor(context: Context) {
                 .put("brightness_state_topic", "$prefix/brightness/state")
                 .put("brightness_command_topic", "$prefix/brightness/set")
                 .put("brightness_scale", 100)
-                .put("schema", "json")
+                .put("availability_topic", avail)
                 .put("device", devInfo)
         )
 
         // 3. Speaker Volume Slider
         publishJson(
-            "homeassistant/number/${deviceId}_volume/config",
+            "homeassistant/number/$deviceId/volume/config",
             JSONObject()
                 .put("name", "Volume")
                 .put("unique_id", "${deviceId}_volume")
                 .put("state_topic", "$prefix/volume/state")
                 .put("command_topic", "$prefix/volume/set")
+                .put("availability_topic", avail)
                 .put("min", 0)
                 .put("max", 100)
                 .put("step", 1)
@@ -296,134 +341,130 @@ class MqttManager private constructor(context: Context) {
 
         // 4. Battery Sensor
         publishJson(
-            "homeassistant/sensor/${deviceId}_battery/config",
+            "homeassistant/sensor/$deviceId/battery/config",
             JSONObject()
                 .put("name", "Battery")
                 .put("unique_id", "${deviceId}_battery")
                 .put("state_topic", "$prefix/battery/state")
+                .put("availability_topic", avail)
                 .put("unit_of_measurement", "%")
                 .put("device_class", "battery")
+                .put("state_class", "measurement")
                 .put("device", devInfo)
         )
 
         // 5. Custom Overlay Message Text Entity
         publishJson(
-            "homeassistant/text/${deviceId}_message/config",
+            "homeassistant/text/$deviceId/message/config",
             JSONObject()
                 .put("name", "Banner Message")
                 .put("unique_id", "${deviceId}_message")
                 .put("state_topic", "$prefix/message/state")
                 .put("command_topic", "$prefix/message/set")
+                .put("availability_topic", avail)
                 .put("icon", "mdi:message-badge")
                 .put("device", devInfo)
         )
 
         // 6. Next / Previous Photo Buttons
         publishJson(
-            "homeassistant/button/${deviceId}_next/config",
+            "homeassistant/button/$deviceId/next/config",
             JSONObject()
                 .put("name", "Next Photo")
                 .put("unique_id", "${deviceId}_next")
                 .put("command_topic", "$prefix/next/set")
+                .put("availability_topic", avail)
                 .put("icon", "mdi:skip-next")
                 .put("device", devInfo)
         )
         publishJson(
-            "homeassistant/button/${deviceId}_prev/config",
+            "homeassistant/button/$deviceId/prev/config",
             JSONObject()
                 .put("name", "Previous Photo")
                 .put("unique_id", "${deviceId}_prev")
                 .put("command_topic", "$prefix/prev/set")
+                .put("availability_topic", avail)
                 .put("icon", "mdi:skip-previous")
                 .put("device", devInfo)
         )
 
         // 7. Embedded Dashboard Switch
         publishJson(
-            "homeassistant/switch/${deviceId}_dashboard/config",
+            "homeassistant/switch/$deviceId/dashboard/config",
             JSONObject()
                 .put("name", "Home Assistant Dashboard")
                 .put("unique_id", "${deviceId}_dashboard")
                 .put("state_topic", "$prefix/dashboard/state")
                 .put("command_topic", "$prefix/dashboard/set")
+                .put("availability_topic", avail)
                 .put("icon", "mdi:view-dashboard")
                 .put("device", devInfo)
         )
     }
 
-    private fun handlePublish(payload: ByteArray) {
+    private fun handlePublish(header: Int, qos: Int, payload: ByteArray) {
         val pIn = DataInputStream(ByteArrayInputStream(payload))
         val topic = pIn.readUTF()
-        val msgBytes = ByteArray(payload.size - (topic.length + 2))
+        if (qos > 0) {
+            val packetId = pIn.readUnsignedShort()
+            sendPubAck(packetId)
+        }
+        val topicUtf8Bytes = topic.toByteArray(StandardCharsets.UTF_8).size
+        val prefixHeaderBytes = topicUtf8Bytes + 2 + (if (qos > 0) 2 else 0)
+        val remaining = (payload.size - prefixHeaderBytes).coerceAtLeast(0)
+        val msgBytes = ByteArray(remaining)
         pIn.readFully(msgBytes)
         val msg = String(msgBytes, StandardCharsets.UTF_8).trim()
 
-        Log.i(TAG, "MQTT Received [$topic] -> $msg")
+        Log.d(TAG, "MQTT Rx [$topic]: $msg")
         val prefix = getPrefix()
 
         when (topic) {
             "$prefix/screen/set" -> {
-                val on = msg.equals("ON", ignoreCase = true)
-                mainHandler.post {
-                    if (on) {
-                        appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SHOW_SLIDESHOW))
-                    }
-                    publishState("$prefix/screen/state", if (on) "ON" else "OFF")
-                }
+                val turnOn = msg.equals("ON", ignoreCase = true) || msg == "1"
+                appContext.sendBroadcast(Intent(if (turnOn) ConfigReceiver.ACTION_WAKE else ConfigReceiver.ACTION_SLEEP))
+                publishState("$prefix/screen/state", if (turnOn) "ON" else "OFF")
             }
-
             "$prefix/brightness/set" -> {
+                val b = msg.toIntOrNull()?.coerceIn(0, 100) ?: 50
+                val rawVal = (b * 255 / 100).coerceIn(0, 255)
                 try {
-                    val percent = if (msg.startsWith("{")) {
-                        val json = JSONObject(msg)
-                        if (json.has("state") && json.getString("state") == "OFF") 0
-                        else json.optInt("brightness", 80)
-                    } else {
-                        msg.toIntOrNull() ?: 80
-                    }.coerceIn(0, 100)
-
-                    val value255 = (percent * 255 / 100).coerceIn(1, 255)
-                    Settings.System.putInt(appContext.contentResolver, Settings.System.SCREEN_BRIGHTNESS, value255)
-                    publishState("$prefix/brightness/state", if (percent > 0) "{\"state\":\"ON\",\"brightness\":$percent}" else "{\"state\":\"OFF\",\"brightness\":0}")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to set brightness", e)
-                }
+                    Settings.System.putInt(appContext.contentResolver, Settings.System.SCREEN_BRIGHTNESS, rawVal)
+                } catch (_: Exception) {}
+                publishState("$prefix/brightness/state", b.toString())
             }
-
             "$prefix/volume/set" -> {
-                try {
-                    val percent = msg.toIntOrNull()?.coerceIn(0, 100) ?: return
-                    val am = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                    val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                    val targetVol = (percent * maxVol / 100).coerceIn(0, maxVol)
-                    am.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                    publishState("$prefix/volume/state", percent.toString())
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to set volume", e)
+                val vol = msg.toIntOrNull()?.coerceIn(0, 100) ?: 50
+                val audio = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                if (audio != null) {
+                    val maxVol = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val target = (vol * maxVol / 100).coerceIn(0, maxVol)
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+                }
+                publishState("$prefix/volume/state", vol.toString())
+            }
+            "$prefix/message/set" -> {
+                if (msg.isEmpty() || msg == "__CLEAR__") {
+                    prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
+                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE))
+                    publishState("$prefix/message/state", "")
+                } else {
+                    prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, msg).apply()
+                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", msg))
+                    publishState("$prefix/message/state", msg)
                 }
             }
-
-            "$prefix/message/set" -> {
-                prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, msg).apply()
-                appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", msg))
-                publishState("$prefix/message/state", msg)
-            }
-
             "$prefix/next/set" -> {
                 appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_NEXT_PHOTO))
             }
-
             "$prefix/prev/set" -> {
                 appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_PREV_PHOTO))
             }
-
             "$prefix/dashboard/set" -> {
-                val show = msg.equals("ON", ignoreCase = true)
-                if (show) {
-                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SHOW_DASHBOARD))
-                } else {
-                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SHOW_SLIDESHOW))
-                }
+                val show = msg.equals("ON", ignoreCase = true) || msg == "1"
+                appContext.sendBroadcast(
+                    Intent(if (show) ConfigReceiver.ACTION_SHOW_DASHBOARD else ConfigReceiver.ACTION_SHOW_SLIDESHOW)
+                )
                 publishState("$prefix/dashboard/state", if (show) "ON" else "OFF")
             }
         }
@@ -431,32 +472,40 @@ class MqttManager private constructor(context: Context) {
 
     fun publishAllStates() {
         val prefix = getPrefix()
+
+        // 1. Screen state
         publishState("$prefix/screen/state", "ON")
+
+        // 2. Brightness
+        try {
+            val raw = Settings.System.getInt(appContext.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128)
+            val pct = (raw * 100 / 255).coerceIn(0, 100)
+            publishState("$prefix/brightness/state", pct.toString())
+        } catch (_: Exception) {}
+
+        // 3. Volume
+        try {
+            val audio = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audio != null) {
+                val cur = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                if (max > 0) {
+                    val pct = (cur * 100 / max).coerceIn(0, 100)
+                    publishState("$prefix/volume/state", pct.toString())
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 4. Custom Message
+        val msg = prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "") ?: ""
+        publishState("$prefix/message/state", msg)
+
+        // 5. Dashboard State
         publishState("$prefix/dashboard/state", "OFF")
 
-        val curMsg = prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "") ?: ""
-        publishState("$prefix/message/state", curMsg)
-
-        // Brightness
+        // 6. Battery %
         try {
-            val curB = Settings.System.getInt(appContext.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128)
-            val percent = (curB * 100 / 255).coerceIn(0, 100)
-            publishState("$prefix/brightness/state", "{\"state\":\"ON\",\"brightness\":$percent}")
-        } catch (_: Exception) {}
-
-        // Volume
-        try {
-            val am = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val curV = am.getStreamVolume(AudioManager.STREAM_MUSIC)
-            val maxV = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            val percent = if (maxV > 0) (curV * 100 / maxV) else 50
-            publishState("$prefix/volume/state", percent.toString())
-        } catch (_: Exception) {}
-
-        // Battery
-        try {
-            val filter = android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            val batteryStatus = appContext.registerReceiver(null, filter)
+            val batteryStatus = appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
             if (level >= 0 && scale > 0) {
@@ -474,22 +523,28 @@ class MqttManager private constructor(context: Context) {
         publish(topic, state.toByteArray(StandardCharsets.UTF_8), retain = true)
     }
 
+    private fun publishSync(topic: String, payload: ByteArray, retain: Boolean = false) {
+        synchronized(writeLock) {
+            val out = outStream ?: return
+            val buf = ByteArrayOutputStream()
+            val pOut = DataOutputStream(buf)
+            pOut.writeUTF(topic)
+            pOut.write(payload)
+
+            val body = buf.toByteArray()
+            var header = 0x30 // PUBLISH QoS 0
+            if (retain) header = header or 0x01
+            out.writeByte(header)
+            writeRemainingLength(out, body.size)
+            out.write(body)
+            out.flush()
+        }
+    }
+
     private fun publish(topic: String, payload: ByteArray, retain: Boolean = false) {
         executor.execute {
             try {
-                val out = outStream ?: return@execute
-                val buf = ByteArrayOutputStream()
-                val pOut = DataOutputStream(buf)
-                pOut.writeUTF(topic)
-                pOut.write(payload)
-
-                val body = buf.toByteArray()
-                var header = 0x30 // PUBLISH QoS 0
-                if (retain) header = header or 0x01
-                out.writeByte(header)
-                writeRemainingLength(out, body.size)
-                out.write(body)
-                out.flush()
+                publishSync(topic, payload, retain)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to publish topic $topic", e)
             }

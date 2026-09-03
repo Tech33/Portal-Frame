@@ -171,6 +171,8 @@ class ConfigReceiver : BroadcastReceiver() {
         const val ACTION_PREV_PHOTO = "com.portalhacks.frame.PREV_PHOTO"
         const val ACTION_SET_MESSAGE = "com.portalhacks.frame.SET_MESSAGE"
         const val ACTION_CLEAR_MESSAGE = "com.portalhacks.frame.CLEAR_MESSAGE"
+        const val ACTION_WAKE = "com.portalhacks.frame.WAKE"
+        const val ACTION_SLEEP = "com.portalhacks.frame.SLEEP"
 
         /** Stable URL — always serves the latest release's version.json asset. */
         const val UPDATE_MANIFEST_URL =
