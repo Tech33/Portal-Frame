@@ -2,21 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Add Album to Frame</title>
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background-color: #0A0A0C;
       color: #E0E0E0;
-      margin: 0;
       padding: 24px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      box-sizing: border-box;
     }
     .card {
       background-color: #1C1C1E;
@@ -25,12 +24,11 @@
       width: 100%;
       max-width: 440px;
       box-shadow: 0 12px 40px rgba(0,0,0,0.6);
-      box-sizing: border-box;
       border: 1px solid #2C2C2E;
     }
     h1 {
       font-size: 24px;
-      margin: 0 0 8px 0;
+      margin-bottom: 8px;
       color: #FFFFFF;
       font-weight: 700;
       text-align: center;
@@ -41,7 +39,7 @@
     p {
       font-size: 14px;
       color: #8E8E93;
-      margin: 0 0 28px 0;
+      margin-bottom: 24px;
       text-align: center;
       line-height: 1.5;
     }
@@ -60,6 +58,7 @@
     }
     input[type="text"], input[type="url"] {
       width: 100%;
+      height: 54px;
       padding: 16px;
       border: 1px solid #2C2C2E;
       background-color: #121216;
@@ -69,6 +68,7 @@
       box-sizing: border-box;
       outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
+      display: block;
     }
     input[type="text"]:focus, input[type="url"]:focus {
       border-color: #007AFF;
@@ -78,12 +78,55 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
-    
-    .input-container {
-      position: relative;
+    .action-row {
       display: flex;
-      gap: 8px;
+      gap: 10px;
+      margin-top: 12px;
       width: 100%;
+    }
+    .btn-secondary {
+      flex: 1;
+      height: 48px;
+      background-color: #2C2C2E;
+      border: 1px solid #3A3A3C;
+      color: #FFFFFF;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background-color 0.2s;
+    }
+    .btn-secondary:active {
+      background-color: #3A3A3C;
+    }
+    .btn-primary {
+      width: 100%;
+      height: 52px;
+      margin-top: 12px;
+      background: linear-gradient(135deg, #007AFF, #5856D6);
+      color: #FFFFFF;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(88, 86, 214, 0.2);
+      transition: transform 0.1s, opacity 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-primary:active {
+      transform: scale(0.98);
+    }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
     }
     .paste-tooltip {
       position: absolute;
@@ -115,52 +158,6 @@
     .paste-tooltip.show {
       opacity: 1;
       transform: translateY(0);
-    }
-    .action-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 12px;
-    }
-    .action-btn-secondary {
-      flex: 1;
-      padding: 14px 8px;
-      background-color: #2C2C2E;
-      border: 1px solid #3A3A3C;
-      color: #FFFFFF;
-      border-radius: 12px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      box-shadow: none;
-      transition: background-color 0.2s;
-    }
-    .action-btn-secondary:active {
-      background-color: #3A3A3C;
-    }
-    .action-btn-primary {
-      flex: 1.4;
-      padding: 14px 12px;
-      background: linear-gradient(135deg, #007AFF, #5856D6);
-      color: #FFFFFF;
-      border: none;
-      border-radius: 12px;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: 0 4px 12px rgba(88, 86, 214, 0.2);
-      transition: transform 0.1s, opacity 0.2s;
-    }
-    .action-btn-primary:active {
-      transform: scale(0.98);
-    }
-    .action-btn-primary:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
     }
     .status {
       margin-top: 16px;
@@ -206,11 +203,13 @@
         <div id="paste-tooltip" class="paste-tooltip">Tap here, then select "Paste"</div>
         <input type="url" id="url" placeholder="https://photos.app.goo.gl/..." autocomplete="off" enterkeyhint="done">
       </div>
+      
       <div class="action-row">
-        <button id="paste-btn" type="button" class="action-btn-secondary" onclick="pasteFromClipboard()">📋 Paste</button>
-        <button id="clear-btn" type="button" class="action-btn-secondary" onclick="clearUrlField()">✕ Clear</button>
-        <button id="send-btn" type="button" class="action-btn-primary" onclick="sendUrl()">Send to Frame</button>
+        <button id="paste-btn" type="button" class="btn-secondary" onclick="pasteFromClipboard()">📋 Paste</button>
+        <button id="clear-btn" type="button" class="btn-secondary" onclick="clearUrlField()">✕ Clear</button>
       </div>
+
+      <button id="send-btn" type="button" class="btn-primary" onclick="sendUrl()">Send to Frame</button>
     </div>
 
     <div id="status-box" class="status"></div>
@@ -223,7 +222,7 @@
       urlInput.value = '';
       urlInput.focus();
     }
-    // Autofill parameters if present in URL
+
     const urlParams = new URLSearchParams(window.location.search);
     const codeParam = urlParams.get('code');
     const keyParam = urlParams.get('key'); // 16-character AES key
@@ -241,43 +240,35 @@
       statusBox.style.display = 'none';
 
       try {
-        if (!navigator.clipboard || !navigator.clipboard.readText) {
-          showPasteFallback();
-          return;
-        }
-        const text = await navigator.clipboard.readText();
-        if (text && text.trim().startsWith('http')) {
-          urlInput.value = text.trim();
-          hidePasteFallback();
-        } else {
-          showPasteFallback();
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text) {
+            urlInput.value = text;
+            urlInput.focus();
+            return;
+          }
         }
       } catch (err) {
-        console.error("Failed to read clipboard:", err);
-        showPasteFallback();
+        console.log("Clipboard API blocked or unavailable:", err);
       }
-    }
 
-    function showPasteFallback() {
-      const urlInput = document.getElementById('url');
-      const tooltip = document.getElementById('paste-tooltip');
       urlInput.focus();
-      tooltip.classList.add('show');
-      setTimeout(() => {
-        tooltip.classList.remove('show');
-      }, 4000);
-    }
-
-    function hidePasteFallback() {
       const tooltip = document.getElementById('paste-tooltip');
-      tooltip.classList.remove('show');
+      if (tooltip) {
+        tooltip.classList.add('show');
+        setTimeout(() => tooltip.classList.remove('show'), 3500);
+      }
     }
 
     async function importKey(keyStr) {
       const enc = new TextEncoder();
       const keyBuf = enc.encode(keyStr);
       return await window.crypto.subtle.importKey(
-        "raw", keyBuf, { name: "AES-CBC" }, false, ["encrypt"]
+        "raw",
+        keyBuf,
+        { name: "AES-CBC" },
+        false,
+        ["encrypt"]
       );
     }
 
@@ -287,18 +278,14 @@
         const cryptoKey = await importKey(keyStr);
         const iv = window.crypto.getRandomValues(new Uint8Array(16));
         const encrypted = await window.crypto.subtle.encrypt(
-          { name: "AES-CBC", iv: iv }, cryptoKey, enc.encode(plaintext)
+          { name: "AES-CBC", iv: iv },
+          cryptoKey,
+          enc.encode(plaintext)
         );
-        
-        // Concatenate IV + Ciphertext
         const res = new Uint8Array(iv.length + encrypted.byteLength);
         res.set(iv, 0);
         res.set(new Uint8Array(encrypted), iv.length);
-        
-        // Convert to hex string
-        return Array.from(res)
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
+        return Array.from(res).map(b => b.toString(16).padStart(2, '0')).join('');
       } catch (e) {
         console.error("Encryption failed:", e);
         return '';
@@ -324,14 +311,14 @@
         return;
       }
 
-      if (!url || (!url.startsWith('https://photos.app.goo.gl/') && !url.includes('icloud.com/sharedalbum/'))) {
-        statusBox.innerText = 'Please enter a valid Google Photos or iCloud shared album link.';
+      if (!url || !url.startsWith('http')) {
+        statusBox.innerText = 'Please enter a valid album URL starting with http:// or https://';
         statusBox.classList.add('error');
         return;
       }
 
       if (!aesKey || aesKey.length !== 16) {
-        statusBox.innerText = 'Pairing key is missing or invalid. Please re-scan the QR code from your Portal screen.';
+        statusBox.innerText = 'Pairing key is missing or invalid. Please scan the QR code from your Portal again.';
         statusBox.classList.add('error');
         return;
       }
@@ -341,7 +328,7 @@
 
       const hex = await encryptData(url, aesKey);
       if (!hex) {
-        statusBox.innerText = 'Encryption failed locally. Please try again.';
+        statusBox.innerText = 'Encryption failed. Please try again.';
         statusBox.classList.add('error');
         btn.disabled = false;
         btn.innerText = 'Send to Frame';
@@ -349,26 +336,20 @@
       }
 
       try {
-        // keyvalue.immanuel.co uses a public AppKey "cs79vqdm" for Portal Frame
         const response = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${code}/${hex}`, {
           method: 'POST',
-          headers: {
-            'Content-Length': '0'
-          }
+          headers: { 'Content-Length': '0' }
         });
-        
         const result = await response.text();
-        
         if (result === 'true') {
-          statusBox.innerText = 'Success! Your encrypted album link has been sent. Check your Portal screen.';
+          statusBox.innerText = 'Success! Album sent securely to your Portal. Look at your frame screen!';
           statusBox.classList.add('success');
           urlInput.value = '';
         } else {
-          statusBox.innerText = 'Failed to send. Please check your pairing code and try again.';
+          statusBox.innerText = 'Could not update relay. Please try again.';
           statusBox.classList.add('error');
         }
-      } catch (error) {
-        console.error(error);
+      } catch (e) {
         statusBox.innerText = 'Network error. Please check your internet connection.';
         statusBox.classList.add('error');
       } finally {

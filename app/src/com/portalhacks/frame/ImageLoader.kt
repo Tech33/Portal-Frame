@@ -72,6 +72,23 @@ class ImageLoader(context: Context) {
         return ioPrefetch
     }
 
+    fun clearDiskAndMemoryCache() {
+        mem.evictAll()
+        ioPrefetch.execute {
+            try {
+                cacheDir.listFiles()?.forEach { it.delete() }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun getCacheSizeBytes(): Long {
+        return try {
+            cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
     fun load(id: String, reqW: Int, reqH: Int, zoomFill: Boolean, cb: Callback) {
         val key = fillKey(id, zoomFill)
         val cached = mem.get(key)

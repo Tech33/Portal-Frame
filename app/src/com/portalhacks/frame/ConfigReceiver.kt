@@ -111,6 +111,8 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_TRANSITION = "transition" // string: slideshow transition mode
         const val KEY_PAIRS = "pairs"           // boolean: pair two photos to fill the screen
         const val KEY_KEN_BURNS = "ken_burns"   // boolean: cinematic pan/zoom
+        const val KEY_KEN_BURNS_SCALE = "ken_burns_scale" // float: pan/zoom intensity (0.3 .. 2.0)
+        const val KEY_ANNOUNCEMENT_CHANNEL = "announcement_channel" // string: broadcast channel ID
         const val KEY_CLOCK = "clock"           // boolean: clock + weather overlay
         const val KEY_CLOCK_FLIP = "clock_flip" // boolean: show full-screen web flip clock
         const val KEY_WEATHER_FAHRENHEIT = "weather_fahrenheit" // boolean: weather temp unit
@@ -188,6 +190,8 @@ class ConfigReceiver : BroadcastReceiver() {
 
         const val DEFAULT_PAIRS = true
         const val DEFAULT_KEN_BURNS = true
+        const val DEFAULT_KEN_BURNS_SCALE = 1.0f
+        const val DEFAULT_ANNOUNCEMENT_CHANNEL = "portal_broadcast"
         const val DEFAULT_CLOCK = true
         const val DEFAULT_CLOCK_FLIP = false
         const val DEFAULT_WEATHER_FAHRENHEIT = false

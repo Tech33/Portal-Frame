@@ -505,18 +505,31 @@ class SettingsActivity : ComponentActivity() {
                         Body(albumRefreshStatus)
                         Spacer(Modifier.height(12.dp))
                     }
-                    SecondaryBtn(
-                        if (refreshingAlbums) "Refreshing albums…" else "Refresh albums now",
-                        enabled = !refreshingAlbums,
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        refreshingAlbums = true
-                        refreshAlbumsNow(
-                            urls = albums,
-                            onStatus = { albumRefreshStatus = it },
-                            onFinished = {
-                                refreshingAlbums = false
-                            },
-                        )
+                        Box(modifier = Modifier.weight(1f)) {
+                            SecondaryBtn(
+                                if (refreshingAlbums) "Refreshing…" else "Refresh albums",
+                                enabled = !refreshingAlbums,
+                            ) {
+                                refreshingAlbums = true
+                                refreshAlbumsNow(
+                                    urls = albums,
+                                    onStatus = { albumRefreshStatus = it },
+                                    onFinished = {
+                                        refreshingAlbums = false
+                                    },
+                                )
+                            }
+                        }
+                        Box(modifier = Modifier.weight(1f)) {
+                            SecondaryBtn("🗑 Clear cache") {
+                                loader.clearDiskAndMemoryCache()
+                                Toast.makeText(ctx, "Photo cache cleared. Fresh high-res photos will download.", Toast.LENGTH_LONG).show()
+                            }
+                        }
                     }
                     Spacer(Modifier.height(12.dp))
                     
@@ -700,6 +713,12 @@ class SettingsActivity : ComponentActivity() {
                     iconRes = R.drawable.ic_motion,
                     iconBg = Color(0xFFFF2D55),
                 )
+                val kenBurnsEnabled = rememberPrefBoolean(ConfigReceiver.KEY_KEN_BURNS, ConfigReceiver.DEFAULT_KEN_BURNS)
+                if (kenBurnsEnabled.value) {
+                    Divider()
+                    val kbScale = rememberPrefFloat(ConfigReceiver.KEY_KEN_BURNS_SCALE, ConfigReceiver.DEFAULT_KEN_BURNS_SCALE)
+                    KenBurnsIntensitySliderRow(kbScale)
+                }
             }
 
             Card("Display & accessibility") {
@@ -1165,26 +1184,26 @@ class SettingsActivity : ComponentActivity() {
 
     @Composable
     private fun MessageQrDialog(onDismiss: () -> Unit) {
-        val code = remember { (100000..999999).random().toString() }
-        val aesKey = remember {
-            val chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-            (1..16).map { chars.random() }.joinToString("")
+        val channel = remember {
+            prefs.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL)?.trim()
+                ?.ifEmpty { ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL } ?: ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL
         }
-        val cloudUrl = remember(code, aesKey) {
-            "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?code=$code&key=$aesKey"
+        val aesKey = "PortalGlobal2026"
+        val cloudUrl = remember(channel) {
+            "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&v=1.6.3"
         }
         val qrBitmap = remember(cloudUrl) { generateQrBitmap(cloudUrl, 380) }
         var inputMsg by remember { mutableStateOf("") }
         val ctx = LocalContext.current
-        val formattedCode = "${code.substring(0, 3)} ${code.substring(3, 6)}"
 
-        // Cloud polling loop (matches Add Album flow, works on cellular/remote)
-        LaunchedEffect(code) {
+        // Cloud polling loop for worldwide broadcast
+        LaunchedEffect(channel) {
             withContext(Dispatchers.IO) {
                 while (isActive) {
                     delay(3000)
                     try {
-                        val conn = java.net.URL("https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/$code").openConnection() as java.net.HttpURLConnection
+                        val encodedChannel = java.net.URLEncoder.encode(channel, "UTF-8")
+                        val conn = java.net.URL("https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/$encodedChannel").openConnection() as java.net.HttpURLConnection
                         conn.requestMethod = "GET"
                         conn.connectTimeout = 3000
                         conn.readTimeout = 3000
@@ -1211,7 +1230,7 @@ class SettingsActivity : ComponentActivity() {
                                         prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, decrypted).apply()
                                         ctx.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", decrypted))
                                         MqttManager.getInstance(ctx).publishAllStates()
-                                        Toast.makeText(ctx, "Announcement displayed ✓", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(ctx, "Announcement broadcast ✓", Toast.LENGTH_SHORT).show()
                                         onDismiss()
                                     }
                                     break
@@ -1227,7 +1246,7 @@ class SettingsActivity : ComponentActivity() {
         AlertDialog(
             onDismissRequest = onDismiss,
             title = {
-                Text("Post Announcement Banner", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("Broadcast Announcement", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             },
             text = {
                 Column(
@@ -1246,14 +1265,14 @@ class SettingsActivity : ComponentActivity() {
                         )
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            "Scan with your phone to post an announcement",
+                            "Scan with phone to broadcast to all connected Portals",
                             color = PortalColors.TextMuted,
                             fontSize = 13.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "Pairing Code: $formattedCode",
+                            "Channel: $channel",
                             color = Color(0xFF64D2FF),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
@@ -1261,9 +1280,10 @@ class SettingsActivity : ComponentActivity() {
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            "Works from anywhere over mobile data or Wi-Fi",
+                            "Broadcasts to all Portals worldwide over mobile data or Wi-Fi",
                             color = PortalColors.Text.copy(alpha = 0.5f),
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                     Spacer(Modifier.height(16.dp))
@@ -2345,6 +2365,47 @@ class SettingsActivity : ComponentActivity() {
                     color = PortalColors.TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f),
                 )
                 Text(fmtDelay(DELAY_PRESETS.last()), color = PortalColors.TextMuted, fontSize = 12.sp)
+            }
+        }
+    }
+
+    @Composable
+    private fun KenBurnsIntensitySliderRow(scaleState: MutableState<Float>) {
+        val label = when {
+            scaleState.value <= 0.45f -> "Subtle (0.3×)"
+            scaleState.value <= 0.8f -> "Gentle (0.6×)"
+            scaleState.value <= 1.25f -> "Standard (1.0×)"
+            scaleState.value <= 1.75f -> "Dynamic (1.5×)"
+            else -> "Dramatic (2.0×)"
+        }
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                RowIcon(R.drawable.ic_motion, Color(0xFFFF2D55))
+                Text("Pan & zoom motion depth", color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                Text(
+                    label,
+                    color = PortalColors.Blue, fontSize = 18.sp, fontWeight = FontWeight.Medium,
+                )
+            }
+            Slider(
+                value = scaleState.value,
+                onValueChange = { scaleState.value = it },
+                valueRange = 0.3f..2.0f,
+                steps = 3,
+                onValueChangeFinished = {
+                    prefs.edit().putFloat(ConfigReceiver.KEY_KEN_BURNS_SCALE, scaleState.value).apply()
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = PortalColors.Blue,
+                    activeTrackColor = PortalColors.Blue,
+                    inactiveTrackColor = PortalColors.Text.copy(alpha = 0.18f),
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent,
+                ),
+            )
+            Row(Modifier.fillMaxWidth()) {
+                Text("Subtle (0.3×)", color = PortalColors.TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("Dramatic (2.0×)", color = PortalColors.TextMuted, fontSize = 12.sp)
             }
         }
     }

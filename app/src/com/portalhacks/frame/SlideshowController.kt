@@ -576,7 +576,8 @@ class SlideshowController(
             val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
             val haEnabled = prefs.getBoolean(ConfigReceiver.KEY_HA_EMBEDDED, ConfigReceiver.DEFAULT_HA_EMBEDDED)
             val showBtn = prefs.getBoolean(ConfigReceiver.KEY_HA_BUTTON, ConfigReceiver.DEFAULT_HA_BUTTON)
-            visibility = if (haEnabled && showBtn) View.VISIBLE else View.GONE
+            val haUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, "")?.trim() ?: ""
+            visibility = if (haEnabled && showBtn && haUrl.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
             setOnClickListener { onOpenHomeAssistant?.run() }
         }
     }
@@ -594,6 +595,8 @@ class SlideshowController(
         this.onOpenHomeAssistant = onOpenHomeAssistant
     }
 
+    private var lastAnnouncementPollMs = 0L
+
     fun checkCustomMessage() {
         val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         val customMsg = prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "")?.trim() ?: ""
@@ -608,7 +611,68 @@ class SlideshowController(
         if (::haButton.isInitialized) {
             val haEnabled = prefs.getBoolean(ConfigReceiver.KEY_HA_EMBEDDED, ConfigReceiver.DEFAULT_HA_EMBEDDED)
             val showBtn = prefs.getBoolean(ConfigReceiver.KEY_HA_BUTTON, ConfigReceiver.DEFAULT_HA_BUTTON)
-            haButton.visibility = if (haEnabled && showBtn && !clockOnly) View.VISIBLE else View.GONE
+            val haUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, "")?.trim() ?: ""
+            haButton.visibility = if (haEnabled && showBtn && haUrl.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
+        }
+
+        pollRemoteAnnouncement()
+    }
+
+    private fun pollRemoteAnnouncement() {
+        val now = System.currentTimeMillis()
+        if (now - lastAnnouncementPollMs < 15_000L) return
+        lastAnnouncementPollMs = now
+
+        ImageLoader(context).executor().execute {
+            try {
+                val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+                val channel = prefs.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL)?.trim() ?: "portal_broadcast"
+                if (channel.isEmpty()) return@execute
+                val url = "https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/${java.net.URLEncoder.encode(channel, "UTF-8")}"
+                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 4000
+                conn.readTimeout = 4000
+                if (conn.responseCode == 200) {
+                    val reader = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream))
+                    var resp = reader.readLine()?.trim() ?: ""
+                    reader.close()
+                    if (resp.startsWith("\"") && resp.endsWith("\"")) {
+                        resp = resp.substring(1, resp.length - 1)
+                    }
+                    if (resp.isNotEmpty() && resp != "null") {
+                        val decrypted = decryptAes(resp, "PortalGlobal2026").trim()
+                        val current = prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "")?.trim() ?: ""
+                        if (decrypted == "__CLEAR__") {
+                            if (current.isNotEmpty()) {
+                                prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
+                                handler.post { checkCustomMessage() }
+                            }
+                        } else if (decrypted.isNotEmpty() && decrypted != current) {
+                            prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, decrypted).apply()
+                            handler.post { checkCustomMessage() }
+                        }
+                    }
+                }
+                conn.disconnect()
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun decryptAes(hexStr: String, keyStr: String): String {
+        return try {
+            val data = ByteArray(hexStr.length / 2)
+            for (i in data.indices) {
+                data[i] = hexStr.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+            }
+            val iv = data.copyOfRange(0, 16)
+            val ciphertext = data.copyOfRange(16, data.size)
+            val keySpec = javax.crypto.spec.SecretKeySpec(keyStr.toByteArray(Charsets.UTF_8), "AES")
+            val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, keySpec, javax.crypto.spec.IvParameterSpec(iv))
+            val decryptedBytes = cipher.doFinal(ciphertext)
+            String(decryptedBytes, Charsets.UTF_8)
+        } catch (_: Exception) {
+            ""
         }
     }
 
@@ -1940,8 +2004,10 @@ class SlideshowController(
         if (!kenBurns) {
             return null
         }
+        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val intensity = prefs.getFloat(ConfigReceiver.KEY_KEN_BURNS_SCALE, ConfigReceiver.DEFAULT_KEN_BURNS_SCALE)
         val focus = if (faceFraming && bmp != null) FaceFocus.find(bmp) else null
-        return KenBurns.random(reqW, reqH, rnd, focus)
+        return KenBurns.random(reqW, reqH, rnd, focus, intensity)
     }
 
     /**
@@ -1977,11 +2043,12 @@ class SlideshowController(
             /**
              * @param focus optional FaceFocusResult to drift toward and zoom out for; null = random.
              */
-            fun random(w: Int, h: Int, r: Random, focus: FaceFocusResult?): KenBurns {
+            fun random(w: Int, h: Int, r: Random, focus: FaceFocusResult?, intensity: Float = 1.0f): KenBurns {
                 // Start at exact fill (scale 1.0, centred) and zoom IN to a gentle target. Pan
                 // starts at zero (1.0 has no cover slack) and grows linearly with the scale toward
                 // the end scale's slack — edge-safe at every point along the path.
-                var s1 = END_ZOOM_MIN + r.nextFloat() * (END_ZOOM_MAX - END_ZOOM_MIN)
+                val baseZoom = END_ZOOM_MIN + r.nextFloat() * (END_ZOOM_MAX - END_ZOOM_MIN)
+                var s1 = 1.0f + (baseZoom - 1f) * intensity
                 if (focus != null) {
                     // Zoom out a bit depending on the zoomFactor (fewer zoom-in scale = "zooming out")
                     s1 = 1.0f + (s1 - 1f) * focus.zoomFactor

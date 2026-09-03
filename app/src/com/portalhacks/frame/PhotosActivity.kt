@@ -449,7 +449,7 @@ class PhotosActivity : Activity() {
         val code = (100000..999999).random().toString()
         val chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         val aesKey = (1..16).map { chars.random() }.joinToString("")
-        val cloudUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/add.html?code=$code&key=$aesKey"
+        val cloudUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/add.html?code=$code&key=$aesKey&v=1.6.3"
         val formattedCode = "${code.substring(0, 3)} ${code.substring(3, 6)}"
 
         val ip = getLocalIpAddress()
