@@ -2,6 +2,6 @@
   "versionCode": 45,
   "versionName": "1.6.3",
   "apkUrl": "https://github.com/Tech33/Portal-Frame/releases/latest/download/Frame.apk",
-  "sha256": "",
-  "releaseNotes": "Release v1.6.3: Mobile web UX, worldwide announcement broadcast, photo cache clearing, Ken Burns slider, and Home Assistant MQTT availability fix"
+  "sha256": "0d733a19a86d80cff1be34be3e14e0df3697248f6ff12f71720a10167406a90e",
+  "releaseNotes": "See the GitHub release notes for v1.6.3."
 }
