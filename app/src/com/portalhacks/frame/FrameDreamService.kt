@@ -19,6 +19,12 @@ class FrameDreamService : DreamService() {
 
     override fun onDreamingStarted() {
         super.onDreamingStarted()
+        val pm = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+        if (pm != null && !pm.isInteractive) {
+            Log.i(TAG, "Screen is non-interactive (powered off); refusing to launch slideshow from dream")
+            finish()
+            return
+        }
         try {
             val i = Intent(this, SlideshowComposeActivity::class.java)
             i.addFlags(

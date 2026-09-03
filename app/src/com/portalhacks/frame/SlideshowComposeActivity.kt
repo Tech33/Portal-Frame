@@ -108,8 +108,10 @@ class SlideshowComposeActivity : ComponentActivity() {
                 ConfigReceiver.ACTION_PREV_PHOTO -> controller.prev()
                 ConfigReceiver.ACTION_SET_MESSAGE,
                 ConfigReceiver.ACTION_CLEAR_MESSAGE -> controller.checkCustomMessage()
-                ConfigReceiver.ACTION_SLEEP -> sleepScreen()
-                ConfigReceiver.ACTION_WAKE -> wakeScreen()
+                ConfigReceiver.ACTION_SLEEP,
+                Intent.ACTION_SCREEN_OFF -> sleepScreen()
+                ConfigReceiver.ACTION_WAKE,
+                Intent.ACTION_SCREEN_ON -> wakeScreen()
             }
         }
     }
@@ -119,7 +121,10 @@ class SlideshowComposeActivity : ComponentActivity() {
     private fun sleepScreen() {
         if (isScreenAsleep) return
         isScreenAsleep = true
-        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.clearFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        )
         val lp = window.attributes
         lp.screenBrightness = 0.001f
         window.attributes = lp
@@ -144,7 +149,6 @@ class SlideshowComposeActivity : ComponentActivity() {
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                 or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-                or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
                 or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
         )
         window.attributes = window.attributes.apply {
@@ -214,6 +218,8 @@ class SlideshowComposeActivity : ComponentActivity() {
             addAction(ConfigReceiver.ACTION_CLEAR_MESSAGE)
             addAction(ConfigReceiver.ACTION_WAKE)
             addAction(ConfigReceiver.ACTION_SLEEP)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
         }
         registerReceiver(commandReceiver, cmdFilter)
 

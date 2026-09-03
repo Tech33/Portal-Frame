@@ -93,7 +93,7 @@ echo "[+] Setting Frame as screensaver and enabling guard..."
 $ADB shell settings put secure screensaver_enabled 1 2>/dev/null
 $ADB shell settings put secure screensaver_components com.portalhacks.frame/.FrameDreamService 2>/dev/null
 $ADB shell settings put secure screensaver_activate_on_dock 1 2>/dev/null
-$ADB shell settings put secure screensaver_activate_on_sleep 1 2>/dev/null
+$ADB shell settings put secure screensaver_activate_on_sleep 0 2>/dev/null
 $ADB shell am broadcast -n com.portalhacks.frame/.ConfigReceiver --ez guard true 2>/dev/null
 
 # 9. Boot straight into Portal-Frame

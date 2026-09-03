@@ -43,7 +43,7 @@ object Screensaver {
         val enabled = Settings.Secure.getInt(ctx.contentResolver, ENABLED, 0) == 1
         val comp = Settings.Secure.getString(ctx.contentResolver, COMPONENTS)
         val onDock = Settings.Secure.getInt(ctx.contentResolver, "screensaver_activate_on_dock", 0) == 1
-        val onSleep = Settings.Secure.getInt(ctx.contentResolver, "screensaver_activate_on_sleep", 0) == 1
+        val onSleep = Settings.Secure.getInt(ctx.contentResolver, "screensaver_activate_on_sleep", 0) == 0
         enabled && comp != null && comp.contains(ctx.packageName) && onDock && onSleep
     } catch (_: Exception) {
         false
@@ -69,7 +69,8 @@ object Screensaver {
             Settings.Secure.putString(ctx.contentResolver, COMPONENTS, COMPONENT)
             Settings.Secure.putInt(ctx.contentResolver, ENABLED, 1)
             Settings.Secure.putInt(ctx.contentResolver, "screensaver_activate_on_dock", 1)
-            Settings.Secure.putInt(ctx.contentResolver, "screensaver_activate_on_sleep", 1)
+            // Crucial: 0 ensures the device can actually sleep when power off / sleep is requested
+            Settings.Secure.putInt(ctx.contentResolver, "screensaver_activate_on_sleep", 0)
             true
         } catch (e: Exception) {
             Log.w(TAG, "screensaver claim failed", e)
