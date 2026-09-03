@@ -732,6 +732,12 @@ class SettingsActivity : ComponentActivity() {
                     iconRes = R.drawable.ic_zoom,
                     iconBg = PortalColors.Indigo,
                 )
+                val zoomFillState = rememberPrefBoolean(ConfigReceiver.KEY_ZOOM_FILL, ConfigReceiver.DEFAULT_ZOOM_FILL)
+                if (!zoomFillState.value) {
+                    Divider()
+                    val blurRadiusState = rememberPrefInt(ConfigReceiver.KEY_BLUR_RADIUS, ConfigReceiver.DEFAULT_BLUR_RADIUS)
+                    BackgroundBlurSliderRow(blurRadiusState)
+                }
                 Divider()
                 ToggleRow(
                     "Face-aware framing",
@@ -2406,6 +2412,46 @@ class SettingsActivity : ComponentActivity() {
             Row(Modifier.fillMaxWidth()) {
                 Text("Subtle (0.3×)", color = PortalColors.TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 Text("Dramatic (2.0×)", color = PortalColors.TextMuted, fontSize = 12.sp)
+            }
+        }
+    }
+
+    @Composable
+    private fun BackgroundBlurSliderRow(blurState: MutableState<Int>) {
+        val label = when {
+            blurState.value <= 1 -> "Subtle (1)"
+            blurState.value <= 3 -> "Standard (3)"
+            blurState.value <= 5 -> "Strong (5)"
+            else -> "Deep (8)"
+        }
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                RowIcon(R.drawable.ic_zoom, PortalColors.Indigo)
+                Text("Background fill blur", color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                Text(
+                    label,
+                    color = PortalColors.Blue, fontSize = 18.sp, fontWeight = FontWeight.Medium,
+                )
+            }
+            Slider(
+                value = blurState.value.toFloat(),
+                onValueChange = { blurState.value = it.roundToInt() },
+                valueRange = 1f..8f,
+                steps = 6,
+                onValueChangeFinished = {
+                    prefs.edit().putInt(ConfigReceiver.KEY_BLUR_RADIUS, blurState.value).apply()
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = PortalColors.Blue,
+                    activeTrackColor = PortalColors.Blue,
+                    inactiveTrackColor = PortalColors.Text.copy(alpha = 0.18f),
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent,
+                ),
+            )
+            Row(Modifier.fillMaxWidth()) {
+                Text("Subtle (1)", color = PortalColors.TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("Deep (8)", color = PortalColors.TextMuted, fontSize = 12.sp)
             }
         }
     }

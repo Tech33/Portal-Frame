@@ -133,6 +133,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_ENHANCE = "auto_enhance"  // boolean: on-device auto-levels + vibrance
         const val KEY_ZOOM_FILL = "zoom_fill"   // boolean: zoom-crop SINGLE photos to fill (vs whole
                                                 // photo over a blurred fill). Pairs always fill.
+        const val KEY_BLUR_RADIUS = "blur_radius" // int: background fill blur radius (1..8)
         const val KEY_RECENT_FIRST = "recent_first" // boolean: sort slideshow newest photos first
         // Clock widget transform (set by long-press-drag/pinch on the screensaver). dx/dy are the
         // translation from the default bottom-left anchor as a fraction of screen W/H; scale is a
@@ -208,6 +209,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_AMBIENT = true
         const val DEFAULT_ENHANCE = false
         const val DEFAULT_ZOOM_FILL = false // default: whole photo over a blurred fill (no zoom)
+        const val DEFAULT_BLUR_RADIUS = 3
         const val DEFAULT_RECENT_FIRST = false
         const val DEFAULT_CLOCK_DX = 0f
         const val DEFAULT_CLOCK_DY = 0f

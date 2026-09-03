@@ -20,10 +20,15 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.net.http.SslError
 import android.webkit.CookieManager
+import android.webkit.SslErrorHandler
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -213,6 +218,9 @@ class SlideshowComposeActivity : ComponentActivity() {
         }
     }
 
+    private var haLoadingView: ProgressBar? = null
+    private var haErrorView: TextView? = null
+
     private fun buildHomeAssistantView(root: FrameLayout) {
         val container = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -237,33 +245,107 @@ class SlideshowComposeActivity : ComponentActivity() {
                 builtInZoomControls = false
                 useWideViewPort = true
                 loadWithOverviewMode = true
-                allowFileAccessFromFileURLs = false
-                allowUniversalAccessFromFileURLs = false
+                allowFileAccess = true
+                allowContentAccess = true
+                mediaPlaybackRequiresUserGesture = false
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                cacheMode = WebSettings.LOAD_DEFAULT
             }
-            CookieManager.getInstance().setAcceptCookie(true)
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+            cookieManager.setAcceptThirdPartyCookies(this, true)
+            webChromeClient = object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                    if (newProgress >= 80) {
+                        haLoadingView?.visibility = View.GONE
+                    }
+                }
+            }
             webViewClient = object : WebViewClient() {
+                override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+                    Log.w("HAWebView", "SSL error encountered, proceeding: $error")
+                    handler?.proceed()
+                }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    haLoadingView?.visibility = View.GONE
+                }
+
+                override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                    Log.e("HAWebView", "Error $errorCode: $description on $failingUrl")
+                    haLoadingView?.visibility = View.GONE
+                    haErrorView?.text = "Unable to connect to Home Assistant:\n$description\n\nTap to retry or check URL in Settings."
+                    haErrorView?.visibility = View.VISIBLE
+                }
+
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = false
             }
         }
 
-        // Floating "✕ Photos" button to return to slideshow
+        // Loading spinner
+        val loading = ProgressBar(this).apply {
+            val lp = FrameLayout.LayoutParams(Ui.dp(this@SlideshowComposeActivity, 48f), Ui.dp(this@SlideshowComposeActivity, 48f)).apply {
+                gravity = Gravity.CENTER
+            }
+            layoutParams = lp
+            visibility = View.GONE
+        }
+        haLoadingView = loading
+
+        // Error message view if HA is unreachable
+        val errorText = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            gravity = Gravity.CENTER
+            setPadding(Ui.dp(this@SlideshowComposeActivity, 32f), 0, Ui.dp(this@SlideshowComposeActivity, 32f), 0)
+            val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER
+            }
+            layoutParams = lp
+            visibility = View.GONE
+            setOnClickListener {
+                val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+                val raw = prefs.getString(ConfigReceiver.KEY_HA_URL, ConfigReceiver.DEFAULT_HA_URL)?.trim() ?: ""
+                if (raw.isNotEmpty()) {
+                    visibility = View.GONE
+                    haLoadingView?.visibility = View.VISIBLE
+                    val finalUrl = if (raw.startsWith("http://") || raw.startsWith("https://")) raw else "http://$raw"
+                    webView.loadUrl(finalUrl)
+                }
+            }
+        }
+        haErrorView = errorText
+
+        // Floating pill-shaped "✕ Photos" button to return to slideshow
         val closeBtn = TextView(this).apply {
             text = "✕ Photos"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             typeface = Ui.bold(this@SlideshowComposeActivity)
-            background = Ui.roundRect(0xAA000000.toInt(), Ui.dp(this@SlideshowComposeActivity, 16f))
-            setPadding(Ui.dp(this@SlideshowComposeActivity, 14f), Ui.dp(this@SlideshowComposeActivity, 8f), Ui.dp(this@SlideshowComposeActivity, 14f), Ui.dp(this@SlideshowComposeActivity, 8f))
+            background = Ui.roundRect(0xEE1C1C1E.toInt(), Ui.dp(this@SlideshowComposeActivity, 24f)).apply {
+                setStroke(Ui.dp(this@SlideshowComposeActivity, 1.5f), 0x55FFFFFF)
+            }
+            setPadding(
+                Ui.dp(this@SlideshowComposeActivity, 22f),
+                Ui.dp(this@SlideshowComposeActivity, 12f),
+                Ui.dp(this@SlideshowComposeActivity, 22f),
+                Ui.dp(this@SlideshowComposeActivity, 12f)
+            )
             val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.TOP or Gravity.END
-                topMargin = Ui.dp(this@SlideshowComposeActivity, 16f)
-                rightMargin = Ui.dp(this@SlideshowComposeActivity, 16f)
+                topMargin = Ui.dp(this@SlideshowComposeActivity, 24f)
+                rightMargin = Ui.dp(this@SlideshowComposeActivity, 24f)
             }
             layoutParams = lp
+            elevation = Ui.dp(this@SlideshowComposeActivity, 6f).toFloat()
+            isClickable = true
+            isFocusable = true
             setOnClickListener { hideHomeAssistant() }
         }
 
         container.addView(webView)
+        container.addView(loading)
+        container.addView(errorText)
         container.addView(closeBtn)
         root.addView(container)
 
@@ -279,15 +361,20 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     private fun showHomeAssistant() {
         val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-        val haUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, ConfigReceiver.DEFAULT_HA_URL)?.trim() ?: ""
-        if (haUrl.isEmpty()) {
+        val rawUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, ConfigReceiver.DEFAULT_HA_URL)?.trim() ?: ""
+        if (rawUrl.isEmpty()) {
             return
         }
+        val haUrl = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) rawUrl else "http://$rawUrl"
 
         val container = haContainer ?: return
         val webView = haWebView ?: return
 
+        container.bringToFront()
+        haErrorView?.visibility = View.GONE
+
         if (webView.url != haUrl) {
+            haLoadingView?.visibility = View.VISIBLE
             webView.loadUrl(haUrl)
         }
 

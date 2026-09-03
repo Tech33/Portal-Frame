@@ -456,7 +456,8 @@ class SlideshowController(
             setOnClickListener {
                 val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
                 val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                prefs.edit().putBoolean("broadcast_dismissed_$todayStr", true).apply()
+                prefs.edit().putBoolean("broadcast_dismissed_$todayStr", true)
+                    .remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
                 animate().alpha(0f).setDuration(400).withEndAction {
                     visibility = View.GONE
                     alpha = 1f
@@ -604,8 +605,20 @@ class SlideshowController(
             broadcastBanner.text = customMsg
             broadcastBanner.alpha = 1f
             broadcastBanner.visibility = if (!clockOnly) View.VISIBLE else View.GONE
+            broadcastBanner.bringToFront()
         } else {
-            broadcastBanner.visibility = View.GONE
+            val lastMsg = prefs.getString("last_broadcast_msg", "")?.trim() ?: ""
+            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val lastDate = prefs.getString("last_broadcast_date", null)
+            val dismissed = prefs.getBoolean("broadcast_dismissed_$todayStr", false)
+            if (lastMsg.isNotEmpty() && lastDate == todayStr && !dismissed) {
+                broadcastBanner.text = lastMsg
+                broadcastBanner.alpha = 1f
+                broadcastBanner.visibility = if (!clockOnly) View.VISIBLE else View.GONE
+                broadcastBanner.bringToFront()
+            } else {
+                broadcastBanner.visibility = View.GONE
+            }
         }
 
         if (::haButton.isInitialized) {
@@ -613,6 +626,7 @@ class SlideshowController(
             val showBtn = prefs.getBoolean(ConfigReceiver.KEY_HA_BUTTON, ConfigReceiver.DEFAULT_HA_BUTTON)
             val haUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, "")?.trim() ?: ""
             haButton.visibility = if (haEnabled && showBtn && haUrl.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
+            haButton.bringToFront()
         }
 
         pollRemoteAnnouncement()
@@ -1536,15 +1550,23 @@ class SlideshowController(
      * the ambient light sensor in [SlideshowComposeActivity].
      */
     fun setBroadcastMessage(msg: String) {
+        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val customMsg = prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "")?.trim() ?: ""
+        if (customMsg.isNotEmpty()) {
+            broadcastBanner.text = customMsg
+            broadcastBanner.alpha = 1f
+            broadcastBanner.visibility = if (!clockOnly) View.VISIBLE else View.GONE
+            broadcastBanner.bringToFront()
+            return
+        }
+
         val message = msg.trim()
         if (message.isEmpty()) {
             broadcastBanner.visibility = View.GONE
             return
         }
 
-        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-
         val lastMsg = prefs.getString("last_broadcast_msg", null)
         val lastDate = prefs.getString("last_broadcast_date", null)
         val dismissed = prefs.getBoolean("broadcast_dismissed_$todayStr", false)
@@ -1559,12 +1581,14 @@ class SlideshowController(
             broadcastBanner.text = message
             broadcastBanner.alpha = 1f
             broadcastBanner.visibility = if (!clockOnly) View.VISIBLE else View.GONE
+            broadcastBanner.bringToFront()
         } else {
             // Same message: verify it belongs to today's local date and hasn't been dismissed
             if (lastDate == todayStr && !dismissed) {
                 broadcastBanner.text = message
                 broadcastBanner.alpha = 1f
                 broadcastBanner.visibility = if (!clockOnly) View.VISIBLE else View.GONE
+                broadcastBanner.bringToFront()
             } else {
                 // Expired next day or dismissed by user
                 broadcastBanner.visibility = View.GONE
@@ -1731,6 +1755,7 @@ class SlideshowController(
                 updateAmbient(b)
                 enhanceFilter = if (enhance) makeEnhance(b) else null
                 back.colorFilter = enhanceFilter
+                checkCustomMessage()
             }
             prefetchNext(nextStart(i, isPair))
             scheduleAuto()
@@ -1776,6 +1801,7 @@ class SlideshowController(
                 noteShown(j)
             }
             hideShimmer()
+            checkCustomMessage()
             // Incoming image shows the path's START transform during the fade; when it
             // settles onto `back` we hand off at the same transform and animate to the end.
             kbPath = newKenBurnsPath(bmp)

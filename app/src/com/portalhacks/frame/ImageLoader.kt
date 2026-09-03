@@ -122,12 +122,19 @@ class ImageLoader(context: Context) {
     }
 
     /** Cache key that distinguishes the two fill modes (zoom-crop vs whole photo + blur). */
-    private fun fillKey(id: String, zoomFill: Boolean): String = if (zoomFill) "$id|z" else "$id|f"
+    private fun fillKey(id: String, zoomFill: Boolean): String {
+        if (zoomFill) return "$id|z"
+        val prefs = ctx.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val blur = prefs.getInt(ConfigReceiver.KEY_BLUR_RADIUS, ConfigReceiver.DEFAULT_BLUR_RADIUS)
+        return "$id|f|$blur"
+    }
 
     private fun loadSync(id: String, reqW: Int, reqH: Int, zoomFill: Boolean): Bitmap? {
         return try {
             val raw = decodeRaw(id, reqW, reqH) ?: return null
-            composeFill(raw, reqW, reqH, zoomFill)
+            val prefs = ctx.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+            val blurRadius = prefs.getInt(ConfigReceiver.KEY_BLUR_RADIUS, ConfigReceiver.DEFAULT_BLUR_RADIUS).coerceIn(1, 10)
+            composeFill(raw, reqW, reqH, zoomFill, blurRadius)
         } catch (e: Exception) {
             Log.e(TAG, "load failed $id", e)
             null
@@ -302,14 +309,14 @@ class ImageLoader(context: Context) {
          * Compose [src] into a screen-sized frame. [zoomFill] = center-crop to fill (zoom in,
          * cropping the overflow); otherwise the whole photo fit-centred over a blurred fill.
          */
-        private fun composeFill(src: Bitmap?, screenW: Int, screenH: Int, zoomFill: Boolean): Bitmap? {
+        private fun composeFill(src: Bitmap?, screenW: Int, screenH: Int, zoomFill: Boolean, blurRadius: Int = 3): Bitmap? {
             if (src == null || screenW <= 0 || screenH <= 0) {
                 return src
             }
             val out = Bitmap.createBitmap(screenW, screenH, Bitmap.Config.ARGB_8888)
             val c = Canvas(out)
             val p = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
-            drawComposed(c, p, src, 0, 0, screenW, screenH, zoomFill)
+            drawComposed(c, p, src, 0, 0, screenW, screenH, zoomFill, blurRadius)
             if (src != out) {
                 src.recycle()
             }
@@ -355,7 +362,8 @@ class ImageLoader(context: Context) {
          */
         private fun drawComposed(
             c: Canvas, p: Paint, src: Bitmap?,
-            left: Int, top: Int, w: Int, h: Int, zoomFill: Boolean
+            left: Int, top: Int, w: Int, h: Int, zoomFill: Boolean,
+            blurRadius: Int = 3
         ) {
             if (src == null || w <= 0 || h <= 0) {
                 return
@@ -372,7 +380,7 @@ class ImageLoader(context: Context) {
             Canvas(small).drawBitmap(
                 src, centerCropRect(src.width, src.height, bw, bh), Rect(0, 0, bw, bh), p
             )
-            boxBlur(small, 3, 2)
+            boxBlur(small, blurRadius, 2)
             c.drawBitmap(small, Rect(0, 0, bw, bh), dst, p)
             small.recycle()
 
