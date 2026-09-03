@@ -444,12 +444,13 @@ class SlideshowController(
         broadcastBanner = TextView(context).apply {
             setTextColor(Color.WHITE)
             typeface = Ui.medium(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+            setShadowLayer(10f, 0f, 2f, Color.BLACK)
             gravity = Gravity.CENTER
-            background = Ui.roundRect(0x55000000, Ui.dp(context, 22f)).apply {
-                setStroke(Ui.dp(context, 1f), 0x66FFD700)
+            background = Ui.roundRect(0xA8000000.toInt(), Ui.dp(context, 24f)).apply {
+                setStroke(Ui.dp(context, 2f), 0xFFD4AF37.toInt())
             }
-            setPadding(Ui.dp(context, 24f), Ui.dp(context, 12f), Ui.dp(context, 24f), Ui.dp(context, 12f))
+            setPadding(Ui.dp(context, 28f), Ui.dp(context, 14f), Ui.dp(context, 28f), Ui.dp(context, 14f))
             visibility = View.GONE
             isClickable = true
             isFocusable = true

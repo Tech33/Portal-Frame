@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import org.json.JSONArray
@@ -417,8 +418,22 @@ class MqttManager private constructor(context: Context) {
         when (topic) {
             "$prefix/screen/set" -> {
                 val turnOn = msg.equals("ON", ignoreCase = true) || msg == "1"
-                appContext.sendBroadcast(Intent(if (turnOn) ConfigReceiver.ACTION_WAKE else ConfigReceiver.ACTION_SLEEP))
-                publishState("$prefix/screen/state", if (turnOn) "ON" else "OFF")
+                if (turnOn) {
+                    try {
+                        val pm = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                        @Suppress("DEPRECATION")
+                        val wl = pm?.newWakeLock(
+                            PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+                            "com.portalhacks.frame:wake"
+                        )
+                        wl?.acquire(3000L)
+                    } catch (_: Exception) {}
+                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_WAKE))
+                    publishState("$prefix/screen/state", "ON")
+                } else {
+                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SLEEP))
+                    publishState("$prefix/screen/state", "OFF")
+                }
             }
             "$prefix/brightness/set" -> {
                 val b = msg.toIntOrNull()?.coerceIn(0, 100) ?: 50

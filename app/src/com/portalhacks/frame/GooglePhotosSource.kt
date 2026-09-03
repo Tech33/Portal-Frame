@@ -27,7 +27,7 @@ internal object GooglePhotosSource : PhotoProvider {
             url.startsWith("https://photos.google.com/share/")
 
     private const val TAG = "PortalFrame"
-    private const val IMG_WIDTH = 2560
+    private const val IMG_PARAM = "=s2560-k-no"
 
     // Start of each media item: ["<AF1Qip mediaKey>",["https://lh3...
     private val ITEM: Pattern = Pattern.compile(
@@ -136,7 +136,7 @@ internal object GooglePhotosSource : PhotoProvider {
             val tms = captureMillis(item)
             // Caption is derived at display time (album · relative time); keep only
             // the raw capture instant and the portrait flag here.
-            out.add(Slide(base + "=w" + IMG_WIDTH, null, tms, h > w))
+            out.add(Slide(base + IMG_PARAM, null, tms, h > w))
         }
         if (videos > 0) {
             Log.i(TAG, "skipped $videos video(s)")

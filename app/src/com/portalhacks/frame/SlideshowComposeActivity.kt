@@ -108,8 +108,35 @@ class SlideshowComposeActivity : ComponentActivity() {
                 ConfigReceiver.ACTION_PREV_PHOTO -> controller.prev()
                 ConfigReceiver.ACTION_SET_MESSAGE,
                 ConfigReceiver.ACTION_CLEAR_MESSAGE -> controller.checkCustomMessage()
+                ConfigReceiver.ACTION_SLEEP -> sleepScreen()
+                ConfigReceiver.ACTION_WAKE -> wakeScreen()
             }
         }
+    }
+
+    private var isScreenAsleep = false
+
+    private fun sleepScreen() {
+        if (isScreenAsleep) return
+        isScreenAsleep = true
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val lp = window.attributes
+        lp.screenBrightness = 0.001f
+        window.attributes = lp
+        controller.blank()
+    }
+
+    private fun wakeScreen() {
+        if (!isScreenAsleep) return
+        isScreenAsleep = false
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        )
+        val lp = window.attributes
+        lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        window.attributes = lp
+        controller.next()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -185,6 +212,8 @@ class SlideshowComposeActivity : ComponentActivity() {
             addAction(ConfigReceiver.ACTION_PREV_PHOTO)
             addAction(ConfigReceiver.ACTION_SET_MESSAGE)
             addAction(ConfigReceiver.ACTION_CLEAR_MESSAGE)
+            addAction(ConfigReceiver.ACTION_WAKE)
+            addAction(ConfigReceiver.ACTION_SLEEP)
         }
         registerReceiver(commandReceiver, cmdFilter)
 
@@ -357,6 +386,22 @@ class SlideshowComposeActivity : ComponentActivity() {
             resetHaIdleTimer()
             false
         }
+
+        // Preload Home Assistant in background on startup if enabled for instant 0ms access
+        preloadHomeAssistant()
+    }
+
+    private fun preloadHomeAssistant() {
+        val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val haEnabled = prefs.getBoolean(ConfigReceiver.KEY_HA_EMBEDDED, ConfigReceiver.DEFAULT_HA_EMBEDDED)
+        val rawUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, ConfigReceiver.DEFAULT_HA_URL)?.trim() ?: ""
+        if (!haEnabled || rawUrl.isEmpty()) return
+        val haUrl = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) rawUrl else "http://$rawUrl"
+        val webView = haWebView ?: return
+        if (webView.url != haUrl) {
+            haLoadingView?.visibility = View.VISIBLE
+            webView.loadUrl(haUrl)
+        }
     }
 
     private fun showHomeAssistant() {
@@ -435,6 +480,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         // Re-apply the clock position/size (picks up a Settings "reset" done while away).
         controller.applyClockTransform()
         controller.applyClockOnlyTransform()
+        preloadHomeAssistant()
         val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
 
         // "Only show clock in low light": watch the ambient light sensor when enabled.

@@ -33,18 +33,22 @@ internal object PhotoEnhance {
                 hist[y]++
             }
             val total = px.size
-            val lo = percentile(hist, total, 0.01f)
-            val hi = percentile(hist, total, 0.99f)
-            if (hi - lo < 8) {
-                return null // degenerate
+            val lo = percentile(hist, total, 0.02f)
+            val hi = percentile(hist, total, 0.98f)
+            if (hi - lo < 16) {
+                return null // degenerate or very flat photo
             }
-            // Contrast stretch lo..hi -> 0..255, but hold back so it stays natural.
+            // Gentle contrast stretch: cap at 1.20f to prevent amplifying camera sensor noise/grain in midtones
             val span = (hi - lo).toFloat()
             var scale = 255f / span
-            scale = clamp(1f + (scale - 1f) * 0.7f, 1f, 1.8f) // ease + cap
-            val translate = -lo * scale
-            // Skip if the photo is already near full-range (little to gain).
-            if (scale < 1.04f && lo < 6 && hi > 249) {
+            scale = clamp(1f + (scale - 1f) * 0.35f, 1f, 1.20f) // gentle ease + tight cap
+
+            // Protect shadow floor: don't push dark pixels up or stretch shadows where camera noise lives
+            val effectiveLo = if (lo < 14) 0f else lo * 0.7f
+            val translate = -effectiveLo * (scale - 1f)
+
+            // Skip if negligible change
+            if (scale < 1.03f) {
                 return null
             }
             val levels = ColorMatrix(
@@ -56,7 +60,7 @@ internal object PhotoEnhance {
                 ),
             )
             val vibrance = ColorMatrix()
-            vibrance.setSaturation(1.12f) // subtle pop
+            vibrance.setSaturation(1.06f) // natural, true-to-life skin tone vibrance
             val out = ColorMatrix()
             out.postConcat(levels)
             out.postConcat(vibrance)

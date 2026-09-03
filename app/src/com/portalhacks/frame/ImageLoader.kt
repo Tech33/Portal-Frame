@@ -63,8 +63,16 @@ class ImageLoader(context: Context) {
                 return value.byteCount / 1024
             }
         }
-        cacheDir = File(ctx.cacheDir, "photos")
+        cacheDir = File(ctx.cacheDir, "photos_v2")
         cacheDir.mkdirs()
+        ioPrefetch.execute {
+            try {
+                val old = File(ctx.cacheDir, "photos")
+                if (old.exists()) {
+                    old.deleteRecursively()
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     /** Shared background pool — reused for album fetches too. */
@@ -213,7 +221,6 @@ class ImageLoader(context: Context) {
         BitmapFactory.decodeFile(path, o)
         o.inSampleSize = sampleSize(o.outWidth, o.outHeight, reqW, reqH)
         o.inPreferredConfig = Bitmap.Config.ARGB_8888
-        o.inDither = true
         o.inJustDecodeBounds = false
         return BitmapFactory.decodeFile(path, o)
     }
@@ -227,7 +234,6 @@ class ImageLoader(context: Context) {
         `in`.close()
         o.inSampleSize = sampleSize(o.outWidth, o.outHeight, reqW, reqH)
         o.inPreferredConfig = Bitmap.Config.ARGB_8888
-        o.inDither = true
         o.inJustDecodeBounds = false
         `in` = ctx.assets.open(assetPath)
         val b = BitmapFactory.decodeStream(`in`, null, o)
@@ -370,7 +376,7 @@ class ImageLoader(context: Context) {
             }
             val dst = Rect(left, top, left + w, top + h)
             if (zoomFill) {
-                c.drawBitmap(src, centerCropRect(src.width, src.height, w, h), dst, p)
+                drawSmoothScaled(c, p, src, centerCropRect(src.width, src.height, w, h), dst)
                 return
             }
             // Blurred background: center-crop into a tiny bitmap, blur, draw upscaled.
@@ -388,10 +394,57 @@ class ImageLoader(context: Context) {
             scrim.color = Color.argb(70, 0, 0, 0) // gentle scrim behind the photo
             c.drawRect(dst, scrim)
 
-            // Sharp foreground: whole photo, fit-centered (no crop).
+            // Sharp, anti-aliased foreground: whole photo, fit-centered (no crop).
             val fc = fitCenterRect(src.width, src.height, w, h)
             fc.offset(left.toFloat(), top.toFloat())
-            c.drawBitmap(src, null, fc, p)
+            val targetDst = Rect(fc.left.roundToInt(), fc.top.roundToInt(), fc.right.roundToInt(), fc.bottom.roundToInt())
+            drawSmoothScaled(c, p, src, Rect(0, 0, src.width, src.height), targetDst)
+        }
+
+        /**
+         * Smooth progressive downscaling: when downscaling by > 1.4x, downscaling in progressive
+         * 2x steps averages 4-16 source pixels together, naturally suppressing camera sensor noise
+         * and preventing the harsh aliased grain that single-step Skia bilinear downsampling produces.
+         */
+        private fun drawSmoothScaled(
+            c: Canvas, p: Paint, src: Bitmap,
+            srcRect: Rect, dstRect: Rect
+        ) {
+            val sw = srcRect.width()
+            val sh = srcRect.height()
+            val dw = dstRect.width()
+            val dh = dstRect.height()
+            if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return
+
+            if (sw > dw * 1.4f && sh > dh * 1.4f) {
+                try {
+                    var curW = sw
+                    var curH = sh
+                    val isEntire = srcRect.left == 0 && srcRect.top == 0 && srcRect.width() == src.width && srcRect.height() == src.height
+                    var working = if (isEntire) src else Bitmap.createBitmap(src, srcRect.left, srcRect.top, srcRect.width(), srcRect.height())
+                    val cropped = if (!isEntire) working else null
+
+                    while (curW / 2 >= dw && curH / 2 >= dh) {
+                        curW /= 2
+                        curH /= 2
+                        val next = Bitmap.createScaledBitmap(working, curW, curH, true)
+                        if (working !== src && working !== cropped) {
+                            working.recycle()
+                        }
+                        working = next
+                    }
+
+                    c.drawBitmap(working, null, dstRect, p)
+                    if (working !== src && working !== cropped) {
+                        working.recycle()
+                    }
+                    cropped?.recycle()
+                    return
+                } catch (_: Throwable) {
+                    // Fallback to direct drawBitmap on memory pressure
+                }
+            }
+            c.drawBitmap(src, srcRect, dstRect, p)
         }
 
         private fun centerCropRect(sw: Int, sh: Int, dw: Int, dh: Int): Rect {
