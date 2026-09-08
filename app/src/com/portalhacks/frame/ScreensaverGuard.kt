@@ -146,6 +146,9 @@ class ScreensaverGuardService : Service() {
             Screensaver.claim(this)
         }
 
+        // Auto-enable accessibility service if WRITE_SECURE_SETTINGS is present
+        ScreenControl.enableAccessibility(this)
+
         // Start periodic check loop
         handler.post(checkRunnable)
 
@@ -155,6 +158,7 @@ class ScreensaverGuardService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         AlbumServer.startServer(this)
+        ScreenControl.enableAccessibility(this)
         val prefs = getSharedPreferences("portalframe", Context.MODE_PRIVATE)
         if (!prefs.getBoolean(ConfigReceiver.KEY_HA_BRIDGE_MODE, ConfigReceiver.DEFAULT_HA_BRIDGE_MODE)) {
             Screensaver.claim(this)

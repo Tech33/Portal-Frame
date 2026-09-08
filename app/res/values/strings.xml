@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Frame</string>
+    <string name="accessibility_label">Frame Screen Sleep Control</string>
+    <string name="accessibility_description">Allows Frame to sleep the screen on command via Home Assistant and power management.</string>
+</resources>

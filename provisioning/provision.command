@@ -68,8 +68,13 @@ fi
 echo "[+] Automating application permissions..."
 # Grant Portal-Frame camera access (used for setup QR scanning)
 $ADB shell pm grant com.portalhacks.frame android.permission.CAMERA 2>/dev/null
-# Secure settings grant for screensaver management
+# Optional: sound level amplitude monitoring for Home Assistant
+$ADB shell pm grant com.portalhacks.frame android.permission.RECORD_AUDIO 2>/dev/null || true
+# Secure settings grant for screensaver management and hardware display control
 $ADB shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS 2>/dev/null
+# Auto-enable hardware screen sleep accessibility service
+$ADB shell settings put secure enabled_accessibility_services com.portalhacks.frame/.PortalAccessibilityService 2>/dev/null || true
+$ADB shell settings put secure accessibility_enabled 1 2>/dev/null || true
 
 # 5. Enable on-device installs (Unknown Sources)
 echo "[+] Enabling on-device installs (Unknown Sources)..."

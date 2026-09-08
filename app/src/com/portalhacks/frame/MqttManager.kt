@@ -50,6 +50,8 @@ class MqttManager private constructor(context: Context) {
     private var outStream: DataOutputStream? = null
     private var inStream: DataInputStream? = null
     private var packetId = 1
+    private var sensorBridge: SensorBridge? = null
+    private var soundMonitor: SoundMonitor? = null
 
     private val deviceId by lazy {
         val androidId = Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
@@ -98,6 +100,10 @@ class MqttManager private constructor(context: Context) {
     }
 
     private fun closeSocket() {
+        sensorBridge?.stop()
+        sensorBridge = null
+        soundMonitor?.stop()
+        soundMonitor = null
         try {
             socket?.close()
         } catch (_: Exception) {}
@@ -170,6 +176,21 @@ class MqttManager private constructor(context: Context) {
 
                 // 4. Publish initial states
                 publishAllStates()
+
+                // Enable accessibility service via WRITE_SECURE_SETTINGS
+                ScreenControl.enableAccessibility(appContext)
+
+                // Start hardware sensors bridge
+                sensorBridge?.stop()
+                sensorBridge = SensorBridge(appContext) { topic, payload, _ ->
+                    publishState(topic, payload)
+                }.also { it.start(deviceId) }
+
+                // Start ambient sound monitor (if RECORD_AUDIO granted)
+                soundMonitor?.stop()
+                soundMonitor = SoundMonitor(appContext) { level ->
+                    publishState("$prefix/sound/state", level.toString())
+                }.also { it.start() }
 
                 // Start ping ticker
                 val pingRunnable = object : Runnable {
@@ -396,6 +417,65 @@ class MqttManager private constructor(context: Context) {
                 .put("icon", "mdi:view-dashboard")
                 .put("device", devInfo)
         )
+
+        // 8. Doorbell Chime Button
+        publishJson(
+            "homeassistant/button/$deviceId/doorbell/config",
+            JSONObject()
+                .put("name", "Doorbell Chime")
+                .put("unique_id", "${deviceId}_doorbell")
+                .put("command_topic", "$prefix/doorbell/set")
+                .put("icon", "mdi:bell-ring")
+                .put("device", devInfo)
+        )
+
+        // 9. Alert Tone Button
+        publishJson(
+            "homeassistant/button/$deviceId/alert/config",
+            JSONObject()
+                .put("name", "Alert Tone")
+                .put("unique_id", "${deviceId}_alert")
+                .put("command_topic", "$prefix/alert/set")
+                .put("icon", "mdi:alert-circle-outline")
+                .put("device", devInfo)
+        )
+
+        // 10. Ambient Light (Illuminance) Sensor
+        publishJson(
+            "homeassistant/sensor/$deviceId/illuminance/config",
+            JSONObject()
+                .put("name", "Illuminance")
+                .put("unique_id", "${deviceId}_illuminance")
+                .put("state_topic", "$prefix/illuminance/state")
+                .put("unit_of_measurement", "lx")
+                .put("device_class", "illuminance")
+                .put("state_class", "measurement")
+                .put("device", devInfo)
+        )
+
+        // 11. Sound Level Sensor
+        publishJson(
+            "homeassistant/sensor/$deviceId/sound/config",
+            JSONObject()
+                .put("name", "Sound Level")
+                .put("unique_id", "${deviceId}_sound")
+                .put("state_topic", "$prefix/sound/state")
+                .put("unit_of_measurement", "%")
+                .put("icon", "mdi:volume-source")
+                .put("state_class", "measurement")
+                .put("device", devInfo)
+        )
+
+        // 12. Knock / Tap Gesture Sensor
+        publishJson(
+            "homeassistant/sensor/$deviceId/tap/config",
+            JSONObject()
+                .put("name", "Tap Gesture")
+                .put("unique_id", "${deviceId}_tap")
+                .put("state_topic", "$prefix/tap/state")
+                .put("icon", "mdi:gesture-tap")
+                .put("device", devInfo)
+        )
     }
 
     private fun handlePublish(header: Int, qos: Int, payload: ByteArray) {
@@ -419,21 +499,20 @@ class MqttManager private constructor(context: Context) {
             "$prefix/screen/set" -> {
                 val turnOn = msg.equals("ON", ignoreCase = true) || msg == "1"
                 if (turnOn) {
-                    try {
-                        val pm = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
-                        @Suppress("DEPRECATION")
-                        val wl = pm?.newWakeLock(
-                            PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
-                            "com.portalhacks.frame:wake"
-                        )
-                        wl?.acquire(3000L)
-                    } catch (_: Exception) {}
+                    ScreenControl.wake(appContext)
                     appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_WAKE))
                     publishState("$prefix/screen/state", "ON")
                 } else {
+                    ScreenControl.sleep(appContext)
                     appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SLEEP))
                     publishState("$prefix/screen/state", "OFF")
                 }
+            }
+            "$prefix/doorbell/set" -> {
+                TonePlayer.play("doorbell")
+            }
+            "$prefix/alert/set" -> {
+                TonePlayer.play("alert")
             }
             "$prefix/brightness/set" -> {
                 val b = msg.toIntOrNull()?.coerceIn(0, 100) ?: 50

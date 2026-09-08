@@ -103,6 +103,9 @@ if exist "photos" (
 echo 3. Granting permissions...
 %ADB% shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS
 %ADB% shell pm grant com.portalhacks.frame android.permission.CAMERA
+%ADB% shell pm grant com.portalhacks.frame android.permission.RECORD_AUDIO >nul 2>nul
+%ADB% shell settings put secure enabled_accessibility_services com.portalhacks.frame/.PortalAccessibilityService >nul 2>nul
+%ADB% shell settings put secure accessibility_enabled 1 >nul 2>nul
 
 echo 4. Enabling on-device installs (Unknown Sources)...
 %ADB% shell settings put secure install_non_market_apps 1

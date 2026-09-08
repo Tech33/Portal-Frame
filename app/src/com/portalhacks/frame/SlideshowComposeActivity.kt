@@ -109,8 +109,8 @@ class SlideshowComposeActivity : ComponentActivity() {
                 ConfigReceiver.ACTION_PREV_PHOTO -> controller.prev()
                 ConfigReceiver.ACTION_SET_MESSAGE,
                 ConfigReceiver.ACTION_CLEAR_MESSAGE -> controller.checkCustomMessage()
-                ConfigReceiver.ACTION_SLEEP,
-                Intent.ACTION_SCREEN_OFF -> sleepScreen()
+                ConfigReceiver.ACTION_SLEEP -> sleepScreen(lockHardware = true)
+                Intent.ACTION_SCREEN_OFF -> sleepScreen(lockHardware = false)
                 ConfigReceiver.ACTION_WAKE,
                 Intent.ACTION_SCREEN_ON -> wakeScreen()
                 ConfigReceiver.ACTION_SET_SHOWCASE -> {
@@ -123,10 +123,13 @@ class SlideshowComposeActivity : ComponentActivity() {
     }
 
     private var isScreenAsleep = false
+    private var sleepCover: SleepCover? = null
 
-    private fun sleepScreen() {
+    private fun sleepScreen(lockHardware: Boolean = false) {
         if (isScreenAsleep) return
         isScreenAsleep = true
+        ScreenControl.isAsleep = true
+        sleepCover?.show()
         window.clearFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                 or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
@@ -135,19 +138,21 @@ class SlideshowComposeActivity : ComponentActivity() {
         lp.screenBrightness = 0.001f
         window.attributes = lp
         controller.blank()
+        if (lockHardware) {
+            ScreenControl.sleep(this)
+        }
     }
 
     private fun wakeScreen() {
         if (!isScreenAsleep) return
         isScreenAsleep = false
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-        )
+        ScreenControl.isAsleep = false
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val lp = window.attributes
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = lp
         controller.next()
+        sleepCover?.hide()
     }
 
     private fun applyShowcase(mode: String?, location: String?) {
@@ -176,14 +181,11 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-                or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
-        )
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.attributes = window.attributes.apply {
             screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
+        sleepCover = SleepCover(this)
 
         loader = ImageLoader(this)
         val root = FrameLayout(this)
