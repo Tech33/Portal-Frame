@@ -707,18 +707,7 @@ class SettingsActivity : ComponentActivity() {
                 Divider()
                 TransitionSelectorRow(iconRes = R.drawable.ic_transition, iconBg = Color(0xFF34C759))
                 Divider()
-                ShowcaseSelectorRow(iconRes = R.drawable.ic_captions, iconBg = Color(0xFFFF9500))
-                Divider()
                 ToggleRow("Shuffle photos", ConfigReceiver.KEY_SHUFFLE, false, iconRes = R.drawable.ic_shuffle, iconBg = Color(0xFF007AFF))
-                Divider()
-                ToggleRow(
-                    "Recent photos first",
-                    ConfigReceiver.KEY_RECENT_FIRST,
-                    ConfigReceiver.DEFAULT_RECENT_FIRST,
-                    subtitle = "Show recently taken photos first in chronological order.",
-                    iconRes = R.drawable.ic_clock_format,
-                    iconBg = Color(0xFF5856D6)
-                )
                 Divider()
                 ToggleRow(
                     "Smart photo pairing",
@@ -746,45 +735,16 @@ class SettingsActivity : ComponentActivity() {
                     iconRes = R.drawable.ic_memories,
                     iconBg = Color(0xFF34C759),
                 )
-                Divider()
-                ToggleRow(
-                    "Cinematic pan & zoom",
-                    ConfigReceiver.KEY_KEN_BURNS,
-                    true,
-                    iconRes = R.drawable.ic_motion,
-                    iconBg = Color(0xFFFF2D55),
-                )
-                val kenBurnsEnabled = rememberPrefBoolean(ConfigReceiver.KEY_KEN_BURNS, ConfigReceiver.DEFAULT_KEN_BURNS)
-                if (kenBurnsEnabled.value) {
-                    Divider()
-                    val kbScale = rememberPrefFloat(ConfigReceiver.KEY_KEN_BURNS_SCALE, ConfigReceiver.DEFAULT_KEN_BURNS_SCALE)
-                    KenBurnsIntensitySliderRow(kbScale)
-                }
             }
 
             Card("Display & accessibility") {
                 TextSizeSelectorRow(fontScaleState)
                 Divider()
                 ToggleRow(
-                    "Photo crop to fill",
-                    ConfigReceiver.KEY_ZOOM_FILL,
-                    false,
-                    subtitle = "Crop single photos to fill screen vs showing whole photo with blurred fill.",
-                    iconRes = R.drawable.ic_zoom,
-                    iconBg = PortalColors.Indigo,
-                )
-                val zoomFillState = rememberPrefBoolean(ConfigReceiver.KEY_ZOOM_FILL, ConfigReceiver.DEFAULT_ZOOM_FILL)
-                if (!zoomFillState.value) {
-                    Divider()
-                    val blurRadiusState = rememberPrefInt(ConfigReceiver.KEY_BLUR_RADIUS, ConfigReceiver.DEFAULT_BLUR_RADIUS)
-                    BackgroundBlurSliderRow(blurRadiusState)
-                }
-                Divider()
-                ToggleRow(
                     "Face-aware framing",
                     ConfigReceiver.KEY_FACE,
                     true,
-                    subtitle = "Centers people and faces during cinematic pan & zoom.",
+                    subtitle = "Centers people and faces during slideshow playback.",
                     iconRes = R.drawable.ic_face,
                     iconBg = PortalColors.Orange,
                 )
@@ -796,15 +756,6 @@ class SettingsActivity : ComponentActivity() {
                     subtitle = "Tints screen edge glow to each photo's mood colors.",
                     iconRes = R.drawable.ic_ambient,
                     iconBg = PortalColors.Red,
-                )
-                Divider()
-                ToggleRow(
-                    "Auto-enhance photos",
-                    ConfigReceiver.KEY_ENHANCE,
-                    ConfigReceiver.DEFAULT_ENHANCE,
-                    subtitle = "Applies real-time color and contrast vibrance.",
-                    iconRes = R.drawable.ic_enhance,
-                    iconBg = PortalColors.Orange,
                 )
             }
 
@@ -2177,136 +2128,6 @@ class SettingsActivity : ComponentActivity() {
         }
     }
 
-    @Composable
-    private fun ShowcaseSelectorRow(
-        iconRes: Int = 0,
-        iconBg: Color = Color.Gray,
-    ) {
-        val selectedModeState = rememberPrefString(ConfigReceiver.KEY_SHOWCASE_MODE, ConfigReceiver.DEFAULT_SHOWCASE_MODE)
-        val selectedMode = selectedModeState.value ?: ConfigReceiver.DEFAULT_SHOWCASE_MODE
-        val locationQueryState = rememberPrefString(ConfigReceiver.KEY_SHOWCASE_LOCATION, ConfigReceiver.DEFAULT_SHOWCASE_LOCATION)
-        val locationQuery = locationQueryState.value ?: ConfigReceiver.DEFAULT_SHOWCASE_LOCATION
-        var expanded by remember { mutableStateOf(false) }
-        var showLocationDialog by remember { mutableStateOf(false) }
-        var locationInput by remember { mutableStateOf(locationQuery) }
-
-        val currentLabel = when (selectedMode) {
-            "recent_trip" -> "Recent Trip"
-            "last_7_days" -> "Last 7 Days"
-            "last_30_days" -> "Last 30 Days"
-            "location" -> if (locationQuery.isNotEmpty()) locationQuery else "City Filter"
-            else -> "All Photos"
-        }
-
-        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-            Row(
-                Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { expanded = !expanded }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RowIcon(iconRes, iconBg)
-                Column(Modifier.weight(1f)) {
-                    Text("Trip & Location Showcase", color = PortalColors.Text, fontSize = 20.sp)
-                    Text(
-                        if (selectedMode == "all") "Playing all photos normally"
-                        else "Displaying: $currentLabel",
-                        color = PortalColors.TextMuted,
-                        fontSize = 15.sp,
-                    )
-                }
-                Text(
-                    text = "$currentLabel  ${if (expanded) "▲" else "▼"}",
-                    color = PortalColors.Blue,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-            if (expanded) {
-                Spacer(Modifier.height(8.dp))
-                Column(Modifier.padding(start = 32.dp)) {
-                    SHOWCASE_OPTIONS.forEachIndexed { i, option ->
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    if (option.id == "location") {
-                                        locationInput = locationQuery
-                                        showLocationDialog = true
-                                    } else {
-                                        prefs.edit().putString(ConfigReceiver.KEY_SHOWCASE_MODE, option.id).apply()
-                                    }
-                                }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = selectedMode == option.id,
-                                onClick = null,
-                                colors = RadioButtonDefaults.colors(
-                                    selectedColor = PortalColors.Blue,
-                                    unselectedColor = PortalColors.TextMuted,
-                                ),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column {
-                                Text(option.label, color = PortalColors.Text, fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                                Text(option.desc, color = PortalColors.TextMuted, fontSize = 14.sp)
-                            }
-                        }
-                        if (i < SHOWCASE_OPTIONS.lastIndex) {
-                            Spacer(Modifier.height(4.dp))
-                        }
-                    }
-                }
-            }
-        }
-
-        if (showLocationDialog) {
-            AlertDialog(
-                onDismissRequest = { showLocationDialog = false },
-                title = {
-                    Text("Filter by City or Location", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                },
-                text = {
-                    Column(Modifier.fillMaxWidth()) {
-                        Text(
-                            "Enter a city, trip, or location name to showcase:",
-                            color = PortalColors.TextMuted,
-                            fontSize = 14.sp,
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        androidx.compose.material3.OutlinedTextField(
-                            value = locationInput,
-                            onValueChange = { locationInput = it },
-                            placeholder = { Text("e.g. Paris, London, Rome, Hawaii", color = Color.Gray, fontSize = 14.sp) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val loc = locationInput.trim()
-                        prefs.edit()
-                            .putString(ConfigReceiver.KEY_SHOWCASE_MODE, if (loc.isNotEmpty()) "location" else "all")
-                            .putString(ConfigReceiver.KEY_SHOWCASE_LOCATION, loc)
-                            .apply()
-                        showLocationDialog = false
-                    }) {
-                        Text("Showcase", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showLocationDialog = false }) {
-                        Text("Cancel", color = PortalColors.Text.copy(alpha = 0.6f))
-                    }
-                },
-                containerColor = PortalColors.Surface,
-            )
-        }
-    }
 
     @Composable
     private fun NightClockStyleSelectorRow() {
@@ -2547,86 +2368,7 @@ class SettingsActivity : ComponentActivity() {
         }
     }
 
-    @Composable
-    private fun KenBurnsIntensitySliderRow(scaleState: MutableState<Float>) {
-        val label = when {
-            scaleState.value <= 0.45f -> "Subtle (0.3×)"
-            scaleState.value <= 0.8f -> "Gentle (0.6×)"
-            scaleState.value <= 1.25f -> "Standard (1.0×)"
-            scaleState.value <= 1.75f -> "Dynamic (1.5×)"
-            else -> "Dramatic (2.0×)"
-        }
-        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                RowIcon(R.drawable.ic_motion, Color(0xFFFF2D55))
-                Text("Pan & zoom motion depth", color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
-                Text(
-                    label,
-                    color = PortalColors.Blue, fontSize = 18.sp, fontWeight = FontWeight.Medium,
-                )
-            }
-            Slider(
-                value = scaleState.value,
-                onValueChange = { scaleState.value = it },
-                valueRange = 0.3f..2.0f,
-                steps = 3,
-                onValueChangeFinished = {
-                    prefs.edit().putFloat(ConfigReceiver.KEY_KEN_BURNS_SCALE, scaleState.value).apply()
-                },
-                colors = SliderDefaults.colors(
-                    thumbColor = PortalColors.Blue,
-                    activeTrackColor = PortalColors.Blue,
-                    inactiveTrackColor = PortalColors.Text.copy(alpha = 0.18f),
-                    activeTickColor = Color.Transparent,
-                    inactiveTickColor = Color.Transparent,
-                ),
-            )
-            Row(Modifier.fillMaxWidth()) {
-                Text("Subtle (0.3×)", color = PortalColors.TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Text("Dramatic (2.0×)", color = PortalColors.TextMuted, fontSize = 12.sp)
-            }
-        }
-    }
 
-    @Composable
-    private fun BackgroundBlurSliderRow(blurState: MutableState<Int>) {
-        val label = when {
-            blurState.value <= 1 -> "Subtle (1)"
-            blurState.value <= 3 -> "Standard (3)"
-            blurState.value <= 5 -> "Strong (5)"
-            else -> "Deep (8)"
-        }
-        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                RowIcon(R.drawable.ic_zoom, PortalColors.Indigo)
-                Text("Background fill blur", color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
-                Text(
-                    label,
-                    color = PortalColors.Blue, fontSize = 18.sp, fontWeight = FontWeight.Medium,
-                )
-            }
-            Slider(
-                value = blurState.value.toFloat(),
-                onValueChange = { blurState.value = it.roundToInt() },
-                valueRange = 1f..8f,
-                steps = 6,
-                onValueChangeFinished = {
-                    prefs.edit().putInt(ConfigReceiver.KEY_BLUR_RADIUS, blurState.value).apply()
-                },
-                colors = SliderDefaults.colors(
-                    thumbColor = PortalColors.Blue,
-                    activeTrackColor = PortalColors.Blue,
-                    inactiveTrackColor = PortalColors.Text.copy(alpha = 0.18f),
-                    activeTickColor = Color.Transparent,
-                    inactiveTickColor = Color.Transparent,
-                ),
-            )
-            Row(Modifier.fillMaxWidth()) {
-                Text("Subtle (1)", color = PortalColors.TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Text("Deep (8)", color = PortalColors.TextMuted, fontSize = 12.sp)
-            }
-        }
-    }
 
     // ----------------------------------------------------------------- prefs/helpers
 
@@ -2696,16 +2438,7 @@ class SettingsActivity : ComponentActivity() {
             4_000, 6_000, 10_000, 30_000, // seconds
             60_000, 300_000, 600_000, 1_800_000, // 1m, 5m, 10m, 30m
             3_600_000, 10_800_000, 21_600_000, 43_200_000, // 1h, 3h, 6h, 12h
-            86_400_000, // 1 day
-        )
-        private data class ShowcaseOption(val id: String, val label: String, val desc: String)
-        private val SHOWCASE_OPTIONS = listOf(
-            ShowcaseOption("all", "All photos", "Play all photos normally across your albums."),
-            ShowcaseOption("recent_trip", "Recent visit / trip", "Play only photos from the most recent trip or vacation cluster."),
-            ShowcaseOption("last_7_days", "Last 7 days", "Play only photos captured in the past 7 days."),
-            ShowcaseOption("last_30_days", "Last 30 days", "Play only photos captured in the past 30 days."),
-            ShowcaseOption("location", "City / Location", "Filter photos matching a specific city or location name."),
-        )
+
         private val TRANSITION_OPTIONS = listOf(
             TransitionOption("crossfade", "Crossfade"),
             TransitionOption("slide", "Slide"),

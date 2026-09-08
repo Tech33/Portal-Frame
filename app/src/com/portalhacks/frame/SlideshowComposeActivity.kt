@@ -56,6 +56,7 @@ class SlideshowComposeActivity : ComponentActivity() {
     private lateinit var loader: ImageLoader
     private lateinit var controller: SlideshowController
     private var flipWebView: WebView? = null
+    private var slideshowContainer: FrameLayout? = null
     private val handler = Handler(Looper.getMainLooper())
 
     private var currentAlbums: List<String> = emptyList()
@@ -105,10 +106,18 @@ class SlideshowComposeActivity : ComponentActivity() {
             when (intent?.action) {
                 ConfigReceiver.ACTION_SHOW_DASHBOARD -> showHomeAssistant()
                 ConfigReceiver.ACTION_SHOW_SLIDESHOW -> hideHomeAssistant()
-                ConfigReceiver.ACTION_NEXT_PHOTO -> controller.next()
-                ConfigReceiver.ACTION_PREV_PHOTO -> controller.prev()
-                ConfigReceiver.ACTION_SET_MESSAGE,
-                ConfigReceiver.ACTION_CLEAR_MESSAGE -> controller.checkCustomMessage()
+                ConfigReceiver.ACTION_NEXT_PHOTO -> {
+                    if (!isClockModeActive()) controller.next()
+                }
+                ConfigReceiver.ACTION_PREV_PHOTO -> {
+                    if (!isClockModeActive()) controller.prev()
+                }
+                ConfigReceiver.ACTION_SET_MESSAGE -> {
+                    val msg = intent?.getStringExtra("message")
+                        ?: prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "") ?: ""
+                    handleIncomingBroadcastMessage(msg)
+                }
+                ConfigReceiver.ACTION_CLEAR_MESSAGE -> handleClearBroadcastMessage()
                 ConfigReceiver.ACTION_SLEEP -> sleepScreen(lockHardware = true)
                 Intent.ACTION_SCREEN_OFF -> sleepScreen(lockHardware = false)
                 ConfigReceiver.ACTION_WAKE,
@@ -120,6 +129,36 @@ class SlideshowComposeActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun isClockModeActive(): Boolean =
+        (flipWebView?.visibility == View.VISIBLE) || controller.isClockOnly() || lowLightClockOnly || scheduledClockOnly
+
+    private fun handleIncomingBroadcastMessage(msg: String) {
+        val trimmed = msg.trim()
+        if (trimmed.isNotEmpty()) {
+            prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, trimmed).apply()
+            controller.checkCustomMessage()
+
+            // Automatically extract location clue (city, country, region) from the broadcast message
+            val locationClue = LocationExtractor.extractLocation(trimmed)
+            if (locationClue != null) {
+                Log.i(TAG, "Location clue extracted from broadcast message: ${locationClue.primary} (terms: ${locationClue.terms})")
+                applyShowcase(mode = "location", location = locationClue.primary)
+            } else {
+                Log.i(TAG, "No location identified in broadcast message, defaulting to capture date descending showcase")
+                applyShowcase(mode = "date_descending", location = "")
+            }
+
+            // Immediately trigger a hard background refresh of albums so newly uploaded trip photos land without waiting
+            fetchAllAndApply(showHint = false)
+        }
+    }
+
+    private fun handleClearBroadcastMessage() {
+        prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
+        controller.checkCustomMessage()
+        applyShowcase(mode = "all", location = "")
     }
 
     private var isScreenAsleep = false
@@ -151,7 +190,9 @@ class SlideshowComposeActivity : ComponentActivity() {
         val lp = window.attributes
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = lp
-        controller.next()
+        if (!isClockModeActive()) {
+            controller.next()
+        }
         sleepCover?.hide()
     }
 
@@ -168,14 +209,18 @@ class SlideshowComposeActivity : ComponentActivity() {
             controller.setItems(updated)
             val effectiveMode = mode ?: p.getString(ConfigReceiver.KEY_SHOWCASE_MODE, ConfigReceiver.DEFAULT_SHOWCASE_MODE)
             val effectiveLoc = location ?: p.getString(ConfigReceiver.KEY_SHOWCASE_LOCATION, ConfigReceiver.DEFAULT_SHOWCASE_LOCATION) ?: ""
-            val msg = when (effectiveMode) {
-                "recent_trip" -> "📍 Recent Visit Showcase (${updated.size} photos)"
-                "last_7_days" -> "📍 Last 7 Days Showcase (${updated.size} photos)"
-                "last_30_days" -> "📍 Last 30 Days Showcase (${updated.size} photos)"
-                "location" -> "📍 $effectiveLoc Showcase (${updated.size} photos)"
-                else -> "Showing All Photos (${updated.size} photos)"
+            val hasCustomMsg = !p.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "").isNullOrBlank()
+            if (!hasCustomMsg) {
+                val msg = when (effectiveMode) {
+                    "location" -> "📍 $effectiveLoc Showcase (${updated.size} photos)"
+                    "date_descending" -> "📍 Recent Photos Showcase (${updated.size} photos)"
+                    "recent_trip" -> "📍 Recent Visit Showcase (${updated.size} photos)"
+                    "last_7_days" -> "📍 Last 7 Days Showcase (${updated.size} photos)"
+                    "last_30_days" -> "📍 Last 30 Days Showcase (${updated.size} photos)"
+                    else -> "Showing All Photos (${updated.size} photos)"
+                }
+                controller.showTemporaryBanner(msg)
             }
-            controller.showTemporaryBanner(msg)
         }
     }
 
@@ -188,11 +233,16 @@ class SlideshowComposeActivity : ComponentActivity() {
         sleepCover = SleepCover(this)
 
         loader = ImageLoader(this)
-        val root = FrameLayout(this)
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
 
         // 1. Build the slideshow's View hierarchy.
-        val slideshowContainer = FrameLayout(this)
-        controller = SlideshowController(this, slideshowContainer, loader).apply {
+        val container = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+        slideshowContainer = container
+        controller = SlideshowController(this, container, loader).apply {
             setOnDismiss {
                 val homeIntent = Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_HOME)
@@ -212,6 +262,7 @@ class SlideshowComposeActivity : ComponentActivity() {
 
         // 2. Build the WebView for the Immortal Flip clock style (hidden by default)
         val webView = WebView(this).apply {
+            setBackgroundColor(Color.BLACK)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -604,7 +655,8 @@ class SlideshowComposeActivity : ComponentActivity() {
 
         if (clockOnlyActive) {
             if (useFlipForNight) {
-                // Show WebView Flip Clock
+                // Show WebView Flip Clock (hide slideshow completely to prevent any photo bleed)
+                slideshowContainer?.visibility = View.GONE
                 controller.setClockOnly(false)
                 controller.blank()
                 controller.stop()
@@ -614,6 +666,7 @@ class SlideshowComposeActivity : ComponentActivity() {
                 // Show Classic Native Clock
                 flipWebView?.visibility = View.GONE
                 flipWebView?.onPause()
+                slideshowContainer?.visibility = View.VISIBLE
                 if (!controller.running) {
                     controller.start()
                 }
@@ -623,6 +676,7 @@ class SlideshowComposeActivity : ComponentActivity() {
             // Normal Slideshow Mode
             flipWebView?.visibility = View.GONE
             flipWebView?.onPause()
+            slideshowContainer?.visibility = View.VISIBLE
             controller.setClockOnly(false)
             if (!controller.running) {
                 controller.start()

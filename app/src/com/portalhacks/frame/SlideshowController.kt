@@ -683,6 +683,7 @@ class SlideshowController(
                                 context.sendBroadcast(intent)
                             }
                             prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, displayMsg).apply()
+                            context.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", displayMsg))
                             handler.post { checkCustomMessage() }
                         }
                     }
@@ -1649,6 +1650,8 @@ class SlideshowController(
         }
     }
 
+    fun isClockOnly(): Boolean = clockOnly
+
     private val hideBannerRunnable = Runnable {
         broadcastBanner.animate().alpha(0f).setDuration(600).withEndAction {
             broadcastBanner.visibility = View.GONE
@@ -1721,7 +1724,7 @@ class SlideshowController(
     }
 
     fun next() {
-        if (!running || items.isEmpty()) return
+        if (clockOnly || !running || items.isEmpty()) return
         val step = if (curIsPair) 2 else 1
         val next = if (index + step >= items.size) {
             if (shuffle && items.size > 2) smartShuffle(items)
@@ -1733,7 +1736,7 @@ class SlideshowController(
     }
 
     fun prev() {
-        if (!running || items.isEmpty()) return
+        if (clockOnly || !running || items.isEmpty()) return
         val step = if (curIsPair) 2 else 1
         val prev = if (index - step < 0) {
             (items.size - step).coerceAtLeast(0)
@@ -2600,15 +2603,15 @@ class SlideshowController(
         private val minCardH = Ui.dp(c, 146f).toFloat()
         private val minGroupGap = Ui.dp(c, 40f).toFloat()
         private val minLabelGap = Ui.dp(c, 34f).toFloat()
-        private val groupBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF0F1419.toInt() }
+        private val groupBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF000000.toInt() }
         private val groupStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0x1CFFFFFF
+            color = 0x14FFFFFF
             style = Paint.Style.STROKE
             strokeWidth = Ui.dp(c, 1.5f).toFloat()
         }
-        private val cardBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1A1E27.toInt() }
-        private val cardTop = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF252A34.toInt() }
-        private val cardBottom = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1A1E27.toInt() }
+        private val cardBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF11141A.toInt() }
+        private val cardTop = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF181D24.toInt() }
+        private val cardBottom = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF11141A.toInt() }
         private val cardStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0x2CFFFFFF
             style = Paint.Style.STROKE
@@ -2900,32 +2903,54 @@ class SlideshowController(
             mode: String,
             locationQuery: String = "",
         ): List<Slide> {
-            if (allSlides.isEmpty() || mode == "all" || mode.isEmpty()) {
-                return allSlides
+            if (allSlides.isEmpty()) return allSlides
+
+            // 1. If location mode or locationQuery is provided, prioritize matching vacation photos!
+            if (mode == "location" || locationQuery.isNotBlank()) {
+                val locClue = LocationExtractor.extractLocation(locationQuery)
+                val (matching, rest) = if (locClue != null) {
+                    allSlides.partition { LocationExtractor.matches(it, locClue) }
+                } else {
+                    val q = locationQuery.trim().lowercase(Locale.US)
+                    allSlides.partition { slide ->
+                        (slide.location?.contains(q, ignoreCase = true) == true) ||
+                        (slide.caption?.contains(q, ignoreCase = true) == true) ||
+                        (slide.id.contains(q, ignoreCase = true))
+                    }
+                }
+                if (matching.isNotEmpty()) {
+                    // Showcase matching trip photos first (newest to oldest), then remaining photos
+                    val sortedMatching = sortByCaptureDescending(matching)
+                    val sortedRest = sortByCaptureDescending(rest)
+                    return sortedMatching + sortedRest
+                }
+                // If no photos matched the location query, default to capture date descending
+                return sortByCaptureDescending(allSlides)
             }
+
             return when (mode) {
+                "date_descending" -> sortByCaptureDescending(allSlides)
                 "recent_trip" -> extractRecentTrip(allSlides)
                 "last_7_days" -> {
                     val cutoff = System.currentTimeMillis() - 7L * 86400000L
                     val filtered = allSlides.filter { it.timeMs != Slide.NO_DATE && it.timeMs >= cutoff }
-                    if (filtered.isNotEmpty()) filtered else extractRecentTrip(allSlides)
+                    if (filtered.isNotEmpty()) sortByCaptureDescending(filtered) else sortByCaptureDescending(allSlides)
                 }
                 "last_30_days" -> {
                     val cutoff = System.currentTimeMillis() - 30L * 86400000L
                     val filtered = allSlides.filter { it.timeMs != Slide.NO_DATE && it.timeMs >= cutoff }
-                    if (filtered.isNotEmpty()) filtered else extractRecentTrip(allSlides)
+                    if (filtered.isNotEmpty()) sortByCaptureDescending(filtered) else sortByCaptureDescending(allSlides)
                 }
-                "location" -> {
-                    val q = locationQuery.trim()
-                    if (q.isEmpty()) return allSlides
-                    val filtered = allSlides.filter { slide ->
-                        (slide.location?.contains(q, ignoreCase = true) == true) ||
-                        (slide.caption?.contains(q, ignoreCase = true) == true)
-                    }
-                    if (filtered.isNotEmpty()) filtered else allSlides
-                }
+                "all" -> allSlides
                 else -> allSlides
             }
+        }
+
+        @JvmStatic
+        fun sortByCaptureDescending(slides: List<Slide>): List<Slide> {
+            val dated = slides.filter { it.timeMs != Slide.NO_DATE }.sortedByDescending { it.timeMs }
+            val undated = slides.filter { it.timeMs == Slide.NO_DATE }
+            return dated + undated
         }
 
         /**
