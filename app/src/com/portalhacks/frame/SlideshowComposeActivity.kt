@@ -63,6 +63,7 @@ class SlideshowComposeActivity : ComponentActivity() {
     private var lowLightClockOnly = false
     private var scheduledClockOnly = false
     private var useFlipClock = false
+    private val prefs by lazy { getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE) }
 
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private val lightSensor: Sensor? by lazy { sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT) }
@@ -112,6 +113,11 @@ class SlideshowComposeActivity : ComponentActivity() {
                 Intent.ACTION_SCREEN_OFF -> sleepScreen()
                 ConfigReceiver.ACTION_WAKE,
                 Intent.ACTION_SCREEN_ON -> wakeScreen()
+                ConfigReceiver.ACTION_SET_SHOWCASE -> {
+                    val mode = intent?.getStringExtra("mode")
+                    val loc = intent?.getStringExtra("location")
+                    applyShowcase(mode, loc)
+                }
             }
         }
     }
@@ -142,6 +148,30 @@ class SlideshowComposeActivity : ComponentActivity() {
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = lp
         controller.next()
+    }
+
+    private fun applyShowcase(mode: String?, location: String?) {
+        val p = prefs
+        val editor = p.edit()
+        if (!mode.isNullOrEmpty()) editor.putString(ConfigReceiver.KEY_SHOWCASE_MODE, mode)
+        if (location != null) editor.putString(ConfigReceiver.KEY_SHOWCASE_LOCATION, location)
+        editor.apply()
+        val albums = if (currentAlbums.isNotEmpty()) currentAlbums else Albums.enabled(p)
+        val updated = mergedSlides(p, albums)
+        if (updated.isNotEmpty()) {
+            currentIds = idsOf(updated)
+            controller.setItems(updated)
+            val effectiveMode = mode ?: p.getString(ConfigReceiver.KEY_SHOWCASE_MODE, ConfigReceiver.DEFAULT_SHOWCASE_MODE)
+            val effectiveLoc = location ?: p.getString(ConfigReceiver.KEY_SHOWCASE_LOCATION, ConfigReceiver.DEFAULT_SHOWCASE_LOCATION) ?: ""
+            val msg = when (effectiveMode) {
+                "recent_trip" -> "📍 Recent Visit Showcase (${updated.size} photos)"
+                "last_7_days" -> "📍 Last 7 Days Showcase (${updated.size} photos)"
+                "last_30_days" -> "📍 Last 30 Days Showcase (${updated.size} photos)"
+                "location" -> "📍 $effectiveLoc Showcase (${updated.size} photos)"
+                else -> "Showing All Photos (${updated.size} photos)"
+            }
+            controller.showTemporaryBanner(msg)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -220,6 +250,7 @@ class SlideshowComposeActivity : ComponentActivity() {
             addAction(ConfigReceiver.ACTION_SLEEP)
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(ConfigReceiver.ACTION_SET_SHOWCASE)
         }
         registerReceiver(commandReceiver, cmdFilter)
 
@@ -693,7 +724,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         for (url in albums) {
             buckets.add(AlbumCache.read(prefs, url) ?: emptyList())
         }
-        return when (
+        val base = when (
             prefs.getString(
                 ConfigReceiver.KEY_ALBUM_PLAYBACK,
                 ConfigReceiver.DEFAULT_ALBUM_PLAYBACK,
@@ -702,6 +733,9 @@ class SlideshowComposeActivity : ComponentActivity() {
             "album_priority" -> buckets.flatten()
             else -> interleaveSlides(buckets)
         }
+        val mode = prefs.getString(ConfigReceiver.KEY_SHOWCASE_MODE, ConfigReceiver.DEFAULT_SHOWCASE_MODE) ?: ConfigReceiver.DEFAULT_SHOWCASE_MODE
+        val loc = prefs.getString(ConfigReceiver.KEY_SHOWCASE_LOCATION, ConfigReceiver.DEFAULT_SHOWCASE_LOCATION) ?: ConfigReceiver.DEFAULT_SHOWCASE_LOCATION
+        return SlideshowController.filterForShowcase(base, mode, loc)
     }
 
     companion object {

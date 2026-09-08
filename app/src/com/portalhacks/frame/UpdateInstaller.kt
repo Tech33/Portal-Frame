@@ -28,14 +28,46 @@ internal object UpdateInstaller {
         data class Error(val message: String) : Result()
     }
 
-    /** Download [manifest.apkUrl] into [Context.cacheDir]. */
-    fun download(context: Context, manifest: UpdateChecker.UpdateManifest): Result {
+    fun getApkFile(context: Context, manifest: UpdateChecker.UpdateManifest): File {
+        val cacheDir = context.externalCacheDir ?: context.cacheDir
+        return File(cacheDir, "frame-update-${manifest.versionName}.apk")
+    }
+
+    /** Returns cached APK if already downloaded and passes integrity check. */
+    fun isCachedAndValid(context: Context, manifest: UpdateChecker.UpdateManifest): File? {
+        val dest = getApkFile(context, manifest)
+        if (!dest.isFile || dest.length() <= 0) {
+            return null
+        }
+        val expected = manifest.sha256
+        if (expected != null && expected.isNotEmpty()) {
+            val actual = sha256Hex(dest)
+            if (!actual.equals(expected, ignoreCase = true)) {
+                dest.delete()
+                return null
+            }
+        }
+        return dest
+    }
+
+    /** Download [manifest.apkUrl] into [Context.cacheDir] with real-time progress callbacks. */
+    fun download(
+        context: Context,
+        manifest: UpdateChecker.UpdateManifest,
+        onProgress: ((percent: Int, downloadedMb: Float, totalMb: Float) -> Unit)? = null
+    ): Result {
+        val existing = isCachedAndValid(context, manifest)
+        if (existing != null) {
+            val szMb = existing.length() / (1024f * 1024f)
+            onProgress?.invoke(100, szMb, szMb)
+            return Result.Ready(existing)
+        }
+
         val url = manifest.apkUrl
         if (!url.startsWith("https://")) {
             return Result.Error("Refusing non-HTTPS download URL.")
         }
-        val cacheDir = context.externalCacheDir ?: context.cacheDir
-        val dest = File(cacheDir, "frame-update.apk")
+        val dest = getApkFile(context, manifest)
         dest.delete()
         var c: HttpURLConnection? = null
         try {
@@ -48,12 +80,17 @@ internal object UpdateInstaller {
             if (code != HttpURLConnection.HTTP_OK) {
                 return Result.Error("Download failed (HTTP $code).")
             }
+            val contentLength = c.contentLengthLong
+            val totalMb = if (contentLength > 0) contentLength / (1024f * 1024f) else 0f
+
             val tmp = File(dest.absolutePath + ".tmp")
             val input = BufferedInputStream(c.inputStream)
             val out = FileOutputStream(tmp)
-            val buf = ByteArray(8192)
+            val buf = ByteArray(16384)
             var total = 0L
             var n: Int
+            var lastReportMs = 0L
+
             while (input.read(buf).also { n = it } != -1) {
                 total += n
                 if (total > MAX_APK_BYTES) {
@@ -63,6 +100,14 @@ internal object UpdateInstaller {
                     return Result.Error("Download exceeded size limit.")
                 }
                 out.write(buf, 0, n)
+
+                val now = System.currentTimeMillis()
+                if (now - lastReportMs >= 200) {
+                    lastReportMs = now
+                    val downloadedMb = total / (1024f * 1024f)
+                    val pct = if (contentLength > 0) ((total * 100) / contentLength).toInt().coerceIn(0, 99) else 0
+                    onProgress?.invoke(pct, downloadedMb, totalMb)
+                }
             }
             out.flush()
             out.close()
@@ -72,13 +117,14 @@ internal object UpdateInstaller {
                 return Result.Error("Couldn't save the downloaded APK.")
             }
             val expected = manifest.sha256
-            if (expected != null) {
+            if (expected != null && expected.isNotEmpty()) {
                 val actual = sha256Hex(dest)
                 if (!actual.equals(expected, ignoreCase = true)) {
                     dest.delete()
                     return Result.Error("Download failed integrity check.")
                 }
             }
+            onProgress?.invoke(100, total / (1024f * 1024f), totalMb)
             return Result.Ready(dest)
         } catch (e: Exception) {
             Log.e(TAG, "APK download failed", e)

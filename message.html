@@ -249,6 +249,19 @@
         <button id="clear-btn" type="button" class="btn-secondary" onclick="clearMessage()">✕ Clear</button>
       </div>
 
+      <div class="field-group" style="margin-top: 16px;">
+        <label for="showcase-select">📍 Showcase Photos on Frame</label>
+        <select id="showcase-select" style="width: 100%; height: 50px; padding: 12px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 15px; outline: none; margin-bottom: 8px;" onchange="toggleCustomLocInput()">
+          <option value="none">Keep current showcase mode</option>
+          <option value="recent_trip">Showcase recent trip / visit</option>
+          <option value="last_7_days">Showcase last 7 days</option>
+          <option value="last_30_days">Showcase last 30 days</option>
+          <option value="custom_location">Showcase specific city / location...</option>
+          <option value="all">Reset to all photos</option>
+        </select>
+        <input type="text" id="custom-location-input" placeholder="e.g. Paris, London, Hawaii" style="display: none;" />
+      </div>
+
       <button id="send-btn" type="button" class="btn-primary" onclick="sendMessage()">📢 Broadcast to Portals</button>
       <button id="remove-btn" type="button" class="btn-remove" onclick="removeAnnouncement()">Remove Active Banner</button>
     </div>
@@ -325,8 +338,31 @@
       }
     }
 
+    function toggleCustomLocInput() {
+      const mode = document.getElementById('showcase-select').value;
+      const customInput = document.getElementById('custom-location-input');
+      customInput.style.display = (mode === 'custom_location') ? 'block' : 'none';
+      if (mode === 'custom_location') customInput.focus();
+    }
+
     async function sendMessage() {
-      await sendPayload(document.getElementById('message').value.trim());
+      let text = document.getElementById('message').value.trim();
+      const showcaseMode = document.getElementById('showcase-select').value;
+      if (showcaseMode === 'recent_trip') {
+        text += (text ? ' ' : '') + '#showcase:recent_trip';
+      } else if (showcaseMode === 'last_7_days') {
+        text += (text ? ' ' : '') + '#showcase:last_7_days';
+      } else if (showcaseMode === 'last_30_days') {
+        text += (text ? ' ' : '') + '#showcase:last_30_days';
+      } else if (showcaseMode === 'all') {
+        text += (text ? ' ' : '') + '#showcase:all';
+      } else if (showcaseMode === 'custom_location') {
+        const loc = document.getElementById('custom-location-input').value.trim();
+        if (loc) {
+          text += (text ? ' ' : '') + '#showcase:' + loc;
+        }
+      }
+      await sendPayload(text);
     }
 
     async function removeAnnouncement() {

@@ -13,6 +13,7 @@ import android.graphics.ColorFilter
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
@@ -173,8 +174,10 @@ class SlideshowController(
             val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
             batteryLevel = if (level >= 0 && scale > 0) (level * 100 / scale) else -1
             val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
             batteryIsCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                                status == BatteryManager.BATTERY_STATUS_FULL
+                                status == BatteryManager.BATTERY_STATUS_FULL ||
+                                plugged > 0
             updateClock()
         }
     }
@@ -663,7 +666,23 @@ class SlideshowController(
                                 handler.post { checkCustomMessage() }
                             }
                         } else if (decrypted.isNotEmpty() && decrypted != current) {
-                            prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, decrypted).apply()
+                            var displayMsg = decrypted
+                            if (decrypted.contains("#showcase:")) {
+                                val tag = decrypted.substringAfter("#showcase:").trim().takeWhile { it != ' ' }
+                                displayMsg = decrypted.replace("#showcase:$tag", "").trim()
+                                val intent = Intent(ConfigReceiver.ACTION_SET_SHOWCASE).apply {
+                                    if (tag.equals("all", ignoreCase = true)) {
+                                        putExtra("mode", "all")
+                                    } else if (tag.equals("recent", ignoreCase = true) || tag.equals("recent_trip", ignoreCase = true) || tag.equals("trip", ignoreCase = true)) {
+                                        putExtra("mode", "recent_trip")
+                                    } else {
+                                        putExtra("mode", "location")
+                                        putExtra("location", tag)
+                                    }
+                                }
+                                context.sendBroadcast(intent)
+                            }
+                            prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, displayMsg).apply()
                             handler.post { checkCustomMessage() }
                         }
                     }
@@ -1630,6 +1649,23 @@ class SlideshowController(
         }
     }
 
+    private val hideBannerRunnable = Runnable {
+        broadcastBanner.animate().alpha(0f).setDuration(600).withEndAction {
+            broadcastBanner.visibility = View.GONE
+        }
+    }
+
+    fun showTemporaryBanner(message: String, durationMs: Long = 6000L) {
+        handler.post {
+            broadcastBanner.text = message
+            broadcastBanner.alpha = 1f
+            broadcastBanner.visibility = if (!clockOnly) View.VISIBLE else View.GONE
+            broadcastBanner.bringToFront()
+            handler.removeCallbacks(hideBannerRunnable)
+            handler.postDelayed(hideBannerRunnable, durationMs)
+        }
+    }
+
     /** Swap the photo source at runtime (e.g. bundled samples -> album). */
     fun setItems(newItems: List<Slide>?) {
         if (newItems == null || newItems.isEmpty()) {
@@ -2322,7 +2358,11 @@ class SlideshowController(
             batDrawable.setBounds(0, 0, dpW, dpH)
             sb.append(" ")
             sb.setSpan(ImageSpan(batDrawable, ImageSpan.ALIGN_CENTER), 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            sb.append(" $batteryLevel % | ")
+            if (batteryIsCharging) {
+                sb.append(" ⚡$batteryLevel% | ")
+            } else {
+                sb.append(" $batteryLevel% | ")
+            }
         }
         sb.append(date)
 
@@ -2372,8 +2412,10 @@ class SlideshowController(
                     val scale = stickyIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
                     batteryLevel = if (level >= 0 && scale > 0) (level * 100 / scale) else -1
                     val status = stickyIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                    val plugged = stickyIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
                     batteryIsCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                                        status == BatteryManager.BATTERY_STATUS_FULL
+                                        status == BatteryManager.BATTERY_STATUS_FULL ||
+                                        plugged > 0
                 }
                 batteryReceiverRegistered = true
             } catch (e: Exception) {
@@ -2842,6 +2884,83 @@ class SlideshowController(
     companion object {
         private const val TAG = "PortalFrame"
         private const val SLIDES_DIR = "slides"
+
+        /**
+         * Filter a list of slides according to the active showcase mode:
+         * - "all": return all slides.
+         * - "recent_trip": detect the most recent cluster of photos (e.g. photos taken within a
+         *   contiguous travel window around the newest capture date).
+         * - "last_7_days": photos captured within the last 7 days.
+         * - "last_30_days": photos captured within the last 30 days.
+         * - "location": photos whose location or caption matches [locationQuery].
+         */
+        @JvmStatic
+        fun filterForShowcase(
+            allSlides: List<Slide>,
+            mode: String,
+            locationQuery: String = "",
+        ): List<Slide> {
+            if (allSlides.isEmpty() || mode == "all" || mode.isEmpty()) {
+                return allSlides
+            }
+            return when (mode) {
+                "recent_trip" -> extractRecentTrip(allSlides)
+                "last_7_days" -> {
+                    val cutoff = System.currentTimeMillis() - 7L * 86400000L
+                    val filtered = allSlides.filter { it.timeMs != Slide.NO_DATE && it.timeMs >= cutoff }
+                    if (filtered.isNotEmpty()) filtered else extractRecentTrip(allSlides)
+                }
+                "last_30_days" -> {
+                    val cutoff = System.currentTimeMillis() - 30L * 86400000L
+                    val filtered = allSlides.filter { it.timeMs != Slide.NO_DATE && it.timeMs >= cutoff }
+                    if (filtered.isNotEmpty()) filtered else extractRecentTrip(allSlides)
+                }
+                "location" -> {
+                    val q = locationQuery.trim()
+                    if (q.isEmpty()) return allSlides
+                    val filtered = allSlides.filter { slide ->
+                        (slide.location?.contains(q, ignoreCase = true) == true) ||
+                        (slide.caption?.contains(q, ignoreCase = true) == true)
+                    }
+                    if (filtered.isNotEmpty()) filtered else allSlides
+                }
+                else -> allSlides
+            }
+        }
+
+        /**
+         * Automatically groups and extracts the most recent "trip / visit":
+         * 1. Sorts dated photos in reverse-chronological order.
+         * 2. Finds the newest photo's date.
+         * 3. Gathers all photos taken during that visit (continuing backwards in time
+         *    as long as the gap between consecutive photo days is <= 3 days, up to a 14-day trip span).
+         * 4. If photos have no EXIF dates, returns the newest 30 photos.
+         */
+        @JvmStatic
+        fun extractRecentTrip(allSlides: List<Slide>): List<Slide> {
+            val dated = allSlides.filter { it.timeMs != Slide.NO_DATE }.sortedByDescending { it.timeMs }
+            if (dated.isEmpty()) {
+                return allSlides.take(30)
+            }
+            val newestTime = dated.first().timeMs
+            val maxTripSpanMs = 14L * 86400000L
+            val maxGapMs = 3L * 86400000L
+
+            val tripPhotos = ArrayList<Slide>()
+            var previousTime = newestTime
+
+            for (s in dated) {
+                val gap = previousTime - s.timeMs
+                val totalSpan = newestTime - s.timeMs
+                if (gap > maxGapMs || totalSpan > maxTripSpanMs) {
+                    break
+                }
+                tripPhotos.add(s)
+                previousTime = s.timeMs
+            }
+
+            return if (tripPhotos.size >= 3) tripPhotos else dated.take(25)
+        }
         // Cap the Ken Burns animation length so long "time per photo" values (up to a day) don't
         // run a multi-hour ValueAnimator; past this the motion holds at its end frame.
         private const val KEN_BURNS_MAX_MS = 30_000L
@@ -2929,6 +3048,37 @@ class BatteryPillDrawable(private val level: Int, private val isCharging: Boolea
         val fillW = (fillMaxW * pct).coerceAtLeast(1f)
         val fillRect = RectF(b.left + pad, b.top + pad, b.left + pad + fillW, b.top + h - pad)
         canvas.drawRoundRect(fillRect, 2f, 2f, fillPaint)
+
+        // Native vector lightning bolt charging indicator centered inside the battery pill
+        if (isCharging) {
+            val cx = b.left + bodyW * 0.48f
+            val cy = b.top + h * 0.50f
+            val bw = h * 0.40f
+            val bh = h * 0.72f
+
+            val boltPath = Path().apply {
+                moveTo(cx + bw * 0.15f, cy - bh * 0.50f)
+                lineTo(cx - bw * 0.45f, cy + bh * 0.05f)
+                lineTo(cx - bw * 0.05f, cy + bh * 0.05f)
+                lineTo(cx - bw * 0.25f, cy + bh * 0.50f)
+                lineTo(cx + bw * 0.45f, cy - bh * 0.05f)
+                lineTo(cx + bw * 0.05f, cy - bh * 0.05f)
+                close()
+            }
+
+            val boltShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 1.6f
+                color = Color.argb(190, 0, 0, 0)
+            }
+            canvas.drawPath(boltPath, boltShadowPaint)
+
+            val boltFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = Color.WHITE
+            }
+            canvas.drawPath(boltPath, boltFillPaint)
+        }
     }
 
     override fun setAlpha(alpha: Int) {

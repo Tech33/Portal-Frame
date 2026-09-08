@@ -135,6 +135,10 @@ class ConfigReceiver : BroadcastReceiver() {
                                                 // photo over a blurred fill). Pairs always fill.
         const val KEY_BLUR_RADIUS = "blur_radius" // int: background fill blur radius (1..8)
         const val KEY_RECENT_FIRST = "recent_first" // boolean: sort slideshow newest photos first
+        const val KEY_SHOWCASE_MODE = "showcase_mode" // string: "all", "recent_trip", "last_7_days", "last_30_days", "location"
+        const val DEFAULT_SHOWCASE_MODE = "all"
+        const val KEY_SHOWCASE_LOCATION = "showcase_location" // string: filter location/city query (e.g. "Paris")
+        const val DEFAULT_SHOWCASE_LOCATION = ""
         // Clock widget transform (set by long-press-drag/pinch on the screensaver). dx/dy are the
         // translation from the default bottom-left anchor as a fraction of screen W/H; scale is a
         // size multiplier. Floats.
@@ -176,6 +180,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val ACTION_CLEAR_MESSAGE = "com.portalhacks.frame.CLEAR_MESSAGE"
         const val ACTION_WAKE = "com.portalhacks.frame.WAKE"
         const val ACTION_SLEEP = "com.portalhacks.frame.SLEEP"
+        const val ACTION_SET_SHOWCASE = "com.portalhacks.frame.SET_SHOWCASE"
 
         /** Stable URL — always serves the latest release's version.json asset. */
         const val UPDATE_MANIFEST_URL =

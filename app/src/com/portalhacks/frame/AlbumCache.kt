@@ -32,7 +32,8 @@ internal object AlbumCache {
                         .put("u", s.id)
                         .put("c", s.caption ?: "")
                         .put("t", s.timeMs)
-                        .put("pt", s.portrait),
+                        .put("pt", s.portrait)
+                        .put("loc", s.location ?: ""),
                 )
             } catch (ignored: JSONException) {
                 continue
@@ -74,6 +75,7 @@ internal object AlbumCache {
                     o.optString("c", "").ifEmpty { null },
                     o.optLong("t", Slide.NO_DATE),
                     o.optBoolean("pt", false),
+                    o.optString("loc", "").ifEmpty { null },
                 ),
             )
         }

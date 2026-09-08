@@ -240,23 +240,51 @@ class SettingsActivity : ComponentActivity() {
 
     private fun downloadAndInstallUpdate(
         manifest: UpdateChecker.UpdateManifest,
+        onProgress: (Int, Float, Float) -> Unit,
         onStatus: (String) -> Unit,
-        onFinished: () -> Unit,
+        onFinished: (Boolean) -> Unit,
     ) {
+        val cached = UpdateInstaller.isCachedAndValid(this, manifest)
+        if (cached != null) {
+            onStatus("Update already downloaded. Opening installer…")
+            val launched = UpdateInstaller.promptInstall(this, cached)
+            if (launched) {
+                onStatus("Follow the system prompt to complete installation.")
+            } else {
+                onStatus("Permission required: allow Frame to install unknown apps, then tap Install.")
+            }
+            onFinished(true)
+            return
+        }
+
         loader.executor().execute {
-            runOnUiThread { onStatus("Downloading update…") }
-            when (val result = UpdateInstaller.download(this, manifest)) {
-                is UpdateInstaller.Result.Ready -> runOnUiThread {
-                    if (UpdateInstaller.promptInstall(this, result.file)) {
-                        onStatus("Follow the system prompt to install.")
+            runOnUiThread { onStatus("Starting download…") }
+            val result = UpdateInstaller.download(this, manifest) { pct, curMb, totMb ->
+                runOnUiThread {
+                    onProgress(pct, curMb, totMb)
+                    if (totMb > 0) {
+                        onStatus("Downloading update… $pct% (${"%.1f".format(curMb)} / ${"%.1f".format(totMb)} MB)")
                     } else {
-                        onStatus("Allow Frame to install updates, then tap Download again.")
+                        onStatus("Downloading update… ${"%.1f".format(curMb)} MB")
                     }
-                    onFinished()
                 }
-                is UpdateInstaller.Result.Error -> runOnUiThread {
-                    onStatus(result.message)
-                    onFinished()
+            }
+            runOnUiThread {
+                when (result) {
+                    is UpdateInstaller.Result.Ready -> {
+                        onStatus("Download complete. Opening installer…")
+                        val launched = UpdateInstaller.promptInstall(this, result.file)
+                        if (launched) {
+                            onStatus("Follow the system prompt to complete installation.")
+                        } else {
+                            onStatus("Permission required: allow Frame to install unknown apps, then tap Install.")
+                        }
+                        onFinished(true)
+                    }
+                    is UpdateInstaller.Result.Error -> {
+                        onStatus(result.message)
+                        onFinished(false)
+                    }
                 }
             }
         }
@@ -386,6 +414,7 @@ class SettingsActivity : ComponentActivity() {
         var albumRefreshStatus by remember { mutableStateOf("") }
         var checkingUpdate by remember { mutableStateOf(false) }
         var downloadingUpdate by remember { mutableStateOf(false) }
+        var downloadProgressPct by remember { mutableStateOf(0) }
         var updateStatus by remember { mutableStateOf("") }
         var pendingUpdate by remember { mutableStateOf<UpdateChecker.UpdateManifest?>(null) }
         val installedVersion = remember(resumeTick.intValue) {
@@ -639,16 +668,26 @@ class SettingsActivity : ComponentActivity() {
                     }
                 }
                 pendingUpdate?.let { manifest ->
+                    val isApkReady = remember(downloadingUpdate, pendingUpdate, updateStatus) {
+                        UpdateInstaller.isCachedAndValid(this@SettingsActivity, manifest) != null
+                    }
                     Spacer(Modifier.height(10.dp))
                     PrimaryBtn(
-                        if (downloadingUpdate) "Downloading…" else "Download and install ${manifest.versionName}",
+                        when {
+                            downloadingUpdate -> if (downloadProgressPct > 0) "Downloading… $downloadProgressPct%" else "Downloading…"
+                            isApkReady -> "Install ${manifest.versionName} Now"
+                            else -> "Download & Install ${manifest.versionName}"
+                        },
                         enabled = !downloadingUpdate,
                     ) {
                         downloadingUpdate = true
                         downloadAndInstallUpdate(
                             manifest = manifest,
+                            onProgress = { pct, _, _ -> downloadProgressPct = pct },
                             onStatus = { updateStatus = it },
-                            onFinished = { downloadingUpdate = false },
+                            onFinished = {
+                                downloadingUpdate = false
+                            },
                         )
                     }
                 }
@@ -667,6 +706,8 @@ class SettingsActivity : ComponentActivity() {
                 DurationSliderRow(iconRes = R.drawable.ic_duration, iconBg = Color(0xFF5856D6))
                 Divider()
                 TransitionSelectorRow(iconRes = R.drawable.ic_transition, iconBg = Color(0xFF34C759))
+                Divider()
+                ShowcaseSelectorRow(iconRes = R.drawable.ic_captions, iconBg = Color(0xFFFF9500))
                 Divider()
                 ToggleRow("Shuffle photos", ConfigReceiver.KEY_SHUFFLE, false, iconRes = R.drawable.ic_shuffle, iconBg = Color(0xFF007AFF))
                 Divider()
@@ -2137,6 +2178,137 @@ class SettingsActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun ShowcaseSelectorRow(
+        iconRes: Int = 0,
+        iconBg: Color = Color.Gray,
+    ) {
+        val selectedModeState = rememberPrefString(ConfigReceiver.KEY_SHOWCASE_MODE, ConfigReceiver.DEFAULT_SHOWCASE_MODE)
+        val selectedMode = selectedModeState.value ?: ConfigReceiver.DEFAULT_SHOWCASE_MODE
+        val locationQueryState = rememberPrefString(ConfigReceiver.KEY_SHOWCASE_LOCATION, ConfigReceiver.DEFAULT_SHOWCASE_LOCATION)
+        val locationQuery = locationQueryState.value ?: ConfigReceiver.DEFAULT_SHOWCASE_LOCATION
+        var expanded by remember { mutableStateOf(false) }
+        var showLocationDialog by remember { mutableStateOf(false) }
+        var locationInput by remember { mutableStateOf(locationQuery) }
+
+        val currentLabel = when (selectedMode) {
+            "recent_trip" -> "Recent Trip"
+            "last_7_days" -> "Last 7 Days"
+            "last_30_days" -> "Last 30 Days"
+            "location" -> if (locationQuery.isNotEmpty()) locationQuery else "City Filter"
+            else -> "All Photos"
+        }
+
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Row(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RowIcon(iconRes, iconBg)
+                Column(Modifier.weight(1f)) {
+                    Text("Trip & Location Showcase", color = PortalColors.Text, fontSize = 20.sp)
+                    Text(
+                        if (selectedMode == "all") "Playing all photos normally"
+                        else "Displaying: $currentLabel",
+                        color = PortalColors.TextMuted,
+                        fontSize = 15.sp,
+                    )
+                }
+                Text(
+                    text = "$currentLabel  ${if (expanded) "▲" else "▼"}",
+                    color = PortalColors.Blue,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(8.dp))
+                Column(Modifier.padding(start = 32.dp)) {
+                    SHOWCASE_OPTIONS.forEachIndexed { i, option ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    if (option.id == "location") {
+                                        locationInput = locationQuery
+                                        showLocationDialog = true
+                                    } else {
+                                        prefs.edit().putString(ConfigReceiver.KEY_SHOWCASE_MODE, option.id).apply()
+                                    }
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = selectedMode == option.id,
+                                onClick = null,
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = PortalColors.Blue,
+                                    unselectedColor = PortalColors.TextMuted,
+                                ),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(option.label, color = PortalColors.Text, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                                Text(option.desc, color = PortalColors.TextMuted, fontSize = 14.sp)
+                            }
+                        }
+                        if (i < SHOWCASE_OPTIONS.lastIndex) {
+                            Spacer(Modifier.height(4.dp))
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showLocationDialog) {
+            AlertDialog(
+                onDismissRequest = { showLocationDialog = false },
+                title = {
+                    Text("Filter by City or Location", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Column(Modifier.fillMaxWidth()) {
+                        Text(
+                            "Enter a city, trip, or location name to showcase:",
+                            color = PortalColors.TextMuted,
+                            fontSize = 14.sp,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        androidx.compose.material3.OutlinedTextField(
+                            value = locationInput,
+                            onValueChange = { locationInput = it },
+                            placeholder = { Text("e.g. Paris, London, Rome, Hawaii", color = Color.Gray, fontSize = 14.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val loc = locationInput.trim()
+                        prefs.edit()
+                            .putString(ConfigReceiver.KEY_SHOWCASE_MODE, if (loc.isNotEmpty()) "location" else "all")
+                            .putString(ConfigReceiver.KEY_SHOWCASE_LOCATION, loc)
+                            .apply()
+                        showLocationDialog = false
+                    }) {
+                        Text("Showcase", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLocationDialog = false }) {
+                        Text("Cancel", color = PortalColors.Text.copy(alpha = 0.6f))
+                    }
+                },
+                containerColor = PortalColors.Surface,
+            )
+        }
+    }
+
+    @Composable
     private fun NightClockStyleSelectorRow() {
         val selectedState = rememberPrefBoolean(ConfigReceiver.KEY_CLOCK_FLIP, ConfigReceiver.DEFAULT_CLOCK_FLIP)
         val selected = selectedState.value
@@ -2525,6 +2697,14 @@ class SettingsActivity : ComponentActivity() {
             60_000, 300_000, 600_000, 1_800_000, // 1m, 5m, 10m, 30m
             3_600_000, 10_800_000, 21_600_000, 43_200_000, // 1h, 3h, 6h, 12h
             86_400_000, // 1 day
+        )
+        private data class ShowcaseOption(val id: String, val label: String, val desc: String)
+        private val SHOWCASE_OPTIONS = listOf(
+            ShowcaseOption("all", "All photos", "Play all photos normally across your albums."),
+            ShowcaseOption("recent_trip", "Recent visit / trip", "Play only photos from the most recent trip or vacation cluster."),
+            ShowcaseOption("last_7_days", "Last 7 days", "Play only photos captured in the past 7 days."),
+            ShowcaseOption("last_30_days", "Last 30 days", "Play only photos captured in the past 30 days."),
+            ShowcaseOption("location", "City / Location", "Filter photos matching a specific city or location name."),
         )
         private val TRANSITION_OPTIONS = listOf(
             TransitionOption("crossfade", "Crossfade"),
