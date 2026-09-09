@@ -48,6 +48,11 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.border
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.Surface
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -1190,9 +1195,10 @@ class SettingsActivity : ComponentActivity() {
         val cloudUrl = remember(channel) {
             "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&v=1.6.3"
         }
-        val qrBitmap = remember(cloudUrl) { generateQrBitmap(cloudUrl, 380) }
+        val qrBitmap = remember(cloudUrl) { generateQrBitmap(cloudUrl, 560) }
         var inputMsg by remember { mutableStateOf("") }
         val ctx = LocalContext.current
+        val clipboardManager = LocalClipboardManager.current
 
         // Cloud polling loop for worldwide broadcast
         LaunchedEffect(channel) {
@@ -1241,92 +1247,162 @@ class SettingsActivity : ComponentActivity() {
             }
         }
 
-        AlertDialog(
+        Dialog(
             onDismissRequest = onDismiss,
-            title = {
-                Text("Broadcast Announcement", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            },
-            text = {
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .widthIn(min = 520.dp, max = 640.dp)
+                    .fillMaxWidth(0.92f)
+                    .padding(vertical = 24.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = PortalColors.Surface,
+                tonalElevation = 6.dp
+            ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(28.dp)
+                        .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    Text(
+                        "Broadcast Announcement",
+                        color = Color.White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(20.dp))
+
                     if (qrBitmap != null) {
                         Image(
                             bitmap = qrBitmap.asImageBitmap(),
                             contentDescription = "Message QR Code",
                             modifier = Modifier
-                                .size(180.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .size(280.dp)
+                                .clip(RoundedCornerShape(24.dp))
                                 .background(Color.White)
-                                .padding(8.dp)
+                                .padding(16.dp)
+                        )
+                        Spacer(Modifier.height(18.dp))
+
+                        Text(
+                            "Scan with your phone",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Scan the QR code to open the announcement helper on your phone, or visit:\nraw.githack.com/Tech33/Portal-Frame/main/message.html",
+                            color = Color(0xFFE5E5EA),
+                            fontSize = 16.sp,
+                            lineHeight = 22.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            "Scan with phone to broadcast to all connected Portals",
-                            color = PortalColors.TextMuted,
-                            fontSize = 13.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
                             "Channel: $channel",
                             color = Color(0xFF64D2FF),
-                            fontSize = 13.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
+                            textAlign = TextAlign.Center
                         )
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(6.dp))
                         Text(
                             "Broadcasts to all Portals worldwide over mobile data or Wi-Fi",
-                            color = PortalColors.Text.copy(alpha = 0.5f),
-                            fontSize = 11.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            color = Color(0xFF9E9EA5),
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
-                    Spacer(Modifier.height(16.dp))
-                    Divider()
-                    Spacer(Modifier.height(16.dp))
-                    Text("Or enter message directly on Portal:", color = PortalColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Start))
-                    Spacer(Modifier.height(8.dp))
+
+                    Spacer(Modifier.height(22.dp))
+                    Divider(color = Color(0xFF38383A), thickness = 1.dp)
+                    Spacer(Modifier.height(20.dp))
+
+                    Text(
+                        "Or enter message directly on Portal",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    Spacer(Modifier.height(10.dp))
+
                     androidx.compose.material3.OutlinedTextField(
                         value = inputMsg,
                         onValueChange = { inputMsg = it },
-                        placeholder = { Text("🎉 Happy Birthday! 🎂", color = Color.Gray, fontSize = 14.sp) },
+                        placeholder = { Text("🎉 Happy Birthday! 🎂", color = Color.Gray, fontSize = 16.sp) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        textStyle = TextStyle(fontSize = 17.sp, color = Color.White),
                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White,
                             focusedBorderColor = PortalColors.Blue,
-                            unfocusedBorderColor = Color(0xFF38383A)
-                        )
+                            unfocusedBorderColor = Color(0xFF38383A),
+                            focusedContainerColor = Color(0xFF2C2C2E),
+                            unfocusedContainerColor = Color(0xFF2C2C2E),
+                        ),
+                        shape = RoundedCornerShape(12.dp)
                     )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val text = inputMsg.trim()
-                        if (text.isNotEmpty()) {
-                            prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, text).apply()
-                            ctx.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", text))
-                            MqttManager.getInstance(ctx).publishAllStates()
+
+                    Spacer(Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = {
+                                clipboardManager.getText()?.text?.trim()?.let { text ->
+                                    if (text.isNotEmpty()) inputMsg = text
+                                }
+                            },
+                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.background(Color(0xFF2C2C2E), RoundedCornerShape(12.dp))
+                        ) {
+                            Text("📋 Paste", fontSize = 16.sp, fontWeight = FontWeight.Medium)
                         }
-                        onDismiss()
+
+                        Spacer(Modifier.weight(1f))
+
+                        TextButton(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Text("Close", color = PortalColors.Text.copy(alpha = 0.7f), fontSize = 16.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                val text = inputMsg.trim()
+                                if (text.isNotEmpty()) {
+                                    prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, text).apply()
+                                    ctx.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", text))
+                                    MqttManager.getInstance(ctx).publishAllStates()
+                                }
+                                onDismiss()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = PortalColors.Blue),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Text("Post Banner", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
-                ) {
-                    Text("Post Banner", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismiss) {
-                    Text("Close", color = PortalColors.Text.copy(alpha = 0.6f))
-                }
-            },
-            containerColor = PortalColors.Surface,
-            shape = RoundedCornerShape(20.dp)
-        )
+            }
+        }
     }
 
     @Composable
