@@ -1325,7 +1325,7 @@ class SettingsActivity : ComponentActivity() {
                     }
 
                     Spacer(Modifier.height(22.dp))
-                    Divider(color = Color(0xFF38383A), thickness = 1.dp)
+                    Divider()
                     Spacer(Modifier.height(20.dp))
 
                     Text(
@@ -2514,6 +2514,8 @@ class SettingsActivity : ComponentActivity() {
             4_000, 6_000, 10_000, 30_000, // seconds
             60_000, 300_000, 600_000, 1_800_000, // 1m, 5m, 10m, 30m
             3_600_000, 10_800_000, 21_600_000, 43_200_000, // 1h, 3h, 6h, 12h
+            86_400_000, // 1 day
+        )
 
         private val TRANSITION_OPTIONS = listOf(
             TransitionOption("crossfade", "Crossfade"),

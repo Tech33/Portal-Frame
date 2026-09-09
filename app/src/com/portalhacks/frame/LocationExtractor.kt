@@ -189,8 +189,7 @@ object LocationExtractor {
             }
         }
 
-        // 4. Common travel phrase heuristic: "trip to <Place>", "in <Place>", "visit to <Place>"
-        val phraseRegex = Regex("""\b(?:trip to|visiting|visit to|vacation in|holiday in|welcome to|hello from|exploring|touring|in)\s+([A-Za-z]{3,25})""", Regex.Option.IGNORE_CASE)
+        val phraseRegex = Regex("""\b(?:trip to|visiting|visit to|vacation in|holiday in|welcome to|hello from|exploring|touring|in)\s+([A-Za-z]{3,25})""", RegexOption.IGNORE_CASE)
         val phraseMatch = phraseRegex.find(text)
         if (phraseMatch != null) {
             val candidate = phraseMatch.groupValues[1].trim().lowercase(Locale.US)
