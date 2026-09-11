@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import java.util.Calendar
+import java.util.Locale
 
 /**
  * The live slideshow screensaver, hosted in Jetpack Compose.
@@ -136,23 +137,61 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     private fun handleIncomingBroadcastMessage(msg: String) {
         val trimmed = msg.trim()
-        if (trimmed.isNotEmpty()) {
-            prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, trimmed).apply()
-            controller.checkCustomMessage()
+        if (trimmed.isEmpty()) return
 
-            // Automatically extract location clue (city, country, region) from the broadcast message
-            val locationClue = LocationExtractor.extractLocation(trimmed)
-            if (locationClue != null) {
-                Log.i(TAG, "Location clue extracted from broadcast message: ${locationClue.primary} (terms: ${locationClue.terms})")
-                applyShowcase(mode = "location", location = locationClue.primary)
-            } else {
-                Log.i(TAG, "No location identified in broadcast message, defaulting to capture date descending showcase")
-                applyShowcase(mode = "date_descending", location = "")
+        var displayMsg = trimmed
+        var targetMode: String? = null
+        var targetLoc: String? = null
+
+        // 1. Check for explicit #showcase: tag (e.g. #showcase:portugal, #showcase:recent_trip, #showcase:all)
+        val hashMatch = Regex("""#(?:showcase:|location:)?([A-Za-z0-9_ -]+)""").find(trimmed)
+        if (hashMatch != null) {
+            val fullTag = hashMatch.groupValues[0]
+            val tag = hashMatch.groupValues[1].replace("-", "_").trim().lowercase(Locale.US)
+            displayMsg = trimmed.replace(fullTag, "").trim()
+            when (tag) {
+                "all" -> {
+                    targetMode = "all"
+                    targetLoc = ""
+                }
+                "recent", "recent_trip", "trip" -> {
+                    targetMode = "recent_trip"
+                    targetLoc = ""
+                }
+                "last_7_days", "7_days", "7days" -> {
+                    targetMode = "last_7_days"
+                    targetLoc = ""
+                }
+                "last_30_days", "30_days", "30days" -> {
+                    targetMode = "last_30_days"
+                    targetLoc = ""
+                }
+                else -> {
+                    targetMode = "location"
+                    targetLoc = tag.replace("_", " ")
+                }
             }
-
-            // Immediately trigger a hard background refresh of albums so newly uploaded trip photos land without waiting
-            fetchAllAndApply(showHint = false)
         }
+
+        // 2. If no explicit showcase tag was given, extract location clue from the natural text
+        if (targetMode == null) {
+            val locationClue = LocationExtractor.extractLocation(displayMsg)
+            if (locationClue != null) {
+                targetMode = "location"
+                targetLoc = locationClue.primary
+            }
+        }
+
+        prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, displayMsg).apply()
+        controller.checkCustomMessage()
+
+        if (targetMode != null) {
+            Log.i(TAG, "Applying showcase from broadcast: mode=$targetMode, location=$targetLoc")
+            applyShowcase(mode = targetMode, location = targetLoc)
+        }
+
+        // Immediately trigger a hard background refresh of albums so newly uploaded trip photos land without waiting
+        fetchAllAndApply(showHint = false)
     }
 
     private fun handleClearBroadcastMessage() {
@@ -238,6 +277,11 @@ class SlideshowComposeActivity : ComponentActivity() {
                 }
                 controller.showTemporaryBanner(msg)
             }
+        } else {
+            // Revert showcase mode so subsequent cycles don't remain filtered out
+            editor.putString(ConfigReceiver.KEY_SHOWCASE_MODE, "all").apply()
+            val effectiveLoc = location ?: p.getString(ConfigReceiver.KEY_SHOWCASE_LOCATION, "") ?: ""
+            controller.showTemporaryBanner("⚠️ No photos found for '$effectiveLoc' in album")
         }
     }
 

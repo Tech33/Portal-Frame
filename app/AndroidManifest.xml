@@ -19,6 +19,25 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- Package queries for standalone media receivers sideloaded via OpenPortal / Immortal -->
+    <queries>
+        <!-- Spotify (Spotify Connect) -->
+        <package android:name="com.spotify.music" />
+        <package android:name="com.spotify.tv.android" />
+        <package android:name="com.spotify.lite" />
+
+        <!-- SmartTube / YouTube Music (Link with TV Code) -->
+        <package android:name="com.teamsmart.videomanager.tv" />
+        <package android:name="com.liskovsoft.smarttubetv.beta" />
+        <package android:name="com.google.android.apps.youtube.music" />
+
+        <!-- Native iOS AirPlay Receivers (AirReceiver / AirScreen) -->
+        <package android:name="com.waxrain.airplaydmr" />
+        <package android:name="com.waxrain.airplaydmr2" />
+        <package android:name="com.waxrain.airplaydmr3" />
+        <package android:name="com.ionitech.airscreen" />
+    </queries>
+
     <application
         android:label="Frame"
         android:icon="@mipmap/ic_launcher"

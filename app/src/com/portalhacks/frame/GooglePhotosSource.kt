@@ -54,12 +54,18 @@ internal object GooglePhotosSource : PhotoProvider {
         "(https://photos\\.google\\.com/share/[A-Za-z0-9_\\-]+\\?key=[A-Za-z0-9_\\-]+)",
     )
 
-    // Album name from the share page's Open Graph title (content/property order varies).
-    private val OG_TITLE_A: Pattern = Pattern.compile(
-        "<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]*)\"",
+    // Album name from Open Graph or standard <title> tags.
+    private val OG_TITLE_META: Pattern = Pattern.compile(
+        """<meta[^>]+(?:property|name)=["'](?:og:title|title|twitter:title)["'][^>]+content=["']([^"']*)["']""",
+        Pattern.CASE_INSENSITIVE
     )
-    private val OG_TITLE_B: Pattern = Pattern.compile(
-        "<meta[^>]+content=\"([^\"]*)\"[^>]+property=\"og:title\"",
+    private val OG_TITLE_META_REV: Pattern = Pattern.compile(
+        """<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["'](?:og:title|title|twitter:title)["']""",
+        Pattern.CASE_INSENSITIVE
+    )
+    private val HTML_TITLE: Pattern = Pattern.compile(
+        """<title>([^<]+)</title>""",
+        Pattern.CASE_INSENSITIVE
     )
 
     @Throws(Exception::class)
@@ -82,17 +88,52 @@ internal object GooglePhotosSource : PhotoProvider {
     }
 
     private fun parseTitle(html: String): String {
-        var m = OG_TITLE_A.matcher(html)
-        if (!m.find()) {
-            m = OG_TITLE_B.matcher(html)
-            if (!m.find()) {
-                return ""
+        var raw = ""
+        var m = OG_TITLE_META.matcher(html)
+        if (m.find()) {
+            raw = m.group(1) ?: ""
+        } else {
+            m = OG_TITLE_META_REV.matcher(html)
+            if (m.find()) {
+                raw = m.group(1) ?: ""
+            } else {
+                val tm = HTML_TITLE.matcher(html)
+                if (tm.find()) {
+                    raw = tm.group(1) ?: ""
+                }
             }
         }
-        val t = m.group(1)!!
-            .replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", "\"").trim()
+        var t = raw
+            .replace("&amp;", "&")
+            .replace("&#39;", "'")
+            .replace("&quot;", "\"")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace(Regex("""\s*[-–|]\s*Google Photos.*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
         // The generic site title isn't an album name.
-        return if (t.equals("Google Photos", ignoreCase = true)) "" else t
+        if (t.equals("Google Photos", ignoreCase = true) ||
+            t.equals("Photos", ignoreCase = true) ||
+            t.equals("Shared Album", ignoreCase = true)) {
+            return ""
+        }
+        return t
+    }
+
+    private fun extractItemCaption(item: String): String? {
+        val stripped = item.replace(Regex("""https?://[^\s",\\]+"""), "")
+        val m = Pattern.compile("\"([^\"]{3,100})\"").matcher(stripped)
+        while (m.find()) {
+            val s = m.group(1) ?: continue
+            if (s.startsWith("AF1Qip") || s.startsWith("CAE") || s.startsWith("CAMS")) continue
+            if (s.contains("/") || s.contains("\\")) continue
+            if (s.length > 20 && !s.contains(" ") && !s.contains("_") && !s.contains("-")) continue
+            val unescaped = s.replace("\\n", " ").trim()
+            if (unescaped.length in 3..80) {
+                return unescaped
+            }
+        }
+        return null
     }
 
     private fun parse(html: String, title: String = ""): List<Slide> {
@@ -135,9 +176,9 @@ internal object GooglePhotosSource : PhotoProvider {
                 continue
             }
             val tms = captureMillis(item)
-            // Caption is derived at display time (album · relative time); keep the raw
-            // capture instant, portrait flag, and inherited album title as location clue.
-            out.add(Slide(base + IMG_PARAM, null, tms, h > w, location = title.ifEmpty { null }))
+            val caption = extractItemCaption(item)
+            val locationClue = title.ifEmpty { caption }
+            out.add(Slide(base + IMG_PARAM, caption, tms, h > w, location = locationClue?.ifEmpty { null }))
         }
         if (videos > 0) {
             Log.i(TAG, "skipped $videos video(s)")

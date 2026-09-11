@@ -415,6 +415,7 @@ class SettingsActivity : ComponentActivity() {
         var showUninstallConfirmDialog by remember { mutableStateOf(false) }
         var showMqttConfigDialog by remember { mutableStateOf(false) }
         var showHaUrlDialog by remember { mutableStateOf(false) }
+        var selectedReceiverGuide by remember { mutableStateOf<MediaReceivers.ReceiverItem?>(null) }
         var refreshingAlbums by remember { mutableStateOf(false) }
         var albumRefreshStatus by remember { mutableStateOf("") }
         var checkingUpdate by remember { mutableStateOf(false) }
@@ -996,6 +997,67 @@ class SettingsActivity : ComponentActivity() {
                 }
             }
 
+            Card("Audio Receivers & Background Streaming") {
+                Body(
+                    "Sideload standalone media receivers via OpenPortal / Immortal to stream music from your phone in the background behind Frame's photo slideshow.",
+                )
+                Spacer(Modifier.height(14.dp))
+                for (receiver in MediaReceivers.ALL_RECEIVERS) {
+                    val installed = MediaReceivers.isInstalled(ctx, receiver)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0x12FFFFFF))
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    receiver.name,
+                                    color = PortalColors.Text,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (installed) Color(0x3334C759) else Color(0x228E8E93))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                ) {
+                                    Text(
+                                        if (installed) "Installed ✓" else "Not detected",
+                                        color = if (installed) Color(0xFF34C759) else Color(0xFF8E8E93),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                receiver.shortDesc,
+                                color = PortalColors.Text.copy(alpha = 0.65f),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        if (installed) {
+                            SmallAction("Launch", true) {
+                                MediaReceivers.launch(ctx, receiver)
+                            }
+                        } else {
+                            SmallAction("Setup", true) {
+                                selectedReceiverGuide = receiver
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
+
             Card("Revert & Uninstall") {
                 Body(
                     "Removes the Frame app and lets you return your Portal to its stock state.",
@@ -1114,6 +1176,145 @@ class SettingsActivity : ComponentActivity() {
                 }
             )
         }
+
+        selectedReceiverGuide?.let { receiver ->
+            ReceiverGuideDialog(
+                receiver = receiver,
+                onDismiss = { selectedReceiverGuide = null }
+            )
+        }
+    }
+
+    @Composable
+    private fun ReceiverGuideDialog(
+        receiver: MediaReceivers.ReceiverItem,
+        onDismiss: () -> Unit
+    ) {
+        val ctx = LocalContext.current
+        val installed = MediaReceivers.isInstalled(ctx, receiver)
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        receiver.name,
+                        color = PortalColors.Text,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (installed) Color(0x3334C759) else Color(0x228E8E93))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            if (installed) "Installed ✓" else "Not Detected",
+                            color = if (installed) Color(0xFF34C759) else Color(0xFF8E8E93),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        "Protocol: ${receiver.protocol}",
+                        color = PortalColors.Blue,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        receiver.shortDesc,
+                        color = PortalColors.Text.copy(alpha = 0.8f),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Divider()
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "Setup Instructions:",
+                        color = PortalColors.Text,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    receiver.setupSteps.forEachIndexed { idx, step ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp)
+                        ) {
+                            Text(
+                                "${idx + 1}.",
+                                color = PortalColors.Blue,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.width(20.dp)
+                            )
+                            Text(
+                                step,
+                                color = PortalColors.Text.copy(alpha = 0.85f),
+                                fontSize = 13.sp,
+                                lineHeight = 17.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF2C2C2E))
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            "💡 Tip: ${receiver.downloadTip}",
+                            color = PortalColors.Text.copy(alpha = 0.7f),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (installed) {
+                    Button(
+                        onClick = {
+                            MediaReceivers.launch(ctx, receiver)
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = PortalColors.Blue),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Launch", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    TextButton(onClick = onDismiss) {
+                        Text("Done", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                if (installed) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Close", color = PortalColors.Text.copy(alpha = 0.7f))
+                    }
+                }
+            }
+        )
     }
 
     @Composable
@@ -1200,11 +1401,12 @@ class SettingsActivity : ComponentActivity() {
         val ctx = LocalContext.current
         val clipboardManager = LocalClipboardManager.current
 
-        // Cloud polling loop for worldwide broadcast
+        // Cloud polling loop for worldwide broadcast — only react to NEW messages posted after dialog opened
         LaunchedEffect(channel) {
             withContext(Dispatchers.IO) {
+                var initialPayload: String? = null
+                var initialRecorded = false
                 while (isActive) {
-                    delay(3000)
                     try {
                         val encodedChannel = java.net.URLEncoder.encode(channel, "UTF-8")
                         val conn = java.net.URL("https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/$encodedChannel").openConnection() as java.net.HttpURLConnection
@@ -1218,7 +1420,10 @@ class SettingsActivity : ComponentActivity() {
                             if (resp.startsWith("\"") && resp.endsWith("\"")) {
                                 resp = resp.substring(1, resp.length - 1)
                             }
-                            if (resp.isNotEmpty() && resp != "null") {
+                            if (!initialRecorded) {
+                                initialPayload = resp
+                                initialRecorded = true
+                            } else if (resp != initialPayload && resp.isNotEmpty() && resp != "null") {
                                 val decrypted = decryptAesData(resp, aesKey).trim()
                                 if (decrypted == "__CLEAR__") {
                                     withContext(Dispatchers.Main) {
@@ -1231,10 +1436,28 @@ class SettingsActivity : ComponentActivity() {
                                     break
                                 } else if (decrypted.isNotEmpty()) {
                                     withContext(Dispatchers.Main) {
-                                        prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, decrypted).apply()
-                                        ctx.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", decrypted))
+                                        var displayMsg = decrypted
+                                        if (decrypted.contains("#showcase:")) {
+                                            val tag = decrypted.substringAfter("#showcase:").trim().takeWhile { !it.isWhitespace() && it != '#' }
+                                            displayMsg = decrypted.replace("#showcase:$tag", "").trim()
+                                            val showcaseIntent = Intent(ConfigReceiver.ACTION_SET_SHOWCASE).apply {
+                                                when (tag.lowercase(Locale.US)) {
+                                                    "all" -> putExtra("mode", "all")
+                                                    "recent", "recent_trip", "trip" -> putExtra("mode", "recent_trip")
+                                                    "last_7_days", "7_days", "7days" -> putExtra("mode", "last_7_days")
+                                                    "last_30_days", "30_days", "30days" -> putExtra("mode", "last_30_days")
+                                                    else -> {
+                                                        putExtra("mode", "location")
+                                                        putExtra("location", tag.replace("_", " "))
+                                                    }
+                                                }
+                                            }
+                                            ctx.sendBroadcast(showcaseIntent)
+                                        }
+                                        prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, displayMsg).apply()
+                                        ctx.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", displayMsg))
                                         MqttManager.getInstance(ctx).publishAllStates()
-                                        Toast.makeText(ctx, "Announcement broadcast ✓", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(ctx, "Announcement received ✓", Toast.LENGTH_SHORT).show()
                                         onDismiss()
                                     }
                                     break
@@ -1243,6 +1466,7 @@ class SettingsActivity : ComponentActivity() {
                         }
                         conn.disconnect()
                     } catch (_: Exception) {}
+                    delay(3000)
                 }
             }
         }

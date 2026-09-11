@@ -83,16 +83,15 @@ class ShowcaseFilterTest {
         val s2 = Slide(id = "p2", caption = "Mountains", location = "Colorado", timeMs = 2000L)
         val allSlides = listOf(s1, s2)
 
-        // Search for a location that doesn't exist in the album
+        // Search for a location that doesn't exist in the album in location mode
         val result = SlideshowController.filterForShowcase(
             allSlides,
             mode = "location",
             locationQuery = "Tokyo"
         )
 
-        // Graceful fallback to all photos sorted by date descending
-        assertEquals(2, result.size)
-        assertEquals(s2, result[0]) // newer first
-        assertEquals(s1, result[1])
+        // Must return empty list so photos from unrelated locations never leak
+        assertEquals(0, result.size)
+        assertTrue(result.isEmpty())
     }
 }

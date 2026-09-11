@@ -2929,6 +2929,11 @@ class SlideshowController(
                     val expanded = expandMatchingToTripDates(allSlides, matching)
                     return sortByCaptureDescending(expanded)
                 }
+                // If mode is explicitly "location", do NOT leak photos from other locations!
+                // Return empty list so caller knows no photos matched this location.
+                if (mode == "location") {
+                    return emptyList()
+                }
                 // If no photos matched the location query, default to capture date descending as fallback
                 return sortByCaptureDescending(allSlides)
             }

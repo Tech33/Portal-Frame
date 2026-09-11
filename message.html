@@ -357,7 +357,7 @@
       } else if (showcaseMode === 'all') {
         text += (text ? ' ' : '') + '#showcase:all';
       } else if (showcaseMode === 'custom_location') {
-        const loc = document.getElementById('custom-location-input').value.trim();
+        const loc = document.getElementById('custom-location-input').value.trim().replace(/\s+/g, '_');
         if (loc) {
           text += (text ? ' ' : '') + '#showcase:' + loc;
         }
