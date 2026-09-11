@@ -21,11 +21,19 @@ internal object AlbumCache {
 
     private fun key(url: String): String = KEY_PREFIX + Integer.toHexString(url.hashCode())
 
-    /** Persist [photos] (and [title]) as the cache for [url]. */
+    const val MAX_CACHED_PHOTOS_PER_ALBUM = 300
+
+    /** Persist [photos] (and [title]) as the cache for [url], sorted descending by capture time. */
     @JvmStatic
     fun write(prefs: SharedPreferences, url: String, photos: List<Slide>, title: String?) {
+        val sorted = SlideshowController.sortByCaptureDescending(photos)
+        val capped = if (sorted.size > MAX_CACHED_PHOTOS_PER_ALBUM) {
+            sorted.take(MAX_CACHED_PHOTOS_PER_ALBUM)
+        } else {
+            sorted
+        }
         val arr = JSONArray()
-        for (s in photos) {
+        for (s in capped) {
             try {
                 arr.put(
                     JSONObject()
@@ -46,7 +54,7 @@ internal object AlbumCache {
             return
         }
         prefs.edit().putString(key(url), obj.toString()).apply()
-        Log.i(TAG, "cached ${photos.size} photos for album")
+        Log.i(TAG, "cached ${capped.size} photos for album (sorted descending, newest first)")
     }
 
     private fun readObj(prefs: SharedPreferences, url: String?): JSONObject? {

@@ -94,4 +94,64 @@ class ShowcaseFilterTest {
         assertEquals(0, result.size)
         assertTrue(result.isEmpty())
     }
+
+    @Test
+    fun testDateRangeParser() {
+        val r1 = DateRangeParser.parse("2024-09")
+        org.junit.Assert.assertNotNull(r1)
+        assertEquals("September 2024", r1?.label)
+
+        val r2 = DateRangeParser.parse("#showcase:2024-09")
+        org.junit.Assert.assertNotNull(r2)
+        assertEquals("September 2024", r2?.label)
+
+        val r3 = DateRangeParser.parse("2024-09-01..2024-09-15")
+        org.junit.Assert.assertNotNull(r3)
+        assertEquals("2024-09-01 to 2024-09-15", r3?.label)
+
+        val r4 = DateRangeParser.parse("September 2024")
+        org.junit.Assert.assertNotNull(r4)
+        assertEquals("September 2024", r4?.label)
+
+        val r5 = DateRangeParser.parse("2024")
+        org.junit.Assert.assertNotNull(r5)
+        assertEquals("2024", r5?.label)
+
+        val r6 = DateRangeParser.parse("Happy Birthday John!")
+        org.junit.Assert.assertNull(r6)
+    }
+
+    @Test
+    fun testDateRangeShowcaseFiltering() {
+        // Create dates:
+        // 2021-08-28 ~ 1630108800000L
+        // 2024-09-07 ~ 1725667200000L
+        // 2026-09-07 ~ 1788739200000L
+        val s2021 = Slide(id = "old", caption = "Old photo", location = null, timeMs = 1630108800000L)
+        val s2024Sep = Slide(id = "target", caption = "Sep 2024 trip", location = null, timeMs = 1725667200000L)
+        val s2026Sep = Slide(id = "future", caption = "Future photo", location = null, timeMs = 1788739200000L)
+
+        val slides = listOf(s2021, s2024Sep, s2026Sep)
+
+        val filtered = SlideshowController.filterForShowcase(
+            slides,
+            mode = "location",
+            locationQuery = "Portugal trip #showcase:2024-09"
+        )
+
+        assertEquals(1, filtered.size)
+        assertEquals("target", filtered[0].id)
+    }
+
+    @Test
+    fun testSortByCaptureDescending() {
+        val s1 = Slide(id = "s1", caption = null, location = null, timeMs = 1000L)
+        val s2 = Slide(id = "s2", caption = null, location = null, timeMs = 5000L)
+        val s3 = Slide(id = "s3", caption = null, location = null, timeMs = 3000L)
+
+        val sorted = SlideshowController.sortByCaptureDescending(listOf(s1, s2, s3))
+        assertEquals("s2", sorted[0].id)
+        assertEquals("s3", sorted[1].id)
+        assertEquals("s1", sorted[2].id)
+    }
 }

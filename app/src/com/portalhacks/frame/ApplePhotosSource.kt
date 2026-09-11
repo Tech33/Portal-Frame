@@ -118,8 +118,9 @@ internal object ApplePhotosSource : PhotoProvider {
             slides.add(Slide(u, it.caption, it.timeMs, it.height > it.width, location = title.ifEmpty { null }))
         }
         if (videos > 0) Log.i(TAG, "skipped $videos video(s)")
-        Log.i(TAG, "iCloud album: ${slides.size} photos, title='$title'")
-        return Album(title, slides)
+        val sortedSlides = SlideshowController.sortByCaptureDescending(slides)
+        Log.i(TAG, "iCloud album: ${sortedSlides.size} photos, title='$title'")
+        return Album(title, sortedSlides)
     }
 
     private fun resolveUrls(base: String, guids: List<String>, out: MutableMap<String, String>) {

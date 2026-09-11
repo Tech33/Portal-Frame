@@ -1548,7 +1548,157 @@ class SettingsActivity : ComponentActivity() {
                         )
                     }
 
-                    Spacer(Modifier.height(22.dp))
+                    Spacer(Modifier.height(20.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFF1E1E22))
+                            .border(1.dp, Color(0xFF38383C), RoundedCornerShape(16.dp))
+                            .padding(16.dp)
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "💡 Example Formats (Tap to fill)",
+                                    color = Color(0xFFFFD60A),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Date Range Showcase:",
+                                color = Color(0xFFE5E5EA),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF2C2C2E))
+                                        .border(1.dp, Color(0xFF007AFF), RoundedCornerShape(10.dp))
+                                        .clickable { inputMsg = "Trip Memories #showcase:2024-09" }
+                                        .padding(vertical = 8.dp, horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("#showcase:2024-09", color = Color(0xFF64D2FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("Month Showcase", color = Color.White, fontSize = 11.sp)
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF2C2C2E))
+                                        .border(1.dp, Color(0xFF30D158), RoundedCornerShape(10.dp))
+                                        .clickable { inputMsg = "Vacation #showcase:2024-09-01..2024-09-10" }
+                                        .padding(vertical = 8.dp, horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("#showcase:2024-09-01..2024-09-10", color = Color(0xFF30D158), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("Exact Date Span", color = Color.White, fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF2C2C2E))
+                                        .border(1.dp, Color(0xFFFF9F0A), RoundedCornerShape(10.dp))
+                                        .clickable { inputMsg = "Recent Trip #showcase:recent_trip" }
+                                        .padding(vertical = 8.dp, horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("#showcase:recent_trip", color = Color(0xFFFF9F0A), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("Latest Vacation", color = Color.White, fontSize = 11.sp)
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF2C2C2E))
+                                        .border(1.dp, Color(0xFFBF5AF2), RoundedCornerShape(10.dp))
+                                        .clickable { inputMsg = "#showcase:all" }
+                                        .padding(vertical = 8.dp, horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("#showcase:all", color = Color(0xFFBF5AF2), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("Reset to All", color = Color.White, fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "Celebrations & Greetings:",
+                                color = Color(0xFFE5E5EA),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF2C2C2E))
+                                        .border(1.dp, Color(0xFF48484A), RoundedCornerShape(10.dp))
+                                        .clickable { inputMsg = "🎉 Happy Birthday Sarah! 🎂" }
+                                        .padding(vertical = 8.dp, horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("🎉 Birthday 🎂", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF2C2C2E))
+                                        .border(1.dp, Color(0xFF48484A), RoundedCornerShape(10.dp))
+                                        .clickable { inputMsg = "✨ Welcome Home! 🏡" }
+                                        .padding(vertical = 8.dp, horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("✨ Welcome 🏡", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF2C2C2E))
+                                        .border(1.dp, Color(0xFF48484A), RoundedCornerShape(10.dp))
+                                        .clickable { inputMsg = "❤️ Happy Anniversary! 🥂" }
+                                        .padding(vertical = 8.dp, horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("❤️ Anniversary 🥂", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
                     Divider()
                     Spacer(Modifier.height(20.dp))
 

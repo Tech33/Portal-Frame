@@ -2909,7 +2909,14 @@ class SlideshowController(
         ): List<Slide> {
             if (allSlides.isEmpty()) return allSlides
 
-            // 1. If location mode or locationQuery is provided, prioritize matching vacation photos!
+            // 1. Check for explicit or detected Date Range (e.g. 2024-09, September 2024, 2024-09-01..2024-09-10)
+            val dateRange = DateRangeParser.parse(locationQuery) ?: DateRangeParser.parse(mode)
+            if (dateRange != null) {
+                val matching = allSlides.filter { it.timeMs != Slide.NO_DATE && it.timeMs in dateRange.startMs..dateRange.endMs }
+                return if (matching.isNotEmpty()) sortByCaptureDescending(matching) else emptyList()
+            }
+
+            // 2. If location mode or locationQuery is provided, prioritize matching vacation photos!
             if (mode == "location" || locationQuery.isNotBlank()) {
                 val locClue = LocationExtractor.extractLocation(locationQuery)
                 val isRemote = { s: Slide -> s.id.startsWith("http://", true) || s.id.startsWith("https://", true) }

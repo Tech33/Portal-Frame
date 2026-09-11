@@ -143,28 +143,33 @@ class SlideshowComposeActivity : ComponentActivity() {
         var targetMode: String? = null
         var targetLoc: String? = null
 
-        // 1. Check for explicit #showcase: tag (e.g. #showcase:portugal, #showcase:recent_trip, #showcase:all)
-        val hashMatch = Regex("""#(?:showcase:|location:)?([A-Za-z0-9_ -]+)""").find(trimmed)
+        // 1. Check for explicit #showcase: tag (e.g. #showcase:portugal, #showcase:2024-09, #showcase:recent_trip, #showcase:all)
+        val hashMatch = Regex("""#(?:showcase:|location:)?([A-Za-z0-9_.-]+)""").find(trimmed)
         if (hashMatch != null) {
             val fullTag = hashMatch.groupValues[0]
-            val tag = hashMatch.groupValues[1].replace("-", "_").trim().lowercase(Locale.US)
+            val tag = hashMatch.groupValues[1].trim()
             displayMsg = trimmed.replace(fullTag, "").trim()
-            when (tag) {
-                "all" -> {
+            val lowerTag = tag.lowercase(Locale.US).replace("-", "_")
+            when {
+                lowerTag == "all" -> {
                     targetMode = "all"
                     targetLoc = ""
                 }
-                "recent", "recent_trip", "trip" -> {
+                lowerTag in listOf("recent", "recent_trip", "trip") -> {
                     targetMode = "recent_trip"
                     targetLoc = ""
                 }
-                "last_7_days", "7_days", "7days" -> {
+                lowerTag in listOf("last_7_days", "7_days", "7days") -> {
                     targetMode = "last_7_days"
                     targetLoc = ""
                 }
-                "last_30_days", "30_days", "30days" -> {
+                lowerTag in listOf("last_30_days", "30_days", "30days") -> {
                     targetMode = "last_30_days"
                     targetLoc = ""
+                }
+                DateRangeParser.parse(tag) != null -> {
+                    targetMode = "date_range"
+                    targetLoc = tag
                 }
                 else -> {
                     targetMode = "location"
@@ -173,7 +178,16 @@ class SlideshowComposeActivity : ComponentActivity() {
             }
         }
 
-        // 2. If no explicit showcase tag was given, extract location clue from the natural text
+        // 2. If no explicit showcase tag was given, check for date ranges in the natural text
+        if (targetMode == null) {
+            val dateRange = DateRangeParser.parse(displayMsg)
+            if (dateRange != null) {
+                targetMode = "date_range"
+                targetLoc = dateRange.label
+            }
+        }
+
+        // 3. If still no target, extract location clue from the natural text
         if (targetMode == null) {
             val locationClue = LocationExtractor.extractLocation(displayMsg)
             if (locationClue != null) {
@@ -267,12 +281,17 @@ class SlideshowComposeActivity : ComponentActivity() {
             val effectiveLoc = location ?: p.getString(ConfigReceiver.KEY_SHOWCASE_LOCATION, ConfigReceiver.DEFAULT_SHOWCASE_LOCATION) ?: ""
             val hasCustomMsg = !p.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "").isNullOrBlank()
             if (!hasCustomMsg) {
-                val msg = when (effectiveMode) {
-                    "location" -> "📍 $effectiveLoc Showcase (${updated.size} photos)"
-                    "date_descending" -> "📍 Recent Photos Showcase (${updated.size} photos)"
-                    "recent_trip" -> "📍 Recent Visit Showcase (${updated.size} photos)"
-                    "last_7_days" -> "📍 Last 7 Days Showcase (${updated.size} photos)"
-                    "last_30_days" -> "📍 Last 30 Days Showcase (${updated.size} photos)"
+                val msg = when {
+                    effectiveMode == "date_range" || DateRangeParser.parse(effectiveLoc) != null -> {
+                        val parsed = DateRangeParser.parse(effectiveLoc)
+                        val label = parsed?.label ?: effectiveLoc
+                        "📍 $label Showcase (${updated.size} photos)"
+                    }
+                    effectiveMode == "location" -> "📍 $effectiveLoc Showcase (${updated.size} photos)"
+                    effectiveMode == "date_descending" -> "📍 Recent Photos Showcase (${updated.size} photos)"
+                    effectiveMode == "recent_trip" -> "📍 Recent Visit Showcase (${updated.size} photos)"
+                    effectiveMode == "last_7_days" -> "📍 Last 7 Days Showcase (${updated.size} photos)"
+                    effectiveMode == "last_30_days" -> "📍 Last 30 Days Showcase (${updated.size} photos)"
                     else -> "Showing All Photos (${updated.size} photos)"
                 }
                 controller.showTemporaryBanner(msg)

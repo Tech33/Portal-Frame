@@ -83,8 +83,9 @@ internal object GooglePhotosSource : PhotoProvider {
                 slides = parse(html, title)
             }
         }
-        Log.i(TAG, "Google Photos album: ${slides.size} photos, title='$title'")
-        return Album(title, slides)
+        val sortedSlides = SlideshowController.sortByCaptureDescending(slides)
+        Log.i(TAG, "Google Photos album: ${sortedSlides.size} photos, title='$title'")
+        return Album(title, sortedSlides)
     }
 
     private fun parseTitle(html: String): String {

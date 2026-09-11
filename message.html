@@ -241,6 +241,13 @@
         <span class="emoji-pill" onclick="insertEmoji('🎄')">🎄</span>
         <span class="emoji-pill" onclick="insertEmoji('🎃')">🎃</span>
       </div>
+
+      <div class="emoji-row" style="margin-top: 4px; margin-bottom: 12px;">
+        <span class="emoji-pill" style="font-size: 13px; font-weight: 600;" onclick="prefillMessage('🎉 Happy Birthday! 🎂')">🎉 Birthday 🎂</span>
+        <span class="emoji-pill" style="font-size: 13px; font-weight: 600;" onclick="prefillMessage('✨ Welcome Home! 🏡')">✨ Welcome 🏡</span>
+        <span class="emoji-pill" style="font-size: 13px; font-weight: 600;" onclick="prefillMessage('❤️ Happy Anniversary! 🥂')">❤️ Anniversary 🥂</span>
+      </div>
+
       <textarea id="message" placeholder="e.g. Happy 30th Birthday Sarah! 🎂🎉" maxlength="200" oninput="updateCharCount()"></textarea>
       <div id="char-count" class="char-count">0 / 200</div>
       
@@ -251,23 +258,79 @@
 
       <div class="field-group" style="margin-top: 16px;">
         <label for="showcase-select">📍 Showcase Photos on Frame</label>
-        <select id="showcase-select" style="width: 100%; height: 50px; padding: 12px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 15px; outline: none; margin-bottom: 8px;" onchange="toggleCustomLocInput()">
+        <select id="showcase-select" style="width: 100%; height: 50px; padding: 12px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 15px; outline: none; margin-bottom: 8px;" onchange="handleShowcaseChange()">
           <option value="none">Keep current showcase mode</option>
+          <option value="month_year">Showcase specific Month & Year (e.g. Sep 2024)...</option>
+          <option value="custom_date_range">Showcase exact Date Span (e.g. Sep 1 - Sep 10)...</option>
           <option value="recent_trip">Showcase recent trip / visit</option>
           <option value="last_7_days">Showcase last 7 days</option>
           <option value="last_30_days">Showcase last 30 days</option>
           <option value="custom_location">Showcase specific city / location...</option>
           <option value="all">Reset to all photos</option>
         </select>
-        <input type="text" id="custom-location-input" placeholder="e.g. Paris, London, Hawaii" style="display: none;" />
+        
+        <div id="month-year-group" style="display: none; gap: 8px; margin-top: 4px;">
+          <select id="showcase-month" style="flex: 1; height: 48px; padding: 10px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 15px; outline: none;">
+            <option value="01">January</option>
+            <option value="02">February</option>
+            <option value="03">March</option>
+            <option value="04">April</option>
+            <option value="05">May</option>
+            <option value="06">June</option>
+            <option value="07">July</option>
+            <option value="08">August</option>
+            <option value="09" selected>September</option>
+            <option value="10">October</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+          <select id="showcase-year" style="flex: 1; height: 48px; padding: 10px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 15px; outline: none;">
+            <option value="2026">2026</option>
+            <option value="2025">2025</option>
+            <option value="2024" selected>2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
+          </select>
+        </div>
+
+        <div id="date-range-group" style="display: none; gap: 8px; margin-top: 4px; flex-direction: column;">
+          <div style="display: flex; gap: 8px;">
+            <div style="flex: 1;">
+              <label style="font-size: 11px; margin-bottom: 4px; display: block;">Start Date</label>
+              <input type="date" id="range-start" style="width: 100%; height: 48px; padding: 8px 12px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 14px; outline: none; box-sizing: border-box;" />
+            </div>
+            <div style="flex: 1;">
+              <label style="font-size: 11px; margin-bottom: 4px; display: block;">End Date</label>
+              <input type="date" id="range-end" style="width: 100%; height: 48px; padding: 8px 12px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 14px; outline: none; box-sizing: border-box;" />
+            </div>
+          </div>
+        </div>
+
+        <input type="text" id="custom-location-input" placeholder="e.g. Paris, London, Portugal" style="display: none; margin-top: 4px;" />
       </div>
 
-      <button id="send-btn" type="button" class="btn-primary" onclick="sendMessage()">📢 Broadcast to Portals</button>
+      <button id="send-btn" type="button" class="btn-primary" onclick="requestBroadcast()">📢 Broadcast to Portals</button>
       <button id="remove-btn" type="button" class="btn-remove" onclick="removeAnnouncement()">Remove Active Banner</button>
     </div>
 
     <div id="status-box" class="status"></div>
   </div>
+
+  <!-- Conflict Confirmation Modal -->
+  <div id="conflict-modal" style="display: none; position: fixed; inset: 0; background-color: rgba(0,0,0,0.75); z-index: 999; align-items: center; justify-content: center; padding: 20px;">
+    <div style="background-color: #1C1C1E; border: 1px solid #3A3A3C; border-radius: 20px; padding: 24px; max-width: 400px; width: 100%; box-shadow: 0 16px 40px rgba(0,0,0,0.8);">
+      <h3 style="color: #FFD60A; font-size: 18px; margin-bottom: 8px;">⚠️ Active Announcement Detected</h3>
+      <p style="font-size: 14px; color: #A1A1A6; margin-bottom: 12px; text-align: left;">Another announcement is currently displaying on your Portal frame:</p>
+      <div id="conflict-existing-msg" style="background-color: #121216; border: 1px solid #2C2C2E; border-radius: 10px; padding: 12px; color: #FFFFFF; font-size: 15px; font-weight: 600; margin-bottom: 16px; word-break: break-word;"></div>
+      <p style="font-size: 13px; color: #8E8E93; margin-bottom: 18px; text-align: left;">Do you want to override it with your new broadcast?</p>
+      <div style="display: flex; gap: 10px;">
+        <button type="button" class="btn-secondary" onclick="dismissConflictModal()">Keep Existing</button>
+        <button type="button" class="btn-primary" style="margin-top: 0;" onclick="confirmOverride()">✓ Replace Banner</button>
+      </div>
+    </div>
+  </div>
+
   <div class="footer">Portal Frame Screensaver</div>
 
   <script>
@@ -338,17 +401,57 @@
       }
     }
 
-    function toggleCustomLocInput() {
-      const mode = document.getElementById('showcase-select').value;
-      const customInput = document.getElementById('custom-location-input');
-      customInput.style.display = (mode === 'custom_location') ? 'block' : 'none';
-      if (mode === 'custom_location') customInput.focus();
+    function prefillMessage(text) {
+      const msg = document.getElementById('message');
+      msg.value = text;
+      msg.focus();
+      updateCharCount();
     }
 
-    async function sendMessage() {
+    function handleShowcaseChange() {
+      const mode = document.getElementById('showcase-select').value;
+      document.getElementById('month-year-group').style.display = (mode === 'month_year') ? 'flex' : 'none';
+      document.getElementById('date-range-group').style.display = (mode === 'custom_date_range') ? 'flex' : 'none';
+      document.getElementById('custom-location-input').style.display = (mode === 'custom_location') ? 'block' : 'none';
+      if (mode === 'custom_location') document.getElementById('custom-location-input').focus();
+    }
+
+    async function decryptData(hexStr, keyStr) {
+      try {
+        if (!hexStr || hexStr.length < 34) return '';
+        const bytes = new Uint8Array(hexStr.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        const iv = bytes.slice(0, 16);
+        const ciphertext = bytes.slice(16);
+        const enc = new TextEncoder();
+        const cryptoKey = await window.crypto.subtle.importKey(
+          "raw", enc.encode(keyStr), { name: "AES-CBC" }, false, ["decrypt"]
+        );
+        const decrypted = await window.crypto.subtle.decrypt(
+          { name: "AES-CBC", iv: iv }, cryptoKey, ciphertext
+        );
+        return new TextDecoder().decode(decrypted).trim();
+      } catch (e) {
+        return '';
+      }
+    }
+
+    let pendingPayload = '';
+
+    async function requestBroadcast() {
       let text = document.getElementById('message').value.trim();
       const showcaseMode = document.getElementById('showcase-select').value;
-      if (showcaseMode === 'recent_trip') {
+
+      if (showcaseMode === 'month_year') {
+        const m = document.getElementById('showcase-month').value;
+        const y = document.getElementById('showcase-year').value;
+        text += (text ? ' ' : '') + `#showcase:${y}-${m}`;
+      } else if (showcaseMode === 'custom_date_range') {
+        const start = document.getElementById('range-start').value;
+        const end = document.getElementById('range-end').value;
+        if (start && end) {
+          text += (text ? ' ' : '') + `#showcase:${start}..${end}`;
+        }
+      } else if (showcaseMode === 'recent_trip') {
         text += (text ? ' ' : '') + '#showcase:recent_trip';
       } else if (showcaseMode === 'last_7_days') {
         text += (text ? ' ' : '') + '#showcase:last_7_days';
@@ -362,7 +465,65 @@
           text += (text ? ' ' : '') + '#showcase:' + loc;
         }
       }
+
+      if (!text) {
+        const statusBox = document.getElementById('status-box');
+        statusBox.innerText = 'Please enter an announcement message or select a showcase.';
+        statusBox.className = 'status error';
+        return;
+      }
+
+      // Pre-flight check: optimistic concurrency check on cloud relay
+      const codeInput = document.getElementById('code');
+      const code = codeInput.value.trim();
+      const aesKey = keyParam || 'PortalGlobal2026';
+
+      if (!code) {
+        await sendPayload(text);
+        return;
+      }
+
+      const btn = document.getElementById('send-btn');
+      btn.disabled = true;
+      btn.innerText = 'Checking Frame state...';
+
+      try {
+        const resp = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/${encodeURIComponent(code)}`);
+        let currentHex = (await resp.text()).trim();
+        if (currentHex.startsWith('"') && currentHex.endsWith('"')) {
+          currentHex = currentHex.substring(1, currentHex.length - 1);
+        }
+        if (currentHex && currentHex !== 'null') {
+          const currentMsg = await decryptData(currentHex, aesKey);
+          if (currentMsg && currentMsg !== '__CLEAR__' && currentMsg !== text) {
+            // Conflict detected! Active banner already on Portal
+            btn.disabled = false;
+            btn.innerText = '📢 Broadcast to Portals';
+            pendingPayload = text;
+            document.getElementById('conflict-existing-msg').innerText = currentMsg;
+            document.getElementById('conflict-modal').style.display = 'flex';
+            return;
+          }
+        }
+      } catch (_) {}
+
+      btn.disabled = false;
+      btn.innerText = '📢 Broadcast to Portals';
+      // No conflict or empty relay, proceed directly
       await sendPayload(text);
+    }
+
+    function dismissConflictModal() {
+      document.getElementById('conflict-modal').style.display = 'none';
+      pendingPayload = '';
+    }
+
+    async function confirmOverride() {
+      document.getElementById('conflict-modal').style.display = 'none';
+      if (pendingPayload) {
+        await sendPayload(pendingPayload);
+        pendingPayload = '';
+      }
     }
 
     async function removeAnnouncement() {
