@@ -29,10 +29,26 @@ object ScreenControl {
                 PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
                 "com.portalhacks.frame:wake"
             )
-            wl?.acquire(1000L)
+            wl?.acquire(1500L)
             Log.i(TAG, "wake: WakeLock acquired, screen turned ON")
         } catch (e: Exception) {
             Log.w(TAG, "wake: failed to acquire WakeLock", e)
+        }
+
+        try {
+            val intent = android.content.Intent(context, SlideshowComposeActivity::class.java).apply {
+                addFlags(
+                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                    android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION
+                )
+                putExtra("action", "wake")
+            }
+            context.startActivity(intent)
+            Log.i(TAG, "wake: brought SlideshowComposeActivity to foreground")
+        } catch (e: Exception) {
+            Log.w(TAG, "wake: failed to launch SlideshowComposeActivity", e)
         }
     }
 

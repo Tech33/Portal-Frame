@@ -81,14 +81,18 @@ class MqttManager private constructor(context: Context) {
         }
     }
 
+    private var screenStateReceiver: android.content.BroadcastReceiver? = null
+
     fun start() {
         if (isRunning.compareAndSet(false, true)) {
+            registerScreenStateReceiver()
             clientThread = thread(name = "PortalFrame-MqttClient") { runClientLoop() }
         }
     }
 
     fun stop() {
         if (isRunning.compareAndSet(true, false)) {
+            unregisterScreenStateReceiver()
             try {
                 val prefix = getPrefix()
                 publishSync("$prefix/availability", "offline".toByteArray(StandardCharsets.UTF_8), retain = true)
@@ -96,6 +100,42 @@ class MqttManager private constructor(context: Context) {
             closeSocket()
             clientThread?.interrupt()
             clientThread = null
+        }
+    }
+
+    private fun registerScreenStateReceiver() {
+        if (screenStateReceiver != null) return
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val prefix = getPrefix()
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_ON, ConfigReceiver.ACTION_WAKE -> {
+                        publishState("$prefix/screen/state", "ON")
+                    }
+                    Intent.ACTION_SCREEN_OFF, ConfigReceiver.ACTION_SLEEP -> {
+                        publishState("$prefix/screen/state", "OFF")
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(ConfigReceiver.ACTION_WAKE)
+            addAction(ConfigReceiver.ACTION_SLEEP)
+        }
+        try {
+            appContext.registerReceiver(receiver, filter)
+            screenStateReceiver = receiver
+        } catch (_: Exception) {}
+    }
+
+    private fun unregisterScreenStateReceiver() {
+        screenStateReceiver?.let {
+            try {
+                appContext.unregisterReceiver(it)
+            } catch (_: Exception) {}
+            screenStateReceiver = null
         }
     }
 
@@ -563,7 +603,10 @@ class MqttManager private constructor(context: Context) {
         val prefix = getPrefix()
 
         // 1. Screen state
-        publishState("$prefix/screen/state", "ON")
+        val pm = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val isInteractive = pm?.isInteractive ?: true
+        val isAsleep = ScreenControl.isAsleep || !isInteractive
+        publishState("$prefix/screen/state", if (isAsleep) "OFF" else "ON")
 
         // 2. Brightness
         try {

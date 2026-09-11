@@ -65,17 +65,18 @@ internal object GooglePhotosSource : PhotoProvider {
     @Throws(Exception::class)
     override fun fetch(shareUrl: String): Album {
         var html = httpGet(shareUrl)
-        var slides = parse(html)
+        var title = parseTitle(html)
+        var slides = parse(html, title)
         if (slides.isEmpty()) {
             val sm = SHARE_URL.matcher(html)
             if (sm.find()) {
                 val longUrl = sm.group(1)!!.replace("\\u003d", "=").replace("\\/", "/")
                 Log.i(TAG, "following embedded share url: $longUrl")
                 html = httpGet(longUrl)
-                slides = parse(html)
+                if (title.isEmpty()) title = parseTitle(html)
+                slides = parse(html, title)
             }
         }
-        val title = parseTitle(html)
         Log.i(TAG, "Google Photos album: ${slides.size} photos, title='$title'")
         return Album(title, slides)
     }
@@ -94,7 +95,7 @@ internal object GooglePhotosSource : PhotoProvider {
         return if (t.equals("Google Photos", ignoreCase = true)) "" else t
     }
 
-    private fun parse(html: String): List<Slide> {
+    private fun parse(html: String, title: String = ""): List<Slide> {
         val out = ArrayList<Slide>()
         val seen: MutableSet<String> = LinkedHashSet()
 
@@ -134,9 +135,9 @@ internal object GooglePhotosSource : PhotoProvider {
                 continue
             }
             val tms = captureMillis(item)
-            // Caption is derived at display time (album · relative time); keep only
-            // the raw capture instant and the portrait flag here.
-            out.add(Slide(base + IMG_PARAM, null, tms, h > w))
+            // Caption is derived at display time (album · relative time); keep the raw
+            // capture instant, portrait flag, and inherited album title as location clue.
+            out.add(Slide(base + IMG_PARAM, null, tms, h > w, location = title.ifEmpty { null }))
         }
         if (videos > 0) {
             Log.i(TAG, "skipped $videos video(s)")

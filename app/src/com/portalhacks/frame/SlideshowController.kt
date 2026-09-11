@@ -658,33 +658,37 @@ class SlideshowController(
                         resp = resp.substring(1, resp.length - 1)
                     }
                     if (resp.isNotEmpty() && resp != "null") {
-                        val decrypted = decryptAes(resp, "PortalGlobal2026").trim()
-                        val current = prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "")?.trim() ?: ""
-                        if (decrypted == "__CLEAR__") {
-                            if (current.isNotEmpty()) {
-                                prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
+                        val lastSeenRemote = prefs.getString("last_remote_announcement_seen", "") ?: ""
+                        if (resp != lastSeenRemote) {
+                            prefs.edit().putString("last_remote_announcement_seen", resp).apply()
+                            val decrypted = decryptAes(resp, "PortalGlobal2026").trim()
+                            val current = prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "")?.trim() ?: ""
+                            if (decrypted == "__CLEAR__") {
+                                if (current.isNotEmpty()) {
+                                    prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
+                                    handler.post { checkCustomMessage() }
+                                }
+                            } else if (decrypted.isNotEmpty()) {
+                                var displayMsg = decrypted
+                                if (decrypted.contains("#showcase:")) {
+                                    val tag = decrypted.substringAfter("#showcase:").trim().takeWhile { it != ' ' }
+                                    displayMsg = decrypted.replace("#showcase:$tag", "").trim()
+                                    val intent = Intent(ConfigReceiver.ACTION_SET_SHOWCASE).apply {
+                                        if (tag.equals("all", ignoreCase = true)) {
+                                            putExtra("mode", "all")
+                                        } else if (tag.equals("recent", ignoreCase = true) || tag.equals("recent_trip", ignoreCase = true) || tag.equals("trip", ignoreCase = true)) {
+                                            putExtra("mode", "recent_trip")
+                                        } else {
+                                            putExtra("mode", "location")
+                                            putExtra("location", tag)
+                                        }
+                                    }
+                                    context.sendBroadcast(intent)
+                                }
+                                prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, displayMsg).apply()
+                                context.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", displayMsg))
                                 handler.post { checkCustomMessage() }
                             }
-                        } else if (decrypted.isNotEmpty() && decrypted != current) {
-                            var displayMsg = decrypted
-                            if (decrypted.contains("#showcase:")) {
-                                val tag = decrypted.substringAfter("#showcase:").trim().takeWhile { it != ' ' }
-                                displayMsg = decrypted.replace("#showcase:$tag", "").trim()
-                                val intent = Intent(ConfigReceiver.ACTION_SET_SHOWCASE).apply {
-                                    if (tag.equals("all", ignoreCase = true)) {
-                                        putExtra("mode", "all")
-                                    } else if (tag.equals("recent", ignoreCase = true) || tag.equals("recent_trip", ignoreCase = true) || tag.equals("trip", ignoreCase = true)) {
-                                        putExtra("mode", "recent_trip")
-                                    } else {
-                                        putExtra("mode", "location")
-                                        putExtra("location", tag)
-                                    }
-                                }
-                                context.sendBroadcast(intent)
-                            }
-                            prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, displayMsg).apply()
-                            context.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", displayMsg))
-                            handler.post { checkCustomMessage() }
                         }
                     }
                 }
@@ -2908,23 +2912,24 @@ class SlideshowController(
             // 1. If location mode or locationQuery is provided, prioritize matching vacation photos!
             if (mode == "location" || locationQuery.isNotBlank()) {
                 val locClue = LocationExtractor.extractLocation(locationQuery)
-                val (matching, rest) = if (locClue != null) {
-                    allSlides.partition { LocationExtractor.matches(it, locClue) }
+                val isRemote = { s: Slide -> s.id.startsWith("http://", true) || s.id.startsWith("https://", true) }
+                val matching = if (locClue != null) {
+                    allSlides.filter { LocationExtractor.matches(it, locClue) }
                 } else {
                     val q = locationQuery.trim().lowercase(Locale.US)
-                    allSlides.partition { slide ->
+                    allSlides.filter { slide ->
                         (slide.location?.contains(q, ignoreCase = true) == true) ||
                         (slide.caption?.contains(q, ignoreCase = true) == true) ||
-                        (slide.id.contains(q, ignoreCase = true))
+                        (!isRemote(slide) && slide.id.contains(q, ignoreCase = true))
                     }
                 }
                 if (matching.isNotEmpty()) {
-                    // Showcase matching trip photos first (newest to oldest), then remaining photos
-                    val sortedMatching = sortByCaptureDescending(matching)
-                    val sortedRest = sortByCaptureDescending(rest)
-                    return sortedMatching + sortedRest
+                    // Expand confirmed location photos to include all photos from that trip window,
+                    // and return ONLY those trip photos (never leak photos from other locations).
+                    val expanded = expandMatchingToTripDates(allSlides, matching)
+                    return sortByCaptureDescending(expanded)
                 }
-                // If no photos matched the location query, default to capture date descending
+                // If no photos matched the location query, default to capture date descending as fallback
                 return sortByCaptureDescending(allSlides)
             }
 
@@ -2985,6 +2990,55 @@ class SlideshowController(
             }
 
             return if (tripPhotos.size >= 3) tripPhotos else dated.take(25)
+        }
+
+        /**
+         * Expands confirmed matching location slides to include all photos taken during the same
+         * trip/vacation window (photos captured within +/- 24 hours of matching photos, or
+         * within contiguous travel clusters where consecutive photos are within <= 3 days of each other).
+         * This ensures photos without EXIF GPS data taken on the same trip are smoothly included,
+         * while keeping photos from other destinations completely excluded.
+         */
+        @JvmStatic
+        fun expandMatchingToTripDates(allSlides: List<Slide>, matching: List<Slide>): List<Slide> {
+            if (matching.isEmpty()) return emptyList()
+            val datedMatching = matching.filter { it.timeMs != Slide.NO_DATE }.sortedBy { it.timeMs }
+            if (datedMatching.isEmpty()) return matching
+
+            // Build trip time intervals from the matching photos.
+            // Consecutive matching photos within 3 days of each other belong to the same trip window.
+            val intervals = ArrayList<Pair<Long, Long>>()
+            val maxGapMs = 3L * 86400000L // 3 days
+            val bufferMs = 24L * 3600000L // 24 hours buffer on each side
+
+            var clusterStart = datedMatching.first().timeMs
+            var clusterEnd = clusterStart
+
+            for (i in 1 until datedMatching.size) {
+                val t = datedMatching[i].timeMs
+                if (t - clusterEnd <= maxGapMs) {
+                    clusterEnd = t
+                } else {
+                    intervals.add(Pair(clusterStart - bufferMs, clusterEnd + bufferMs))
+                    clusterStart = t
+                    clusterEnd = t
+                }
+            }
+            intervals.add(Pair(clusterStart - bufferMs, clusterEnd + bufferMs))
+
+            val matchingSet = matching.toSet()
+            val result = ArrayList<Slide>(matching)
+
+            for (slide in allSlides) {
+                if (slide in matchingSet) continue
+                if (slide.timeMs != Slide.NO_DATE) {
+                    val inTrip = intervals.any { (start, end) -> slide.timeMs in start..end }
+                    if (inTrip) {
+                        result.add(slide)
+                    }
+                }
+            }
+            return result
         }
         // Cap the Ken Burns animation length so long "time per photo" values (up to a day) don't
         // run a multi-hour ValueAnimator; past this the motion holds at its end frame.

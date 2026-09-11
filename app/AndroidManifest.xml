@@ -83,6 +83,8 @@
             android:exported="true"
             android:theme="@style/Theme.Frame"
             android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" />
 
         <!-- Set the Google Photos shared-album URL over ADB (see ConfigReceiver). -->

@@ -39,6 +39,10 @@ android {
         compose = true
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     // Build the existing in-place layout (no file moves during the migration).
     sourceSets["main"].apply {
         manifest.srcFile("AndroidManifest.xml")
@@ -46,6 +50,10 @@ android {
         kotlin.setSrcDirs(listOf("src"))
         res.setSrcDirs(listOf("res"))
         assets.setSrcDirs(listOf("assets"))
+    }
+    sourceSets["test"].apply {
+        java.setSrcDirs(listOf("test"))
+        kotlin.setSrcDirs(listOf("test"))
     }
 
     signingConfigs {
@@ -105,4 +113,5 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons.core)
     implementation(libs.androidx.activity.compose)
+    testImplementation("junit:junit:4.13.2")
 }

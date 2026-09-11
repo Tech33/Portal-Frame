@@ -228,20 +228,19 @@ object LocationExtractor {
     fun matches(slide: Slide, location: ExtractedLocation): Boolean {
         val locText = slide.location?.lowercase(Locale.US) ?: ""
         val capText = slide.caption?.lowercase(Locale.US) ?: ""
-        val idText = slide.id.lowercase(Locale.US)
+
+        // Never match remote CDN URLs (e.g. Google Photos, iCloud) against location terms,
+        // as random base64 hashes frequently contain substrings like "faro", "porto", "cork".
+        val isRemoteUrl = slide.id.startsWith("http://", ignoreCase = true) ||
+            slide.id.startsWith("https://", ignoreCase = true)
+        val idText = if (isRemoteUrl) "" else slide.id.lowercase(Locale.US)
 
         for (term in location.terms) {
-            if (term.length <= 2) {
-                // Short tokens (e.g. "uk", "us") require word boundaries to avoid false positives
-                val boundary = Regex("""\b${Regex.escape(term)}\b""")
-                if (locText.isNotEmpty() && boundary.containsMatchIn(locText)) return true
-                if (capText.isNotEmpty() && boundary.containsMatchIn(capText)) return true
-                if (idText.isNotEmpty() && boundary.containsMatchIn(idText)) return true
-            } else {
-                if (locText.isNotEmpty() && locText.contains(term)) return true
-                if (capText.isNotEmpty() && capText.contains(term)) return true
-                if (idText.isNotEmpty() && idText.contains(term)) return true
-            }
+            // Use word boundary matching to avoid false positives (e.g. "farmer" matching "faro")
+            val boundary = Regex("""\b${Regex.escape(term)}\b""")
+            if (locText.isNotEmpty() && boundary.containsMatchIn(locText)) return true
+            if (capText.isNotEmpty() && boundary.containsMatchIn(capText)) return true
+            if (idText.isNotEmpty() && boundary.containsMatchIn(idText)) return true
         }
         return false
     }

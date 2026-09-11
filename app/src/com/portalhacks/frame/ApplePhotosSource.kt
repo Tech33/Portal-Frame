@@ -68,6 +68,7 @@ internal object ApplePhotosSource : PhotoProvider {
         val width: Int,
         val height: Int,
         val timeMs: Long,
+        val caption: String? = null,
     )
 
     private fun parseAlbum(base: String, ws: JSONObject): Album {
@@ -101,7 +102,8 @@ internal object ApplePhotosSource : PhotoProvider {
             }
             if (guid.isEmpty() || checksum.isEmpty()) continue
             guids.add(guid)
-            items.add(Item(checksum, bw, bh, parseDate(p.optString("dateCreated"))))
+            val caption = p.optString("caption").ifEmpty { p.optString("batchDescription").ifEmpty { null } }
+            items.add(Item(checksum, bw, bh, parseDate(p.optString("dateCreated")), caption))
         }
 
         // Resolve checksum -> download URL via webasseturls (batched).
@@ -113,7 +115,7 @@ internal object ApplePhotosSource : PhotoProvider {
         val slides = ArrayList<Slide>()
         for (it in items) {
             val u = urlByChecksum[it.checksum] ?: continue
-            slides.add(Slide(u, null, it.timeMs, it.height > it.width))
+            slides.add(Slide(u, it.caption, it.timeMs, it.height > it.width, location = title.ifEmpty { null }))
         }
         if (videos > 0) Log.i(TAG, "skipped $videos video(s)")
         Log.i(TAG, "iCloud album: ${slides.size} photos, title='$title'")

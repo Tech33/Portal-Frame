@@ -183,15 +183,32 @@ class SlideshowComposeActivity : ComponentActivity() {
     }
 
     private fun wakeScreen() {
-        if (!isScreenAsleep) return
         isScreenAsleep = false
         ScreenControl.isAsleep = false
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val km = getSystemService(android.app.KeyguardManager::class.java)
+            km?.requestDismissKeyguard(this, null)
+        }
+        @Suppress("DEPRECATION")
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        )
         val lp = window.attributes
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = lp
         if (!isClockModeActive()) {
-            controller.next()
+            if (!controller.running) {
+                controller.start()
+            } else {
+                controller.next()
+            }
+        } else {
+            applyClockOnlyMode()
         }
         sleepCover?.hide()
     }
@@ -224,9 +241,29 @@ class SlideshowComposeActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getStringExtra("action") == "wake" || intent.action == ConfigReceiver.ACTION_WAKE) {
+            wakeScreen()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val km = getSystemService(android.app.KeyguardManager::class.java)
+            km?.requestDismissKeyguard(this, null)
+        }
+        @Suppress("DEPRECATION")
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        )
         window.attributes = window.attributes.apply {
             screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
@@ -561,6 +598,9 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (isScreenAsleep || ScreenControl.isAsleep) {
+            wakeScreen()
+        }
         if (flipWebView?.visibility == View.VISIBLE) {
             flipWebView?.onResume()
         }
@@ -778,7 +818,20 @@ class SlideshowComposeActivity : ComponentActivity() {
     ): List<Slide> {
         val buckets = ArrayList<List<Slide>>(albums.size)
         for (url in albums) {
-            buckets.add(AlbumCache.read(prefs, url) ?: emptyList())
+            val albumTitle = AlbumCache.title(prefs, url)?.trim() ?: ""
+            val rawSlides = AlbumCache.read(prefs, url) ?: emptyList()
+            val tagged = if (albumTitle.isNotEmpty()) {
+                rawSlides.map { s ->
+                    if (s.location.isNullOrEmpty()) {
+                        Slide(s.id, s.caption, s.timeMs, s.portrait, albumTitle)
+                    } else {
+                        s
+                    }
+                }
+            } else {
+                rawSlides
+            }
+            buckets.add(tagged)
         }
         val base = when (
             prefs.getString(
