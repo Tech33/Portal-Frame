@@ -139,11 +139,46 @@ class SlideshowComposeActivity : ComponentActivity() {
         val trimmed = msg.trim()
         if (trimmed.isEmpty()) return
 
+        // 0. Remote Update Command: #update or #ota
+        if (trimmed.equals("#update", ignoreCase = true) || trimmed.equals("#ota", ignoreCase = true) ||
+            trimmed.contains("#update") || trimmed.contains("#ota")) {
+            controller.showTemporaryBanner("⬇️ Checking and downloading update in background...")
+            AutoUpdateWorker.triggerNow(this) { status ->
+                controller.showTemporaryBanner(status)
+            }
+            return
+        }
+
+        // 1. Album Sync: #setalbum:<url>, #replacealbum:<url>, #addalbum:<url>, #album:<url>, or raw Google/iCloud Photos URL
+        val albumUrlRegex = Regex("""https?://(?:photos\.app\.goo\.gl/[^\s]+|photos\.google\.com/[^\s]+|share\.icloud\.com/photos/[^\s]+)""")
+        val setAlbumMatch = Regex("""#(?:setalbum|replacealbum):([^\s]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+        val addAlbumMatch = Regex("""#(?:addalbum|album):([^\s]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+        val rawUrlMatch = albumUrlRegex.find(trimmed)
+
+        if (setAlbumMatch != null || addAlbumMatch != null || (rawUrlMatch != null && !trimmed.contains("#showcase:"))) {
+            val replace = setAlbumMatch != null || currentAlbums.isEmpty()
+            val targetUrl = setAlbumMatch?.groupValues?.get(1)
+                ?: addAlbumMatch?.groupValues?.get(1)
+                ?: rawUrlMatch?.value ?: ""
+
+            if (targetUrl.isNotEmpty()) {
+                if (replace) {
+                    Albums.clear(prefs)
+                }
+                Albums.add(prefs, targetUrl)
+                currentAlbums = Albums.enabled(prefs)
+                controller.showTemporaryBanner("🖼️ Syncing family album...")
+                controller.setStatusHint("Loading new album photos…")
+                fetchAllAndApply(showHint = true)
+                return
+            }
+        }
+
         var displayMsg = trimmed
         var targetMode: String? = null
         var targetLoc: String? = null
 
-        // 1. Check for explicit #showcase: tag (e.g. #showcase:portugal, #showcase:2024-09, #showcase:recent_trip, #showcase:all)
+        // 2. Check for explicit #showcase: tag (e.g. #showcase:portugal, #showcase:2024-09, #showcase:recent_trip, #showcase:all)
         val hashMatch = Regex("""#(?:showcase:|location:)?([A-Za-z0-9_.-]+)""").find(trimmed)
         if (hashMatch != null) {
             val fullTag = hashMatch.groupValues[0]
@@ -178,7 +213,7 @@ class SlideshowComposeActivity : ComponentActivity() {
             }
         }
 
-        // 2. If no explicit showcase tag was given, check for date ranges in the natural text
+        // 3. If no explicit showcase tag was given, check for date ranges in the natural text
         if (targetMode == null) {
             val dateRange = DateRangeParser.parse(displayMsg)
             if (dateRange != null) {
@@ -187,7 +222,7 @@ class SlideshowComposeActivity : ComponentActivity() {
             }
         }
 
-        // 3. If still no target, extract location clue from the natural text
+        // 4. If still no target, extract location clue from the natural text
         if (targetMode == null) {
             val locationClue = LocationExtractor.extractLocation(displayMsg)
             if (locationClue != null) {
@@ -696,6 +731,8 @@ class SlideshowComposeActivity : ComponentActivity() {
         if (currentAlbums.isEmpty()) {
             // No albums playing (none configured, or all stopped): show the bundled samples.
             controller.start()
+            controller.setStatusHint("💡 Ready for your photos · Add in Settings or broadcast #album:<url>")
+            controller.checkCustomMessage()
             applyClockOnlyMode()
             return
         }

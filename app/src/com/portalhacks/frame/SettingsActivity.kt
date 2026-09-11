@@ -466,6 +466,7 @@ class SettingsActivity : ComponentActivity() {
         }
 
         var showMessageQrDialog by remember { mutableStateOf(false) }
+        var showFamilyChannelDialog by remember { mutableStateOf(false) }
         val customMessageState = rememberPrefString(ConfigReceiver.KEY_CUSTOM_MESSAGE, ConfigReceiver.DEFAULT_CUSTOM_MESSAGE)
 
         // Card groups balanced for Meta Portal wide landscape screen:
@@ -628,6 +629,11 @@ class SettingsActivity : ComponentActivity() {
 
                 PrimaryBtn("📱 Set Announcement with Phone (QR Code)") {
                     showMessageQrDialog = true
+                }
+                Spacer(Modifier.height(8.dp))
+                val currentChannel = prefs.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL) ?: ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL
+                SecondaryBtn("👨‍👩‍👧‍👦 Family Network: $currentChannel") {
+                    showFamilyChannelDialog = true
                 }
                 if (curMsg.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
@@ -1161,6 +1167,14 @@ class SettingsActivity : ComponentActivity() {
             )
         }
 
+        if (showFamilyChannelDialog) {
+            FamilyChannelDialog(
+                onDismiss = {
+                    showFamilyChannelDialog = false
+                }
+            )
+        }
+
         if (showMqttConfigDialog) {
             MqttConfigDialog(
                 onDismiss = {
@@ -1392,9 +1406,9 @@ class SettingsActivity : ComponentActivity() {
             prefs.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL)?.trim()
                 ?.ifEmpty { ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL } ?: ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL
         }
-        val aesKey = "PortalGlobal2026"
-        val cloudUrl = remember(channel) {
-            "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&v=1.6.3"
+        val aesKey = remember(channel) { CryptoUtils.deriveAesKey(channel) }
+        val cloudUrl = remember(channel, aesKey) {
+            "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&v=1.6.4"
         }
         val qrBitmap = remember(cloudUrl) { generateQrBitmap(cloudUrl, 560) }
         var inputMsg by remember { mutableStateOf("") }
@@ -1424,11 +1438,11 @@ class SettingsActivity : ComponentActivity() {
                                 initialPayload = resp
                                 initialRecorded = true
                             } else if (resp != initialPayload && resp.isNotEmpty() && resp != "null") {
-                                val decrypted = decryptAesData(resp, aesKey).trim()
+                                val decrypted = CryptoUtils.decrypt(resp, aesKey).trim()
                                 if (decrypted == "__CLEAR__") {
                                     withContext(Dispatchers.Main) {
                                         prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
-                                        ctx.sendBroadcast(Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE))
+                                        ctx.sendBroadcast(Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE).setPackage(ctx.packageName))
                                         MqttManager.getInstance(ctx).publishAllStates()
                                         Toast.makeText(ctx, "Announcement cleared ✓", Toast.LENGTH_SHORT).show()
                                         onDismiss()
@@ -1436,28 +1450,13 @@ class SettingsActivity : ComponentActivity() {
                                     break
                                 } else if (decrypted.isNotEmpty()) {
                                     withContext(Dispatchers.Main) {
-                                        var displayMsg = decrypted
-                                        if (decrypted.contains("#showcase:")) {
-                                            val tag = decrypted.substringAfter("#showcase:").trim().takeWhile { !it.isWhitespace() && it != '#' }
-                                            displayMsg = decrypted.replace("#showcase:$tag", "").trim()
-                                            val showcaseIntent = Intent(ConfigReceiver.ACTION_SET_SHOWCASE).apply {
-                                                when (tag.lowercase(Locale.US)) {
-                                                    "all" -> putExtra("mode", "all")
-                                                    "recent", "recent_trip", "trip" -> putExtra("mode", "recent_trip")
-                                                    "last_7_days", "7_days", "7days" -> putExtra("mode", "last_7_days")
-                                                    "last_30_days", "30_days", "30days" -> putExtra("mode", "last_30_days")
-                                                    else -> {
-                                                        putExtra("mode", "location")
-                                                        putExtra("location", tag.replace("_", " "))
-                                                    }
-                                                }
-                                            }
-                                            ctx.sendBroadcast(showcaseIntent)
-                                        }
-                                        prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, displayMsg).apply()
-                                        ctx.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", displayMsg))
+                                        ctx.sendBroadcast(
+                                            Intent(ConfigReceiver.ACTION_SET_MESSAGE)
+                                                .setPackage(ctx.packageName)
+                                                .putExtra("message", decrypted)
+                                        )
                                         MqttManager.getInstance(ctx).publishAllStates()
-                                        Toast.makeText(ctx, "Announcement received ✓", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(ctx, "Broadcast received ✓", Toast.LENGTH_SHORT).show()
                                         onDismiss()
                                     }
                                     break
@@ -1777,6 +1776,59 @@ class SettingsActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    @Composable
+    private fun FamilyChannelDialog(onDismiss: () -> Unit) {
+        val current = prefs.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL)?.trim()
+            ?.ifEmpty { ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL } ?: ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL
+        var channelInput by remember { mutableStateOf(current) }
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Text("Family Broadcast Network", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        "Set your private family network name (e.g. 'kakkar').",
+                        color = PortalColors.TextMuted,
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "All Portals in your household and family with this name will receive broadcasts and sync albums securely.",
+                        color = PortalColors.TextMuted,
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = channelInput,
+                        onValueChange = { channelInput = it },
+                        placeholder = { Text("e.g. kakkar", color = Color.Gray) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val clean = channelInput.trim().lowercase(Locale.US).replace(" ", "_")
+                    val finalChannel = if (clean.isEmpty()) ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL else clean
+                    prefs.edit().putString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, finalChannel).apply()
+                    Toast.makeText(this, "Family Network updated: $finalChannel", Toast.LENGTH_SHORT).show()
+                    onDismiss()
+                }) {
+                    Text("Save", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = PortalColors.TextMuted)
+                }
+            }
+        )
     }
 
     @Composable

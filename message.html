@@ -226,7 +226,10 @@
     
     <div class="field-group">
       <label for="code">Broadcast Channel / Pairing Code</label>
-      <input type="text" id="code" placeholder="e.g. portal_broadcast or 123456" autocomplete="off">
+      <input type="text" id="code" placeholder="e.g. portal_broadcast or kakkar" autocomplete="off">
+      <button id="whatsapp-btn" type="button" onclick="shareToWhatsApp()" style="background-color: #25D366; color: #FFFFFF; font-weight: 700; border: none; border-radius: 12px; height: 46px; width: 100%; margin-top: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.25);">
+        📲 Share Link to Family WhatsApp
+      </button>
     </div>
 
     <div class="field-group">
@@ -310,7 +313,22 @@
         <input type="text" id="custom-location-input" placeholder="e.g. Paris, London, Portugal" style="display: none; margin-top: 4px;" />
       </div>
 
-      <button id="send-btn" type="button" class="btn-primary" onclick="requestBroadcast()">📢 Broadcast to Portals</button>
+      <div class="field-group" style="margin-top: 16px; border-top: 1px solid #2C2C2E; padding-top: 16px;">
+        <label for="album-url-input">📁 Sync Album to All Portals</label>
+        <input type="url" id="album-url-input" placeholder="Paste Google Photos or iCloud album link..." style="margin-bottom: 8px; width: 100%; box-sizing: border-box;" />
+        <div style="display: flex; gap: 16px; font-size: 13px; color: #A1A1A6; margin-bottom: 8px;">
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="radio" name="album-action" value="replace" checked style="accent-color: #0A84FF;" /> Replace current album
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="radio" name="album-action" value="add" style="accent-color: #0A84FF;" /> Append to albums
+          </label>
+        </div>
+        <button id="sync-album-btn" type="button" class="btn-secondary" style="width: 100%; border-color: #0A84FF; color: #0A84FF;" onclick="syncAlbum()">Sync Album to Portals</button>
+      </div>
+
+      <button id="send-btn" type="button" class="btn-primary" style="margin-top: 20px;" onclick="requestBroadcast()">📢 Broadcast to Portals</button>
+      <button id="update-btn" type="button" class="btn-secondary" style="margin-top: 8px; width: 100%; border-color: #30D158; color: #30D158;" onclick="triggerOtaUpdate()">⚡ Check & Update All Portals</button>
       <button id="remove-btn" type="button" class="btn-remove" onclick="removeAnnouncement()">Remove Active Banner</button>
     </div>
 
@@ -437,6 +455,58 @@
 
     let pendingPayload = '';
 
+    async function getAesKey(channel) {
+      if (keyParam) return keyParam;
+      const ch = (channel || 'portal_broadcast').trim().toLowerCase();
+      if (!ch || ch === 'portal_broadcast') return 'PortalGlobal2026';
+      const enc = new TextEncoder();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode('PortalFamilyKey_' + ch));
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return hex.substring(0, 16);
+    }
+
+    async function shareToWhatsApp() {
+      const code = document.getElementById('code').value.trim() || 'portal_broadcast';
+      const key = await getAesKey(code);
+      const shareUrl = `https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=${encodeURIComponent(code)}&key=${encodeURIComponent(key)}`;
+      const shareText = `🖼️ Join our Family Portal Frame! Tap this link to send photos, holiday showcases, and greetings to our Portals:\n${shareUrl}`;
+      
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'Join Family Frame',
+            text: shareText,
+            url: shareUrl
+          });
+          return;
+        } catch (_) {}
+      }
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
+    }
+
+    async function syncAlbum() {
+      const urlInput = document.getElementById('album-url-input');
+      const url = urlInput.value.trim();
+      if (!url) {
+        const statusBox = document.getElementById('status-box');
+        statusBox.innerText = 'Please paste a Google Photos or iCloud shared album link.';
+        statusBox.className = 'status error';
+        statusBox.style.display = 'block';
+        return;
+      }
+      const isReplace = document.querySelector('input[name="album-action"]:checked').value === 'replace';
+      const tag = isReplace ? `#setalbum:${url}` : `#addalbum:${url}`;
+      await sendPayload(tag);
+      urlInput.value = '';
+    }
+
+    async function triggerOtaUpdate() {
+      if (confirm("Send update command to all Portals? They will check GitHub and install the latest release in the background.")) {
+        await sendPayload('#update');
+      }
+    }
+
     async function requestBroadcast() {
       let text = document.getElementById('message').value.trim();
       const showcaseMode = document.getElementById('showcase-select').value;
@@ -476,7 +546,7 @@
       // Pre-flight check: optimistic concurrency check on cloud relay
       const codeInput = document.getElementById('code');
       const code = codeInput.value.trim();
-      const aesKey = keyParam || 'PortalGlobal2026';
+      const aesKey = await getAesKey(code);
 
       if (!code) {
         await sendPayload(text);
@@ -539,7 +609,7 @@
       statusBox.style.display = 'none';
 
       const code = codeInput.value.trim();
-      const aesKey = keyParam || 'PortalGlobal2026';
+      const aesKey = await getAesKey(code);
 
       if (!code) {
         statusBox.innerText = 'Please enter a valid pairing code or broadcast channel.';
@@ -570,6 +640,10 @@
             statusBox.innerText = 'Announcement cleared across all connected Portals worldwide!';
             document.getElementById('message').value = '';
             updateCharCount();
+          } else if (content.startsWith('#setalbum:') || content.startsWith('#addalbum:')) {
+            statusBox.innerText = 'Success! Album sent to all Portals. Frames are now downloading photos!';
+          } else if (content === '#update') {
+            statusBox.innerText = 'Update command sent! All connected Portals will download and install the latest build in the background.';
           } else {
             statusBox.innerText = 'Success! Your announcement has been broadcast to all connected Portals!';
           }

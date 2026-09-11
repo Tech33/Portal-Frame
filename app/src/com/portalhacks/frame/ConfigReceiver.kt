@@ -136,7 +136,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_BLUR_RADIUS = "blur_radius" // int: background fill blur radius (1..8)
         const val KEY_RECENT_FIRST = "recent_first" // boolean: sort slideshow newest photos first
         const val KEY_SHOWCASE_MODE = "showcase_mode" // string: "all", "recent_trip", "last_7_days", "last_30_days", "location"
-        const val DEFAULT_SHOWCASE_MODE = "all"
+        const val DEFAULT_SHOWCASE_MODE = "recent_trip"
         const val KEY_SHOWCASE_LOCATION = "showcase_location" // string: filter location/city query (e.g. "Paris")
         const val DEFAULT_SHOWCASE_LOCATION = ""
         // Clock widget transform (set by long-press-drag/pinch on the screensaver). dx/dy are the
@@ -215,7 +215,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_ENHANCE = false
         const val DEFAULT_ZOOM_FILL = false // default: whole photo over a blurred fill (no zoom)
         const val DEFAULT_BLUR_RADIUS = 3
-        const val DEFAULT_RECENT_FIRST = false
+        const val DEFAULT_RECENT_FIRST = true
         const val DEFAULT_CLOCK_DX = 0f
         const val DEFAULT_CLOCK_DY = 0f
         const val DEFAULT_CLOCK_SCALE = 1f

@@ -661,33 +661,18 @@ class SlideshowController(
                         val lastSeenRemote = prefs.getString("last_remote_announcement_seen", "") ?: ""
                         if (resp != lastSeenRemote) {
                             prefs.edit().putString("last_remote_announcement_seen", resp).apply()
-                            val decrypted = decryptAes(resp, "PortalGlobal2026").trim()
-                            val current = prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "")?.trim() ?: ""
+                            val aesKey = CryptoUtils.deriveAesKey(channel)
+                            val decrypted = CryptoUtils.decrypt(resp, aesKey).trim()
                             if (decrypted == "__CLEAR__") {
-                                if (current.isNotEmpty()) {
-                                    prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
-                                    handler.post { checkCustomMessage() }
-                                }
+                                context.sendBroadcast(
+                                    Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE).setPackage(context.packageName)
+                                )
                             } else if (decrypted.isNotEmpty()) {
-                                var displayMsg = decrypted
-                                if (decrypted.contains("#showcase:")) {
-                                    val tag = decrypted.substringAfter("#showcase:").trim().takeWhile { it != ' ' }
-                                    displayMsg = decrypted.replace("#showcase:$tag", "").trim()
-                                    val intent = Intent(ConfigReceiver.ACTION_SET_SHOWCASE).apply {
-                                        if (tag.equals("all", ignoreCase = true)) {
-                                            putExtra("mode", "all")
-                                        } else if (tag.equals("recent", ignoreCase = true) || tag.equals("recent_trip", ignoreCase = true) || tag.equals("trip", ignoreCase = true)) {
-                                            putExtra("mode", "recent_trip")
-                                        } else {
-                                            putExtra("mode", "location")
-                                            putExtra("location", tag)
-                                        }
-                                    }
-                                    context.sendBroadcast(intent)
-                                }
-                                prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, displayMsg).apply()
-                                context.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", displayMsg))
-                                handler.post { checkCustomMessage() }
+                                context.sendBroadcast(
+                                    Intent(ConfigReceiver.ACTION_SET_MESSAGE)
+                                        .setPackage(context.packageName)
+                                        .putExtra("message", decrypted)
+                                )
                             }
                         }
                     }
@@ -697,29 +682,13 @@ class SlideshowController(
         }
     }
 
-    private fun decryptAes(hexStr: String, keyStr: String): String {
-        return try {
-            val data = ByteArray(hexStr.length / 2)
-            for (i in data.indices) {
-                data[i] = hexStr.substring(i * 2, i * 2 + 2).toInt(16).toByte()
-            }
-            val iv = data.copyOfRange(0, 16)
-            val ciphertext = data.copyOfRange(16, data.size)
-            val keySpec = javax.crypto.spec.SecretKeySpec(keyStr.toByteArray(Charsets.UTF_8), "AES")
-            val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
-            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, keySpec, javax.crypto.spec.IvParameterSpec(iv))
-            val decryptedBytes = cipher.doFinal(ciphertext)
-            String(decryptedBytes, Charsets.UTF_8)
-        } catch (_: Exception) {
-            ""
-        }
-    }
-
     fun setStatusHint(text: String?) {
         val t = text ?: ""
         status.text = t
         status.visibility = if (t.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
     }
+
+
 
     fun pauseSlideshow() {
         if (slideshowPaused) {
@@ -2147,18 +2116,24 @@ class SlideshowController(
     private fun captionOf(i: Int): String {
         if (i < 0 || i >= items.size) return ""
         val s = items[i]
-        val timeStr = if (s.caption != null) {
-            s.caption // explicit override (e.g. an "On this day" badge)
+        val cleanCaption = s.caption?.trim()?.takeIf { c ->
+            !c.all { it.isDigit() } && c.length >= 3
+        }
+        val timeStr = if (cleanCaption != null && (cleanCaption.contains("today", ignoreCase = true) || cleanCaption.contains("ago", ignoreCase = true))) {
+            cleanCaption // explicit override (e.g. an "On this day" badge)
         } else if (s.timeMs != Slide.NO_DATE) {
             relativeTime(s.timeMs)
         } else {
-            ""
+            cleanCaption ?: ""
         }
         val loc = s.location?.trim()
-        return if (!loc.isNullOrEmpty() && timeStr.isNotEmpty()) {
-            "📍 $loc · $timeStr"
-        } else if (!loc.isNullOrEmpty()) {
-            "📍 $loc"
+        val cleanLoc = loc?.takeIf { l ->
+            !l.contains("–") && !l.contains("..") && !l.matches(Regex(""".*\b20\d{2}\b.*"""))
+        }
+        return if (!cleanLoc.isNullOrEmpty() && timeStr.isNotEmpty()) {
+            "📍 $cleanLoc · $timeStr"
+        } else if (!cleanLoc.isNullOrEmpty()) {
+            "📍 $cleanLoc"
         } else {
             timeStr
         }

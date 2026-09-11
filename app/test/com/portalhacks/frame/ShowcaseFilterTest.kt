@@ -154,4 +154,22 @@ class ShowcaseFilterTest {
         assertEquals("s3", sorted[1].id)
         assertEquals("s1", sorted[2].id)
     }
+
+    @Test
+    fun testCryptoUtilsKeyDerivation() {
+        assertEquals("PortalGlobal2026", CryptoUtils.deriveAesKey("portal_broadcast"))
+        assertEquals("PortalGlobal2026", CryptoUtils.deriveAesKey(null))
+        assertEquals("PortalGlobal2026", CryptoUtils.deriveAesKey(""))
+
+        val kakkarKey = CryptoUtils.deriveAesKey("kakkar")
+        assertEquals(16, kakkarKey.length)
+        assertEquals(kakkarKey, CryptoUtils.deriveAesKey("kakkar")) // Deterministic
+        assertFalse(kakkarKey == "PortalGlobal2026")
+    }
+
+    @Test
+    fun testDefaultShowcaseMode() {
+        assertEquals("recent_trip", ConfigReceiver.DEFAULT_SHOWCASE_MODE)
+        assertTrue(ConfigReceiver.DEFAULT_RECENT_FIRST)
+    }
 }

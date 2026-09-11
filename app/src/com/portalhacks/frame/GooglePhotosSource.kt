@@ -128,9 +128,10 @@ internal object GooglePhotosSource : PhotoProvider {
             val s = m.group(1) ?: continue
             if (s.startsWith("AF1Qip") || s.startsWith("CAE") || s.startsWith("CAMS")) continue
             if (s.contains("/") || s.contains("\\")) continue
+            if (s.all { it.isDigit() }) continue // Filter internal numeric IDs like 128649
             if (s.length > 20 && !s.contains(" ") && !s.contains("_") && !s.contains("-")) continue
             val unescaped = s.replace("\\n", " ").trim()
-            if (unescaped.length in 3..80) {
+            if (unescaped.length in 3..80 && !unescaped.all { it.isDigit() }) {
                 return unescaped
             }
         }
@@ -178,8 +179,7 @@ internal object GooglePhotosSource : PhotoProvider {
             }
             val tms = captureMillis(item)
             val caption = extractItemCaption(item)
-            val locationClue = title.ifEmpty { caption }
-            out.add(Slide(base + IMG_PARAM, caption, tms, h > w, location = locationClue?.ifEmpty { null }))
+            out.add(Slide(base + IMG_PARAM, caption, tms, h > w, location = null))
         }
         if (videos > 0) {
             Log.i(TAG, "skipped $videos video(s)")
