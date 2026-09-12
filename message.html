@@ -225,8 +225,16 @@
     <p>Overlay a floating greeting or message across your Portal photo frame.</p>
     
     <div class="field-group">
-      <label for="code">Broadcast Channel / Pairing Code</label>
-      <input type="text" id="code" placeholder="e.g. portal_broadcast or kakkar" autocomplete="off">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <label for="code" style="margin-bottom: 0;">Family Network / Broadcast Channel</label>
+        <span id="channel-badge" style="font-size: 11px; padding: 2px 8px; border-radius: 6px; background: rgba(10,132,255,0.2); color: #0A84FF; font-weight: 600;">Active</span>
+      </div>
+      <input type="text" id="code" placeholder="e.g. kakkar or portal_broadcast" autocomplete="off" oninput="handleChannelInput()">
+      <div style="display: flex; gap: 8px; margin-top: 8px;">
+        <button id="switch-channel-btn" type="button" class="btn-secondary" style="width: 100%; height: 42px; font-size: 13px; border-color: #5856D6; color: #5856D6;" onclick="switchPortalsChannel()">
+          📡 Set Portals to this Channel
+        </button>
+      </div>
       <button id="whatsapp-btn" type="button" onclick="shareToWhatsApp()" style="background-color: #25D366; color: #FFFFFF; font-weight: 700; border: none; border-radius: 12px; height: 46px; width: 100%; margin-top: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.25);">
         📲 Share Link to Family WhatsApp
       </button>
@@ -347,19 +355,76 @@
         <button type="button" class="btn-primary" style="margin-top: 0;" onclick="confirmOverride()">✓ Replace Banner</button>
       </div>
     </div>
+    <div style="margin-top: 24px; padding: 14px; background: rgba(255,255,255,0.05); border-radius: 12px; font-size: 13px; color: #8E8E93; line-height: 1.5; text-align: left;">
+      <div style="font-weight: 700; color: #FFFFFF; margin-bottom: 6px;">💡 How to Update & Subscribe to Channels</div>
+      <div>• <b>Update Portal App:</b> On the Portal, go to <i>Settings → Software update & system (top-right card)</i> and tap <b>Check for updates</b>, then <b>Download & Install</b>. Or click <i>"⚡ Check & Update All Portals"</i> above.</div>
+      <div style="margin-top: 6px;">• <b>Subscribe to Channel:</b> On the Portal (v1.6.15+), go to <i>Settings → Family Network</i>. Or enter your family name above and tap <i>"📡 Set Portals to this Channel"</i> to switch them remotely!</div>
+    </div>
   </div>
 
   <div class="footer">Portal Frame Screensaver</div>
 
   <script>
     const urlParams = new URLSearchParams(window.location.search);
-    const codeParam = urlParams.get('channel') || urlParams.get('code');
-    const keyParam = urlParams.get('key'); // Optional AES key
+    let codeParam = urlParams.get('channel') || urlParams.get('code');
+    let keyParam = urlParams.get('key'); // Optional AES key
+    const savedChannel = localStorage.getItem('portal_frame_channel');
 
-    if (codeParam) {
-      const codeInput = document.getElementById('code');
-      codeInput.value = codeParam;
-      codeInput.disabled = true;
+    const codeInput = document.getElementById('code');
+    let currentActiveChannel = (codeParam || savedChannel || 'portal_broadcast').trim().toLowerCase().replace(/ /g, '_');
+    codeInput.value = currentActiveChannel;
+
+    function handleChannelInput() {
+      const val = codeInput.value.trim().toLowerCase().replace(/ /g, '_');
+      if (val && val !== codeParam) {
+        keyParam = null; // Invalidate QR key when channel changes
+      }
+      if (val) {
+        localStorage.setItem('portal_frame_channel', val);
+      }
+    }
+
+    async function switchPortalsChannel() {
+      const newChannel = codeInput.value.trim().toLowerCase().replace(/ /g, '_');
+      const statusBox = document.getElementById('status-box');
+      if (!newChannel) {
+        statusBox.innerText = 'Please enter a family channel name first (e.g. kakkar).';
+        statusBox.className = 'status error';
+        statusBox.style.display = 'block';
+        return;
+      }
+      statusBox.innerText = `Sending switch command to channel '${currentActiveChannel}'...`;
+      statusBox.className = 'status';
+      statusBox.style.display = 'block';
+
+      const prevChannel = currentActiveChannel;
+      const aesKey = await getAesKey(prevChannel);
+      const hex = await encryptData(`#channel:${newChannel}`, aesKey);
+      if (!hex) {
+        statusBox.innerText = 'Encryption failed. Try again.';
+        statusBox.className = 'status error';
+        return;
+      }
+      try {
+        const response = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(prevChannel)}/${hex}`, {
+          method: 'POST',
+          headers: { 'Content-Length': '0' }
+        });
+        const result = await response.text();
+        if (result === 'true') {
+          currentActiveChannel = newChannel;
+          keyParam = null;
+          localStorage.setItem('portal_frame_channel', newChannel);
+          statusBox.innerText = `✓ Switched! Connected Portals on '${prevChannel}' were commanded to join '${newChannel}'. Now broadcasting on '${newChannel}'.`;
+          statusBox.className = 'status success';
+        } else {
+          statusBox.innerText = 'Could not reach relay service. Please try again.';
+          statusBox.className = 'status error';
+        }
+      } catch (e) {
+        statusBox.innerText = 'Network error while switching channel.';
+        statusBox.className = 'status error';
+      }
     }
 
     function insertEmoji(emoji) {

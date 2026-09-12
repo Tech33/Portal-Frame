@@ -149,6 +149,17 @@ class SlideshowComposeActivity : ComponentActivity() {
             return
         }
 
+        // 0.5 Remote Channel Switch Command: #channel:<name>, #setchannel:<name>, or #family:<name>
+        val channelMatch = Regex("""#(?:channel|setchannel|family):([A-Za-z0-9_.-]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+        if (channelMatch != null) {
+            val rawName = channelMatch.groupValues[1].trim()
+            val clean = rawName.lowercase(Locale.US).replace(" ", "_")
+            val finalChannel = if (clean.isEmpty()) ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL else clean
+            prefs.edit().putString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, finalChannel).apply()
+            controller.showTemporaryBanner("👨‍👩‍👧‍👦 Family Network updated: $finalChannel")
+            return
+        }
+
         // 1. Album Sync: #setalbum:<url>, #replacealbum:<url>, #addalbum:<url>, #album:<url>, or raw Google/iCloud Photos URL
         val albumUrlRegex = Regex("""https?://(?:photos\.app\.goo\.gl/[^\s]+|photos\.google\.com/[^\s]+|share\.icloud\.com/photos/[^\s]+)""")
         val setAlbumMatch = Regex("""#(?:setalbum|replacealbum):([^\s]+)""", RegexOption.IGNORE_CASE).find(trimmed)

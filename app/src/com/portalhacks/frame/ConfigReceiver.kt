@@ -91,6 +91,15 @@ class ConfigReceiver : BroadcastReceiver() {
                 }
             }
         }
+        if (intent.hasExtra("channel") || intent.hasExtra("family") || intent.hasExtra(KEY_ANNOUNCEMENT_CHANNEL)) {
+            val ch = (intent.getStringExtra("channel") ?: intent.getStringExtra("family") ?: intent.getStringExtra(KEY_ANNOUNCEMENT_CHANNEL))
+                ?.trim()?.lowercase(java.util.Locale.US)?.replace(" ", "_") ?: ""
+            if (ch.isNotEmpty()) {
+                ed.putString(KEY_ANNOUNCEMENT_CHANNEL, ch)
+                Log.i("PortalFrame", "announcement_channel set to: $ch")
+                any = true
+            }
+        }
         if (any) {
             ed.apply()
         }
