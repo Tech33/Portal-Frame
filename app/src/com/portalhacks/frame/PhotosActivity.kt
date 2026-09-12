@@ -25,6 +25,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.google.zxing.BarcodeFormat
@@ -58,6 +59,7 @@ class PhotosActivity : Activity() {
         when (gotoExtra) {
             "scan" -> startScan()
             "manual" -> startScan() // manual entry now lives inside the QR panel
+            "announcement", "message" -> startAnnouncementScan()
             else -> showStatus()
         }
     }
@@ -593,7 +595,232 @@ class PhotosActivity : Activity() {
         belowLp.topMargin = boxTop + boxSize + Ui.dp(this, 20f)
         f.addView(belowBox, belowLp)
 
-        root.addView(f)
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(f, FrameLayout.LayoutParams(MATCH, MATCH))
+        }
+        root.addView(scroll, FrameLayout.LayoutParams(MATCH, MATCH))
+    }
+
+    private var initialAnnouncementPayload: String? = null
+
+    private fun startAnnouncementScan() {
+        stopArmed = false
+        showingStatus = false
+        root.removeAllViews()
+
+        val p = prefs()
+        val channel = p.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL)?.trim()
+            ?.ifEmpty { ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL } ?: ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL
+        val aesKey = CryptoUtils.deriveAesKey(channel)
+        val cloudUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&v=1.6.5"
+
+        overrideBrightness()
+
+        initialAnnouncementPayload = null
+        cloudPollRunnable?.let { main.removeCallbacks(it) }
+        val poll = object : Runnable {
+            override fun run() {
+                checkCloudAnnouncement(channel, aesKey)
+                main.postDelayed(this, 3000)
+            }
+        }
+        cloudPollRunnable = poll
+        main.post(poll)
+
+        val fontScale = Ui.fontScale(this)
+        val f = FrameLayout(this)
+        f.setBackgroundColor(Color.BLACK)
+
+        val boxSize = Ui.dp(this, 280f)
+        val boxTop = Ui.dp(this, 56f)
+
+        // QR Code display container with Apple squircle border
+        val qrImage = ImageView(this)
+        qrImage.scaleType = ImageView.ScaleType.FIT_CENTER
+        val border = Ui.roundRect(0xFFFFFFFF.toInt(), Ui.dp(this, 24f))
+        qrImage.background = border
+        val pad = Ui.dp(this, 16f)
+        qrImage.setPadding(pad, pad, pad, pad)
+
+        val qrBitmap = generateQrCode(cloudUrl, 280)
+        if (qrBitmap != null) {
+            qrImage.setImageBitmap(qrBitmap)
+        }
+
+        val bp = FrameLayout.LayoutParams(boxSize, boxSize)
+        bp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        bp.topMargin = boxTop
+        f.addView(qrImage, bp)
+
+        val colW = Math.min(Ui.dp(this, 640f), resources.displayMetrics.widthPixels - Ui.dp(this, 48f))
+
+        val title = TextView(this)
+        title.text = "Post Announcement"
+        title.setTextColor(Color.WHITE)
+        title.typeface = Ui.bold(this)
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f * fontScale)
+        title.gravity = Gravity.CENTER_HORIZONTAL
+        val titleLp = FrameLayout.LayoutParams(colW, WRAP)
+        titleLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        titleLp.topMargin = Ui.dp(this, 16f)
+        f.addView(title, titleLp)
+
+        val belowBox = LinearLayout(this)
+        belowBox.orientation = LinearLayout.VERTICAL
+        belowBox.gravity = Gravity.CENTER_HORIZONTAL
+
+        belowBox.addView(sectionHeading("Scan with your phone"), LinearLayout.LayoutParams(MATCH, WRAP))
+
+        val subtitle = TextView(this)
+        this.scanHint = subtitle
+        val helperText = "Scan the QR code to post greetings, celebrations, or photo showcases from your phone, or visit:\nraw.githack.com/Tech33/Portal-Frame/main/message.html\nFamily Network: $channel"
+        subtitle.text = helperText
+        subtitle.setTextColor(0xFFE5E5EA.toInt())
+        subtitle.typeface = Ui.medium(this)
+        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * fontScale)
+        subtitle.gravity = Gravity.CENTER_HORIZONTAL
+        subtitle.setLineSpacing(Ui.dp(this, 4f).toFloat(), 1f)
+        val subLp = LinearLayout.LayoutParams(MATCH, WRAP)
+        subLp.topMargin = Ui.dp(this, 8f)
+        belowBox.addView(subtitle, subLp)
+
+        val manualHeading = sectionHeading("Or enter message directly on Portal")
+        val manualHeadingLp = LinearLayout.LayoutParams(MATCH, WRAP)
+        manualHeadingLp.topMargin = Ui.dp(this, 28f)
+        belowBox.addView(manualHeading, manualHeadingLp)
+
+        val edit = Ui.field(this, "e.g. Happy Birthday Sarah! 🎂")
+        edit.setSingleLine(true)
+        edit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f * fontScale)
+        belowBox.addView(edit)
+
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val lp = LinearLayout.LayoutParams(MATCH, WRAP).apply {
+                topMargin = Ui.dp(this@PhotosActivity, 14f)
+            }
+            layoutParams = lp
+        }
+
+        val pasteBtn = pillButton("📋 Paste", 0xFF2C2C2E.toInt(), Color.WHITE) {
+            try {
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = cm.primaryClip
+                if (clip != null && clip.itemCount > 0) {
+                    val text = clip.getItemAt(0).text?.toString()?.trim()
+                    if (!text.isNullOrEmpty()) {
+                        edit.setText(text)
+                        edit.setSelection(text.length)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        val pasteLp = LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+            marginEnd = Ui.dp(this@PhotosActivity, 10f)
+        }
+        buttonRow.addView(pasteBtn, pasteLp)
+
+        val curMsg = p.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "")?.trim() ?: ""
+        if (curMsg.isNotEmpty()) {
+            val clearBtn = pillButton("✕ Clear", 0xFF3A3A3C.toInt(), 0xFFFF453A.toInt()) {
+                p.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
+                sendBroadcast(Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE).setPackage(packageName))
+                MqttManager.getInstance(this).publishAllStates()
+                toast("Announcement cleared ✓")
+                finish()
+            }
+            val clearLp = LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+                marginEnd = Ui.dp(this@PhotosActivity, 10f)
+            }
+            buttonRow.addView(clearBtn, clearLp)
+        } else {
+            val cancelBtn = pillButton("Cancel", 0xFF2C2C2E.toInt(), 0xFF8E8E93.toInt()) {
+                finish()
+            }
+            val cancelLp = LinearLayout.LayoutParams(0, WRAP, 0.9f).apply {
+                marginEnd = Ui.dp(this@PhotosActivity, 10f)
+            }
+            buttonRow.addView(cancelBtn, cancelLp)
+        }
+
+        val postBtn = pillButton("Post Banner", Ui.BLUE, Color.WHITE) {
+            val text = edit.text?.toString()?.trim() ?: ""
+            if (text.isNotEmpty()) {
+                p.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, text).apply()
+                sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).setPackage(packageName).putExtra("message", text))
+                MqttManager.getInstance(this).publishAllStates()
+                hideKeyboard(edit)
+                toast("Announcement set ✓")
+                finish()
+            }
+        }
+        val postLp = LinearLayout.LayoutParams(0, WRAP, 1.2f)
+        buttonRow.addView(postBtn, postLp)
+
+        belowBox.addView(buttonRow)
+
+        val belowLp = FrameLayout.LayoutParams(colW, WRAP)
+        belowLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        belowLp.topMargin = boxTop + boxSize + Ui.dp(this, 20f)
+        f.addView(belowBox, belowLp)
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(f, FrameLayout.LayoutParams(MATCH, MATCH))
+        }
+        root.addView(scroll, FrameLayout.LayoutParams(MATCH, MATCH))
+    }
+
+    private fun checkCloudAnnouncement(channel: String, aesKey: String) {
+        val exe = ImageLoader(this).executor()
+        exe.execute {
+            try {
+                val encodedChannel = java.net.URLEncoder.encode(channel, "UTF-8")
+                val connection = java.net.URL("https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/$encodedChannel").openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
+                if (connection.responseCode == 200) {
+                    val reader = java.io.BufferedReader(java.io.InputStreamReader(connection.inputStream))
+                    var response = reader.readLine()?.trim() ?: ""
+                    reader.close()
+                    if (response.startsWith("\"") && response.endsWith("\"")) {
+                        response = response.substring(1, response.length - 1)
+                    }
+                    if (initialAnnouncementPayload == null) {
+                        initialAnnouncementPayload = response
+                    } else if (response != initialAnnouncementPayload && response.isNotEmpty() && response != "null") {
+                        val decrypted = CryptoUtils.decrypt(response, aesKey).trim()
+                        if (decrypted == "__CLEAR__") {
+                            runOnUiThread {
+                                prefs().edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
+                                sendBroadcast(Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE).setPackage(packageName))
+                                MqttManager.getInstance(this).publishAllStates()
+                                toast("Announcement cleared ✓")
+                                cloudPollRunnable?.let { main.removeCallbacks(it) }
+                                cloudPollRunnable = null
+                                finish()
+                            }
+                        } else if (decrypted.isNotEmpty()) {
+                            runOnUiThread {
+                                prefs().edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, decrypted).apply()
+                                sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).setPackage(packageName).putExtra("message", decrypted))
+                                MqttManager.getInstance(this).publishAllStates()
+                                toast("Broadcast received ✓")
+                                cloudPollRunnable?.let { main.removeCallbacks(it) }
+                                cloudPollRunnable = null
+                                finish()
+                            }
+                        }
+                    }
+                }
+                connection.disconnect()
+            } catch (e: Exception) {
+                Log.w(TAG, "announcement cloud polling failed", e)
+            }
+        }
     }
 
     private fun showNoWifiScreen() {
