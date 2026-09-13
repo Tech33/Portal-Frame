@@ -242,7 +242,11 @@ class SlideshowComposeActivity : ComponentActivity() {
             }
         }
 
-        prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, displayMsg).apply()
+        if (displayMsg.isNotBlank()) {
+            prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, displayMsg).apply()
+        } else {
+            prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
+        }
         controller.checkCustomMessage()
 
         if (targetMode != null) {

@@ -54,7 +54,7 @@ object AutoUpdateWorker {
     }
 
     private fun installSilentlyOrPrompt(context: Context, apk: File) {
-        // 1. Try root/shell silent install if available
+        // 1. Try root silent install if available
         try {
             val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "pm install -r ${apk.absolutePath}"))
             val exit = p.waitFor()
@@ -64,10 +64,26 @@ object AutoUpdateWorker {
             }
         } catch (_: Exception) {}
 
-        // 2. Arm accessibility service for zero-touch auto-click
+        // 2. Try direct shell pm install (works if UID has package manager permissions)
+        try {
+            val p = Runtime.getRuntime().exec(arrayOf("pm", "install", "-r", "-d", apk.absolutePath))
+            val exit = p.waitFor()
+            if (exit == 0) {
+                Log.i(TAG, "silent shell pm install succeeded")
+                return
+            }
+        } catch (_: Exception) {}
+
+        // 3. Ensure accessibility service is enabled before launching package installer
+        if (!ScreenControl.isAccessibilityEnabled(context)) {
+            Log.i(TAG, "Enabling PortalAccessibilityService for unattended update")
+            ScreenControl.enableAccessibility(context)
+        }
+
+        // 4. Arm accessibility service for zero-touch auto-click
         PortalAccessibilityService.armAutoInstall()
 
-        // 3. Launch package installer
+        // 5. Launch package installer
         mainHandler.post {
             UpdateInstaller.promptInstall(context, apk)
         }

@@ -510,6 +510,24 @@ class PhotosActivity : Activity() {
         titleLp.topMargin = Ui.dp(this, 16f)
         f.addView(title, titleLp)
 
+        val exitBtn = pillButton("✕ Exit", 0xFF2C2C2E.toInt(), Color.WHITE) {
+            finish()
+        }.apply {
+            val pad = Ui.dp(this@PhotosActivity, 18f)
+            setPadding(pad, 0, pad, 0)
+            val btnH = Ui.dp(this@PhotosActivity, 42f)
+            minHeight = btnH
+            minimumHeight = btnH
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        }
+        val exitLp = FrameLayout.LayoutParams(WRAP, WRAP).apply {
+            gravity = Gravity.TOP or Gravity.START
+            topMargin = Ui.dp(this@PhotosActivity, 14f)
+            leftMargin = Ui.dp(this@PhotosActivity, 20f)
+            marginStart = Ui.dp(this@PhotosActivity, 20f)
+        }
+        f.addView(exitBtn, exitLp)
+
         val belowBox = LinearLayout(this)
         belowBox.orientation = LinearLayout.VERTICAL
         belowBox.gravity = Gravity.CENTER_HORIZONTAL
@@ -665,6 +683,24 @@ class PhotosActivity : Activity() {
         titleLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         titleLp.topMargin = Ui.dp(this, 16f)
         f.addView(title, titleLp)
+
+        val exitBtn = pillButton("✕ Exit", 0xFF2C2C2E.toInt(), Color.WHITE) {
+            finish()
+        }.apply {
+            val pad = Ui.dp(this@PhotosActivity, 18f)
+            setPadding(pad, 0, pad, 0)
+            val btnH = Ui.dp(this@PhotosActivity, 42f)
+            minHeight = btnH
+            minimumHeight = btnH
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        }
+        val exitLp = FrameLayout.LayoutParams(WRAP, WRAP).apply {
+            gravity = Gravity.TOP or Gravity.START
+            topMargin = Ui.dp(this@PhotosActivity, 14f)
+            leftMargin = Ui.dp(this@PhotosActivity, 20f)
+            marginStart = Ui.dp(this@PhotosActivity, 20f)
+        }
+        f.addView(exitBtn, exitLp)
 
         val belowBox = LinearLayout(this)
         belowBox.orientation = LinearLayout.VERTICAL

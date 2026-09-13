@@ -3,466 +3,808 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Set Announcement on Frame</title>
+  <title>Portal Frame - Mobile Helper</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background-color: #0A0A0C;
-      color: #E0E0E0;
-      padding: 24px;
+      color: #FFFFFF;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      min-height: 100vh;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
+      padding: 16px;
+    }
+    .tap-scale:active {
+      transform: scale(0.97);
     }
     .card {
-      background-color: #1C1C1E;
-      border-radius: 22px;
-      padding: 32px 24px;
       width: 100%;
       max-width: 440px;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
-      border: 1px solid #2C2C2E;
+      background: rgba(28, 28, 30, 0.96);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 30px;
+      padding: 24px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+      position: relative;
     }
-    h1 {
-      font-size: 24px;
-      margin-bottom: 8px;
-      color: #FFFFFF;
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 14px;
+      margin-bottom: 16px;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: #30D158;
+      box-shadow: 0 0 10px #30D158;
+    }
+    .header-title {
+      font-size: 18px;
       font-weight: 700;
-      text-align: center;
-      background: linear-gradient(135deg, #007AFF, #5856D6);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.3px;
+      color: #FFFFFF;
     }
-    p {
-      font-size: 14px;
+    .header-sub {
+      font-size: 12px;
       color: #8E8E93;
-      margin-bottom: 24px;
-      text-align: center;
-      line-height: 1.5;
     }
-    .field-group {
-      margin-bottom: 20px;
+    .channel-name {
+      color: #0A84FF;
+      font-weight: 600;
+    }
+    .setup-btn {
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #E5E5EA;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.2s;
+    }
+    .setup-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+    }
+    .tabs-nav {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 4px;
+      border-radius: 16px;
+      margin-bottom: 18px;
+    }
+    .tab-btn {
+      padding: 10px 4px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: #007AFF;
+      color: #FFFFFF;
+      box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+    }
+    .tab-btn.inactive {
+      background: transparent;
+      color: #8E8E93;
+    }
+    .tab-btn.inactive:hover {
+      color: #FFFFFF;
+    }
+    .tab-pane {
       display: flex;
       flex-direction: column;
+      gap: 16px;
     }
-    label {
-      font-size: 13px;
+    .hidden {
+      display: none !important;
+    }
+    .field-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
       color: #8E8E93;
       margin-bottom: 8px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    input[type="text"] {
-      width: 100%;
-      height: 54px;
-      padding: 16px;
-      border: 1px solid #2C2C2E;
-      background-color: #121216;
-      color: #FFFFFF;
-      border-radius: 12px;
-      font-size: 16px;
-      outline: none;
-      box-sizing: border-box;
-      transition: border-color 0.2s, box-shadow 0.2s;
       display: block;
     }
-    input[type="text"]:focus {
-      border-color: #007AFF;
-      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
-    }
-    input[disabled] {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    textarea {
-      width: 100%;
-      min-height: 110px;
-      padding: 16px;
-      border: 1px solid #2C2C2E;
-      background-color: #121216;
-      color: #FFFFFF;
-      border-radius: 12px;
-      font-size: 16px;
-      line-height: 1.5;
-      outline: none;
-      box-sizing: border-box;
-      resize: vertical;
-      transition: border-color 0.2s, box-shadow 0.2s;
-      font-family: inherit;
-      display: block;
-    }
-    textarea:focus {
-      border-color: #007AFF;
-      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
-    }
-    .char-count {
-      text-align: right;
-      font-size: 12px;
-      color: #636366;
-      margin-top: 6px;
-    }
-    .emoji-row {
-      display: flex;
-      flex-wrap: wrap;
+    .preset-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 8px;
-      margin-bottom: 14px;
     }
-    .emoji-pill {
-      background-color: #2C2C2E;
-      border: 1px solid #3A3A3C;
-      border-radius: 20px;
-      padding: 6px 12px;
-      font-size: 18px;
-      cursor: pointer;
-      transition: transform 0.1s, background-color 0.2s;
-      user-select: none;
-    }
-    .emoji-pill:active {
-      transform: scale(0.9);
-      background-color: #3A3A3C;
-    }
-    .action-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 12px;
-      width: 100%;
-    }
-    .btn-secondary {
-      flex: 1;
-      height: 48px;
-      background-color: #2C2C2E;
-      border: 1px solid #3A3A3C;
+    .preset-btn {
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       color: #FFFFFF;
-      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.15s;
+    }
+    .preset-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+    .preset-emoji {
+      font-size: 18px;
+    }
+    .input-text {
+      width: 100%;
+      height: 50px;
+      padding: 12px 14px;
+      background: #121216;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      color: #FFFFFF;
       font-size: 15px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input-text:focus {
+      border-color: #0A84FF;
+    }
+    .input-text::placeholder {
+      color: #636366;
+    }
+    .pill-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .pill-btn {
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #E5E5EA;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
-      transition: background-color 0.2s;
+      transition: background 0.2s;
     }
-    .btn-secondary:active {
-      background-color: #3A3A3C;
+    .pill-btn:hover {
+      background: rgba(255, 255, 255, 0.14);
     }
-    .btn-primary {
+    .btn-send {
       width: 100%;
-      height: 52px;
-      margin-top: 12px;
+      height: 54px;
       background: linear-gradient(135deg, #007AFF, #5856D6);
-      color: #FFFFFF;
       border: none;
-      border-radius: 12px;
+      border-radius: 16px;
+      color: #FFFFFF;
       font-size: 16px;
       font-weight: 700;
       cursor: pointer;
-      box-shadow: 0 4px 12px rgba(88, 86, 214, 0.2);
-      transition: transform 0.1s, opacity 0.2s;
       display: flex;
       align-items: center;
       justify-content: center;
+      gap: 8px;
+      box-shadow: 0 6px 18px rgba(0, 122, 255, 0.25);
+      transition: all 0.15s;
     }
-    .btn-primary:active {
-      transform: scale(0.98);
-    }
-    .btn-primary:disabled {
+    .btn-send:disabled {
       opacity: 0.5;
       cursor: not-allowed;
-      transform: none;
     }
-    .btn-remove {
-      width: 100%;
-      height: 46px;
-      margin-top: 12px;
+    .btn-clear-frame {
       background: transparent;
-      border: 1px solid #FF453A;
+      border: none;
       color: #FF453A;
-      border-radius: 12px;
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 600;
       cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    .btn-remove:active {
-      background-color: rgba(255, 69, 58, 0.15);
-    }
-    .status {
-      margin-top: 16px;
-      padding: 12px;
-      border-radius: 10px;
-      font-size: 14px;
+      padding: 8px;
       text-align: center;
+      width: 100%;
+      transition: opacity 0.2s;
+    }
+    .btn-clear-frame:hover {
+      opacity: 0.8;
+    }
+    /* Section card styles */
+    .section-card {
+      background: rgba(10, 132, 255, 0.06);
+      border: 1px solid rgba(10, 132, 255, 0.18);
+      border-radius: 18px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .section-card.neutral {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .section-card.emerald {
+      background: rgba(48, 209, 88, 0.06);
+      border: 1px solid rgba(48, 209, 88, 0.18);
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0A84FF;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .section-title.emerald {
+      color: #30D158;
+    }
+    .section-title.neutral {
+      color: #E5E5EA;
+    }
+    .badge-sub {
+      font-size: 11px;
+      color: #8E8E93;
+    }
+    .section-desc {
+      font-size: 12px;
+      color: #A1A1A6;
+      line-height: 1.4;
+    }
+    .showcase-chips {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .showcase-chip {
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.04);
+      color: #A1A1A6;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      transition: all 0.15s;
+    }
+    .showcase-chip.active {
+      background: rgba(10, 132, 255, 0.22);
+      border-color: #0A84FF;
+      color: #FFFFFF;
+    }
+    .showcase-chip-title {
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .showcase-chip-desc {
+      font-size: 10px;
+      opacity: 0.75;
+    }
+    .picker-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding-top: 4px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .select-input {
+      width: 100%;
+      height: 42px;
+      background: #121216;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      color: #FFFFFF;
+      font-size: 13px;
+      padding: 0 10px;
+      outline: none;
+    }
+    .btn-play-showcase {
+      width: 100%;
+      height: 48px;
+      background: #0A84FF;
+      border: none;
+      border-radius: 14px;
+      color: #FFFFFF;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 4px 12px rgba(10, 132, 255, 0.25);
+      transition: background 0.15s;
+    }
+    .btn-play-showcase:hover {
+      background: #0071E3;
+    }
+    .btn-send-album {
+      width: 100%;
+      height: 48px;
+      background: #30D158;
+      border: none;
+      border-radius: 14px;
+      color: #000000;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 4px 12px rgba(48, 209, 88, 0.25);
+      transition: opacity 0.15s;
+    }
+    .btn-whatsapp {
+      width: 100%;
+      height: 48px;
+      background: #25D366;
+      border: none;
+      border-radius: 14px;
+      color: #000000;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(37, 211, 102, 0.25);
+    }
+    .btn-update-ota {
+      width: 100%;
+      height: 46px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      color: #E5E5EA;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-update-ota:hover {
+      background: rgba(255, 255, 255, 0.14);
+    }
+    .radio-box {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 12px;
+      color: #E5E5EA;
+    }
+    .radio-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .status-toast {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      line-height: 1.4;
       display: none;
     }
-    .status.success {
-      background-color: rgba(48, 209, 88, 0.15);
+    .status-toast.success {
+      display: block;
+      background: rgba(48, 209, 88, 0.15);
       color: #30D158;
-      border: 1px solid rgba(48, 209, 88, 0.2);
-      display: block;
+      border: 1px solid rgba(48, 209, 88, 0.25);
     }
-    .status.error {
-      background-color: rgba(255, 69, 58, 0.15);
+    .status-toast.error {
+      display: block;
+      background: rgba(255, 69, 58, 0.15);
       color: #FF453A;
-      border: 1px solid rgba(255, 69, 58, 0.2);
-      display: block;
+      border: 1px solid rgba(255, 69, 58, 0.25);
     }
-    .footer {
-      margin-top: 32px;
-      font-size: 12px;
-      color: #48484A;
-      text-align: center;
+    .status-toast.info {
+      display: block;
+      background: rgba(10, 132, 255, 0.15);
+      color: #0A84FF;
+      border: 1px solid rgba(10, 132, 255, 0.25);
+    }
+    /* Conflict modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      z-index: 999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-card {
+      background: #1C1C1E;
+      border: 1px solid #3A3A3C;
+      border-radius: 24px;
+      padding: 24px;
+      max-width: 380px;
+      width: 100%;
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.9);
     }
   </style>
 </head>
 <body>
+
   <div class="card">
-    <h1>Post Announcement</h1>
-    <p>Overlay a floating greeting or message across your Portal photo frame.</p>
-    
-    <div class="field-group">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <label for="code" style="margin-bottom: 0;">Family Network / Broadcast Channel</label>
-        <span id="channel-badge" style="font-size: 11px; padding: 2px 8px; border-radius: 6px; background: rgba(10,132,255,0.2); color: #0A84FF; font-weight: 600;">Active</span>
+    <!-- Top Header -->
+    <div class="header">
+      <div class="header-left">
+        <div class="status-dot"></div>
+        <div>
+          <h1 class="header-title">Portal Frame</h1>
+          <p class="header-sub">Family Network: <span id="current-family" class="channel-name">kakkar</span></p>
+        </div>
       </div>
-      <input type="text" id="code" placeholder="e.g. kakkar or portal_broadcast" autocomplete="off" oninput="handleChannelInput()">
-      <div style="display: flex; gap: 8px; margin-top: 8px;">
-        <button id="switch-channel-btn" type="button" class="btn-secondary" style="width: 100%; height: 42px; font-size: 13px; border-color: #5856D6; color: #5856D6;" onclick="switchPortalsChannel()">
-          📡 Set Portals to this Channel
-        </button>
-      </div>
-      <button id="whatsapp-btn" type="button" onclick="shareToWhatsApp()" style="background-color: #25D366; color: #FFFFFF; font-weight: 700; border: none; border-radius: 12px; height: 46px; width: 100%; margin-top: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.25);">
-        📲 Share Link to Family WhatsApp
+      <button class="setup-btn tap-scale" onclick="switchTab('settings')">
+        ⚙️ Setup
       </button>
     </div>
 
-    <div class="field-group">
-      <label for="message">Announcement Message</label>
-      <div class="emoji-row">
-        <span class="emoji-pill" onclick="insertEmoji('🎉')">🎉</span>
-        <span class="emoji-pill" onclick="insertEmoji('🎂')">🎂</span>
-        <span class="emoji-pill" onclick="insertEmoji('❤️')">❤️</span>
-        <span class="emoji-pill" onclick="insertEmoji('✨')">✨</span>
-        <span class="emoji-pill" onclick="insertEmoji('🏡')">🏡</span>
-        <span class="emoji-pill" onclick="insertEmoji('⭐')">⭐</span>
-        <span class="emoji-pill" onclick="insertEmoji('🎄')">🎄</span>
-        <span class="emoji-pill" onclick="insertEmoji('🎃')">🎃</span>
+    <!-- Segmented Navigation Tabs -->
+    <div class="tabs-nav">
+      <button id="tab-btn-message" class="tab-btn active tap-scale" onclick="switchTab('message')">
+        <span>💌</span> Greeting
+      </button>
+      <button id="tab-btn-photos" class="tab-btn inactive tap-scale" onclick="switchTab('photos')">
+        <span>📸</span> Photos
+      </button>
+      <button id="tab-btn-settings" class="tab-btn inactive tap-scale" onclick="switchTab('settings')">
+        <span>⚙️</span> Tools
+      </button>
+    </div>
+
+    <!-- ================= TAB 1: GREETING & MESSAGE ================= -->
+    <div id="tab-message" class="tab-pane">
+      <div>
+        <label class="field-label">1-Tap Greeting (Tap to choose)</label>
+        <div class="preset-grid">
+          <button class="preset-btn tap-scale" onclick="setGreeting('🎂 Happy Birthday! 🎉')">
+            <span class="preset-emoji">🎂</span>
+            <span>Birthday!</span>
+          </button>
+          <button class="preset-btn tap-scale" onclick="setGreeting('❤️ Love you so much! ✨')">
+            <span class="preset-emoji">❤️</span>
+            <span>Love you!</span>
+          </button>
+          <button class="preset-btn tap-scale" onclick="setGreeting('☀️ Good Morning! Have a great day ☕')">
+            <span class="preset-emoji">☀️</span>
+            <span>Good Morning!</span>
+          </button>
+          <button class="preset-btn tap-scale" onclick="setGreeting('🏡 Welcome Home! ✨')">
+            <span class="preset-emoji">🏡</span>
+            <span>Welcome Home!</span>
+          </button>
+        </div>
       </div>
 
-      <div class="emoji-row" style="margin-top: 4px; margin-bottom: 12px;">
-        <span class="emoji-pill" style="font-size: 13px; font-weight: 600;" onclick="prefillMessage('🎉 Happy Birthday! 🎂')">🎉 Birthday 🎂</span>
-        <span class="emoji-pill" style="font-size: 13px; font-weight: 600;" onclick="prefillMessage('✨ Welcome Home! 🏡')">✨ Welcome 🏡</span>
-        <span class="emoji-pill" style="font-size: 13px; font-weight: 600;" onclick="prefillMessage('❤️ Happy Anniversary! 🥂')">❤️ Anniversary 🥂</span>
-      </div>
-
-      <textarea id="message" placeholder="e.g. Happy 30th Birthday Sarah! 🎂🎉" maxlength="200" oninput="updateCharCount()"></textarea>
-      <div id="char-count" class="char-count">0 / 200</div>
-      
-      <div class="action-row">
-        <button id="paste-btn" type="button" class="btn-secondary" onclick="pasteFromClipboard()">📋 Paste</button>
-        <button id="clear-btn" type="button" class="btn-secondary" onclick="clearMessage()">✕ Clear</button>
-      </div>
-
-      <div class="field-group" style="margin-top: 16px;">
-        <label for="showcase-select">📍 Showcase Photos on Frame</label>
-        <select id="showcase-select" style="width: 100%; height: 50px; padding: 12px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 15px; outline: none; margin-bottom: 8px;" onchange="handleShowcaseChange()">
-          <option value="none">Keep current showcase mode</option>
-          <option value="month_year">Showcase specific Month & Year (e.g. Sep 2024)...</option>
-          <option value="custom_date_range">Showcase exact Date Span (e.g. Sep 1 - Sep 10)...</option>
-          <option value="recent_trip">Showcase recent trip / visit</option>
-          <option value="last_7_days">Showcase last 7 days</option>
-          <option value="last_30_days">Showcase last 30 days</option>
-          <option value="custom_location">Showcase specific city / location...</option>
-          <option value="all">Reset to all photos</option>
-        </select>
+      <div>
+        <label class="field-label">Your Note</label>
+        <input type="text" id="msg-input" placeholder="Type a note or pick one above..." class="input-text" maxlength="200">
         
-        <div id="month-year-group" style="display: none; gap: 8px; margin-top: 4px;">
-          <select id="showcase-month" style="flex: 1; height: 48px; padding: 10px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 15px; outline: none;">
-            <option value="01">January</option>
-            <option value="02">February</option>
-            <option value="03">March</option>
-            <option value="04">April</option>
-            <option value="05">May</option>
-            <option value="06">June</option>
-            <option value="07">July</option>
-            <option value="08">August</option>
-            <option value="09" selected>September</option>
-            <option value="10">October</option>
-            <option value="11">November</option>
-            <option value="12">December</option>
-          </select>
-          <select id="showcase-year" style="flex: 1; height: 48px; padding: 10px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 15px; outline: none;">
-            <option value="2026">2026</option>
-            <option value="2025">2025</option>
-            <option value="2024" selected>2024</option>
-            <option value="2023">2023</option>
-            <option value="2022">2022</option>
-            <option value="2021">2021</option>
-          </select>
+        <div class="pill-actions">
+          <button class="pill-btn tap-scale" onclick="pasteClipboard()">
+            <span>📋</span> Paste
+          </button>
+          <button class="pill-btn tap-scale" onclick="clearText()">
+            <span>✕</span> Clear
+          </button>
+        </div>
+      </div>
+
+      <button id="send-msg-btn" class="btn-send tap-scale" onclick="sendGreeting()">
+        <span>📢</span> Show Greeting on Frame
+      </button>
+
+      <button class="btn-clear-frame tap-scale" onclick="removeAnnouncement()">
+        ✕ Remove active banner from Frame
+      </button>
+    </div>
+
+    <!-- ================= TAB 2: PHOTOS & SHOWCASE ================= -->
+    <div id="tab-photos" class="tab-pane hidden">
+      <!-- Section A: Showcase Photos on Frame -->
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">
+            <span>📍</span> Choose Photos to Play
+          </div>
+          <span class="badge-sub">No note required</span>
+        </div>
+        <p class="section-desc">
+          Pick which memories play on your frame. Tap any preset below and press <b>Play on Frame</b>:
+        </p>
+
+        <!-- 1-Tap Showcase Chips -->
+        <div class="showcase-chips">
+          <button id="chip-recent_trip" class="showcase-chip active tap-scale" onclick="selectShowcase('recent_trip')">
+            <span class="showcase-chip-title">✈️ Recent Vacation</span>
+            <span class="showcase-chip-desc">Latest trip photos</span>
+          </button>
+          <button id="chip-month_year" class="showcase-chip tap-scale" onclick="selectShowcase('month_year')">
+            <span class="showcase-chip-title">🗓️ Pick a Month</span>
+            <span class="showcase-chip-desc">e.g. Sep 2024</span>
+          </button>
+          <button id="chip-last_30_days" class="showcase-chip tap-scale" onclick="selectShowcase('last_30_days')">
+            <span class="showcase-chip-title">⏳ Last 30 Days</span>
+            <span class="showcase-chip-desc">This month's photos</span>
+          </button>
+          <button id="chip-all" class="showcase-chip tap-scale" onclick="selectShowcase('all')">
+            <span class="showcase-chip-title">🔄 All Photos</span>
+            <span class="showcase-chip-desc">Full shuffled album</span>
+          </button>
         </div>
 
-        <div id="date-range-group" style="display: none; gap: 8px; margin-top: 4px; flex-direction: column;">
-          <div style="display: flex; gap: 8px;">
-            <div style="flex: 1;">
-              <label style="font-size: 11px; margin-bottom: 4px; display: block;">Start Date</label>
-              <input type="date" id="range-start" style="width: 100%; height: 48px; padding: 8px 12px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 14px; outline: none; box-sizing: border-box;" />
-            </div>
-            <div style="flex: 1;">
-              <label style="font-size: 11px; margin-bottom: 4px; display: block;">End Date</label>
-              <input type="date" id="range-end" style="width: 100%; height: 48px; padding: 8px 12px; background-color: #121216; color: #FFFFFF; border: 1px solid #2C2C2E; border-radius: 12px; font-size: 14px; outline: none; box-sizing: border-box;" />
-            </div>
+        <!-- Month & Year Selector -->
+        <div id="month-picker-container" class="picker-row hidden">
+          <div>
+            <label class="field-label" style="margin-bottom: 4px;">Month</label>
+            <select id="sc-month" class="select-input">
+              <option value="01">January</option>
+              <option value="02">February</option>
+              <option value="03">March</option>
+              <option value="04">April</option>
+              <option value="05">May</option>
+              <option value="06">June</option>
+              <option value="07">July</option>
+              <option value="08">August</option>
+              <option value="09" selected>September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" style="margin-bottom: 4px;">Year</label>
+            <select id="sc-year" class="select-input">
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024" selected>2024</option>
+              <option value="2023">2023</option>
+              <option value="2022">2022</option>
+              <option value="2021">2021</option>
+            </select>
           </div>
         </div>
 
-        <input type="text" id="custom-location-input" placeholder="e.g. Paris, London, Portugal" style="display: none; margin-top: 4px;" />
+        <button id="showcase-btn" class="btn-play-showcase tap-scale" onclick="triggerShowcaseUpdate()">
+          <span>▶️</span> Play Selected Photos on Frame
+        </button>
       </div>
 
-      <div class="field-group" style="margin-top: 16px; border-top: 1px solid #2C2C2E; padding-top: 16px;">
-        <label for="album-url-input">📁 Sync Album to All Portals</label>
-        <input type="url" id="album-url-input" placeholder="Paste Google Photos or iCloud album link..." style="margin-bottom: 8px; width: 100%; box-sizing: border-box;" />
-        <div style="display: flex; gap: 16px; font-size: 13px; color: #A1A1A6; margin-bottom: 8px;">
-          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <input type="radio" name="album-action" value="replace" checked style="accent-color: #0A84FF;" /> Replace current album
+      <!-- Section B: Share New Album Link -->
+      <div class="section-card neutral">
+        <div class="section-title neutral">
+          <span>📁</span> Add a New Photo Album
+        </div>
+        <p class="section-desc">
+          Paste a Google Photos or iCloud shared link to display photos on the frame:
+        </p>
+
+        <input type="url" id="album-input" placeholder="https://photos.app.goo.gl/..." class="input-text">
+        
+        <div class="pill-actions">
+          <button class="pill-btn tap-scale" onclick="pasteAlbum()">
+            <span>📋</span> Paste Link
+          </button>
+          <button class="pill-btn tap-scale" onclick="document.getElementById('album-input').value = ''">
+            <span>✕</span> Clear
+          </button>
+        </div>
+
+        <div class="radio-box">
+          <label class="radio-label">
+            <input type="radio" name="album-mode" value="replace" checked style="accent-color: #0A84FF;">
+            <span>Show only this album (replaces current)</span>
           </label>
-          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <input type="radio" name="album-action" value="add" style="accent-color: #0A84FF;" /> Append to albums
+          <label class="radio-label">
+            <input type="radio" name="album-mode" value="add" style="accent-color: #0A84FF;">
+            <span>Add to existing albums</span>
           </label>
         </div>
-        <button id="sync-album-btn" type="button" class="btn-secondary" style="width: 100%; border-color: #0A84FF; color: #0A84FF;" onclick="syncAlbum()">Sync Album to Portals</button>
-      </div>
 
-      <button id="send-btn" type="button" class="btn-primary" style="margin-top: 20px;" onclick="requestBroadcast()">📢 Broadcast to Portals</button>
-      <button id="update-btn" type="button" class="btn-secondary" style="margin-top: 8px; width: 100%; border-color: #30D158; color: #30D158;" onclick="triggerOtaUpdate()">⚡ Check & Update All Portals</button>
-      <button id="remove-btn" type="button" class="btn-remove" onclick="removeAnnouncement()">Remove Active Banner</button>
+        <button id="album-btn" class="btn-send-album tap-scale" onclick="sendAlbum()">
+          <span>🖼️</span> Send Album to Frame
+        </button>
+      </div>
     </div>
 
-    <div id="status-box" class="status"></div>
+    <!-- ================= TAB 3: TOOLS & SETUP ================= -->
+    <div id="tab-settings" class="tab-pane hidden">
+      <!-- WhatsApp Family Share -->
+      <div class="section-card emerald">
+        <div class="section-title emerald">
+          <span>📲</span> Family WhatsApp Invite
+        </div>
+        <p class="section-desc">
+          Send a 1-tap link to grandparents or relatives so they can send greetings directly without entering passwords or pairing codes.
+        </p>
+        <button class="btn-whatsapp tap-scale" onclick="shareToWhatsApp()">
+          <span>💬</span> Share Link on WhatsApp
+        </button>
+      </div>
+
+      <!-- Family Network Channel -->
+      <div class="section-card neutral">
+        <label class="field-label">Family Network Name</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="family-input" value="kakkar" class="input-text" style="flex: 1;">
+          <button class="pill-btn tap-scale" style="background: #5856D6; color: #FFF; width: 90px;" onclick="switchFamily()">
+            Switch
+          </button>
+        </div>
+        <p class="section-desc" style="margin-top: 4px;">
+          All frames in your family listen to this channel. Switching will remotely command your frames to join the new network.
+        </p>
+      </div>
+
+      <!-- Silent Update Trigger -->
+      <div class="section-card neutral">
+        <div class="section-title neutral">
+          <span>⚡</span> Silent Software Update
+        </div>
+        <p class="section-desc">
+          Commands all family Portals worldwide to check GitHub for updates and silently install in the background.
+        </p>
+        <button id="update-btn" class="btn-update-ota tap-scale" onclick="triggerSilentUpdate()">
+          Check & Update All Portals
+        </button>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="status-toast" class="status-toast"></div>
   </div>
 
   <!-- Conflict Confirmation Modal -->
-  <div id="conflict-modal" style="display: none; position: fixed; inset: 0; background-color: rgba(0,0,0,0.75); z-index: 999; align-items: center; justify-content: center; padding: 20px;">
-    <div style="background-color: #1C1C1E; border: 1px solid #3A3A3C; border-radius: 20px; padding: 24px; max-width: 400px; width: 100%; box-shadow: 0 16px 40px rgba(0,0,0,0.8);">
-      <h3 style="color: #FFD60A; font-size: 18px; margin-bottom: 8px;">⚠️ Active Announcement Detected</h3>
-      <p style="font-size: 14px; color: #A1A1A6; margin-bottom: 12px; text-align: left;">Another announcement is currently displaying on your Portal frame:</p>
-      <div id="conflict-existing-msg" style="background-color: #121216; border: 1px solid #2C2C2E; border-radius: 10px; padding: 12px; color: #FFFFFF; font-size: 15px; font-weight: 600; margin-bottom: 16px; word-break: break-word;"></div>
-      <p style="font-size: 13px; color: #8E8E93; margin-bottom: 18px; text-align: left;">Do you want to override it with your new broadcast?</p>
+  <div id="conflict-modal" class="modal-overlay">
+    <div class="modal-card">
+      <h3 style="color: #FFD60A; font-size: 17px; margin-bottom: 8px; font-weight: 700;">⚠️ Active Greeting Detected</h3>
+      <p style="font-size: 13px; color: #A1A1A6; margin-bottom: 12px; line-height: 1.4;">Another announcement is currently displaying on your Portal frame:</p>
+      <div id="conflict-existing-msg" style="background: #121216; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px; color: #FFFFFF; font-size: 14px; font-weight: 600; margin-bottom: 16px; word-break: break-word;"></div>
+      <p style="font-size: 13px; color: #8E8E93; margin-bottom: 16px;">Do you want to override it with your new greeting?</p>
       <div style="display: flex; gap: 10px;">
-        <button type="button" class="btn-secondary" onclick="dismissConflictModal()">Keep Existing</button>
-        <button type="button" class="btn-primary" style="margin-top: 0;" onclick="confirmOverride()">✓ Replace Banner</button>
+        <button type="button" class="pill-btn" style="flex: 1;" onclick="dismissConflictModal()">Keep Existing</button>
+        <button type="button" class="btn-play-showcase" style="flex: 1; margin-top: 0; font-size: 13px;" onclick="confirmOverride()">✓ Replace Banner</button>
       </div>
-    </div>
-    <div style="margin-top: 24px; padding: 14px; background: rgba(255,255,255,0.05); border-radius: 12px; font-size: 13px; color: #8E8E93; line-height: 1.5; text-align: left;">
-      <div style="font-weight: 700; color: #FFFFFF; margin-bottom: 6px;">💡 How to Update & Subscribe to Channels</div>
-      <div>• <b>Update Portal App:</b> On the Portal, go to <i>Settings → Software update & system (top-right card)</i> and tap <b>Check for updates</b>, then <b>Download & Install</b>. Or click <i>"⚡ Check & Update All Portals"</i> above.</div>
-      <div style="margin-top: 6px;">• <b>Subscribe to Channel:</b> On the Portal (v1.6.15+), go to <i>Settings → Family Network</i>. Or enter your family name above and tap <i>"📡 Set Portals to this Channel"</i> to switch them remotely!</div>
     </div>
   </div>
 
-  <div class="footer">Portal Frame Screensaver</div>
-
   <script>
+    // --- State & URL Parameters ---
     const urlParams = new URLSearchParams(window.location.search);
-    let codeParam = urlParams.get('channel') || urlParams.get('code');
-    let keyParam = urlParams.get('key'); // Optional AES key
+    let channelParam = urlParams.get('channel') || urlParams.get('code');
+    let keyParam = urlParams.get('key');
     const savedChannel = localStorage.getItem('portal_frame_channel');
 
-    const codeInput = document.getElementById('code');
-    let currentActiveChannel = (codeParam || savedChannel || 'portal_broadcast').trim().toLowerCase().replace(/ /g, '_');
-    codeInput.value = currentActiveChannel;
+    let currentActiveChannel = (channelParam || savedChannel || 'portal_broadcast').trim().toLowerCase().replace(/ /g, '_');
+    let activeShowcase = 'recent_trip';
+    let pendingPayload = '';
 
-    function handleChannelInput() {
-      const val = codeInput.value.trim().toLowerCase().replace(/ /g, '_');
-      if (val && val !== codeParam) {
-        keyParam = null; // Invalidate QR key when channel changes
-      }
-      if (val) {
-        localStorage.setItem('portal_frame_channel', val);
-      }
-    }
+    // Initialize UI with channel
+    document.getElementById('current-family').innerText = currentActiveChannel;
+    document.getElementById('family-input').value = currentActiveChannel;
 
-    async function switchPortalsChannel() {
-      const newChannel = codeInput.value.trim().toLowerCase().replace(/ /g, '_');
-      const statusBox = document.getElementById('status-box');
-      if (!newChannel) {
-        statusBox.innerText = 'Please enter a family channel name first (e.g. kakkar).';
-        statusBox.className = 'status error';
-        statusBox.style.display = 'block';
-        return;
-      }
-      statusBox.innerText = `Sending switch command to channel '${currentActiveChannel}'...`;
-      statusBox.className = 'status';
-      statusBox.style.display = 'block';
-
-      const prevChannel = currentActiveChannel;
-      const aesKey = await getAesKey(prevChannel);
-      const hex = await encryptData(`#channel:${newChannel}`, aesKey);
-      if (!hex) {
-        statusBox.innerText = 'Encryption failed. Try again.';
-        statusBox.className = 'status error';
-        return;
-      }
-      try {
-        const response = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(prevChannel)}/${hex}`, {
-          method: 'POST',
-          headers: { 'Content-Length': '0' }
-        });
-        const result = await response.text();
-        if (result === 'true') {
-          currentActiveChannel = newChannel;
-          keyParam = null;
-          localStorage.setItem('portal_frame_channel', newChannel);
-          statusBox.innerText = `✓ Switched! Connected Portals on '${prevChannel}' were commanded to join '${newChannel}'. Now broadcasting on '${newChannel}'.`;
-          statusBox.className = 'status success';
+    // --- Tab Navigation ---
+    function switchTab(tab) {
+      ['message', 'photos', 'settings'].forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        const btn = document.getElementById('tab-btn-' + t);
+        if (t === tab) {
+          el.classList.remove('hidden');
+          btn.className = 'tab-btn active tap-scale';
         } else {
-          statusBox.innerText = 'Could not reach relay service. Please try again.';
-          statusBox.className = 'status error';
+          el.classList.add('hidden');
+          btn.className = 'tab-btn inactive tap-scale';
         }
-      } catch (e) {
-        statusBox.innerText = 'Network error while switching channel.';
-        statusBox.className = 'status error';
-      }
+      });
+      document.getElementById('status-toast').style.display = 'none';
     }
 
-    function insertEmoji(emoji) {
-      const msg = document.getElementById('message');
-      msg.value += emoji;
-      msg.focus();
-      updateCharCount();
+    // --- Message Helpers ---
+    function setGreeting(text) {
+      document.getElementById('msg-input').value = text;
     }
 
-    function updateCharCount() {
-      const msg = document.getElementById('message');
-      document.getElementById('char-count').innerText = `${msg.value.length} / 200`;
+    function clearText() {
+      document.getElementById('msg-input').value = '';
     }
 
-    function clearMessage() {
-      const msg = document.getElementById('message');
-      msg.value = '';
-      msg.focus();
-      updateCharCount();
+    function pasteClipboard() {
+      navigator.clipboard?.readText?.().then(text => {
+        if (text) document.getElementById('msg-input').value = text;
+      }).catch(() => {});
     }
 
-    async function pasteFromClipboard() {
-      try {
-        if (navigator.clipboard && navigator.clipboard.readText) {
-          const text = await navigator.clipboard.readText();
-          if (text) {
-            document.getElementById('message').value = text;
-            updateCharCount();
-          }
+    function pasteAlbum() {
+      navigator.clipboard?.readText?.().then(text => {
+        if (text) document.getElementById('album-input').value = text;
+      }).catch(() => {});
+    }
+
+    // --- Showcase Selection ---
+    function selectShowcase(mode) {
+      activeShowcase = mode;
+      ['recent_trip', 'month_year', 'last_30_days', 'all'].forEach(m => {
+        const chip = document.getElementById('chip-' + m);
+        if (m === mode) {
+          chip.classList.add('active');
+        } else {
+          chip.classList.remove('active');
         }
-      } catch (_) {}
+      });
+      document.getElementById('month-picker-container').classList.toggle('hidden', mode !== 'month_year');
+    }
+
+    // --- Crypto Utils (Web Crypto API) ---
+    async function getAesKey(channel) {
+      if (keyParam) return keyParam;
+      const ch = (channel || currentActiveChannel || 'portal_broadcast').trim().toLowerCase();
+      if (!ch || ch === 'portal_broadcast') return 'PortalGlobal2026';
+      const enc = new TextEncoder();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode('PortalFamilyKey_' + ch));
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return hex.substring(0, 16);
     }
 
     async function importKey(keyStr) {
       const enc = new TextEncoder();
       const keyBuf = enc.encode(keyStr);
       return await window.crypto.subtle.importKey(
-        "raw", keyBuf, { name: "AES-CBC" }, false, ["encrypt"]
+        "raw", keyBuf, { name: "AES-CBC" }, false, ["encrypt", "decrypt"]
       );
     }
 
@@ -484,21 +826,6 @@
       }
     }
 
-    function prefillMessage(text) {
-      const msg = document.getElementById('message');
-      msg.value = text;
-      msg.focus();
-      updateCharCount();
-    }
-
-    function handleShowcaseChange() {
-      const mode = document.getElementById('showcase-select').value;
-      document.getElementById('month-year-group').style.display = (mode === 'month_year') ? 'flex' : 'none';
-      document.getElementById('date-range-group').style.display = (mode === 'custom_date_range') ? 'flex' : 'none';
-      document.getElementById('custom-location-input').style.display = (mode === 'custom_location') ? 'block' : 'none';
-      if (mode === 'custom_location') document.getElementById('custom-location-input').focus();
-    }
-
     async function decryptData(hexStr, keyStr) {
       try {
         if (!hexStr || hexStr.length < 34) return '';
@@ -518,112 +845,21 @@
       }
     }
 
-    let pendingPayload = '';
-
-    async function getAesKey(channel) {
-      if (keyParam) return keyParam;
-      const ch = (channel || 'portal_broadcast').trim().toLowerCase();
-      if (!ch || ch === 'portal_broadcast') return 'PortalGlobal2026';
-      const enc = new TextEncoder();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode('PortalFamilyKey_' + ch));
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      return hex.substring(0, 16);
-    }
-
-    async function shareToWhatsApp() {
-      const code = document.getElementById('code').value.trim() || 'portal_broadcast';
-      const key = await getAesKey(code);
-      const shareUrl = `https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=${encodeURIComponent(code)}&key=${encodeURIComponent(key)}`;
-      const shareText = `🖼️ Join our Family Portal Frame! Tap this link to send photos, holiday showcases, and greetings to our Portals:\n${shareUrl}`;
-      
-      if (navigator.share) {
-        try {
-          await navigator.share({
-            title: 'Join Family Frame',
-            text: shareText,
-            url: shareUrl
-          });
-          return;
-        } catch (_) {}
-      }
-      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
-    }
-
-    async function syncAlbum() {
-      const urlInput = document.getElementById('album-url-input');
-      const url = urlInput.value.trim();
-      if (!url) {
-        const statusBox = document.getElementById('status-box');
-        statusBox.innerText = 'Please paste a Google Photos or iCloud shared album link.';
-        statusBox.className = 'status error';
-        statusBox.style.display = 'block';
-        return;
-      }
-      const isReplace = document.querySelector('input[name="album-action"]:checked').value === 'replace';
-      const tag = isReplace ? `#setalbum:${url}` : `#addalbum:${url}`;
-      await sendPayload(tag);
-      urlInput.value = '';
-    }
-
-    async function triggerOtaUpdate() {
-      if (confirm("Send update command to all Portals? They will check GitHub and install the latest release in the background.")) {
-        await sendPayload('#update');
-      }
-    }
-
-    async function requestBroadcast() {
-      let text = document.getElementById('message').value.trim();
-      const showcaseMode = document.getElementById('showcase-select').value;
-
-      if (showcaseMode === 'month_year') {
-        const m = document.getElementById('showcase-month').value;
-        const y = document.getElementById('showcase-year').value;
-        text += (text ? ' ' : '') + `#showcase:${y}-${m}`;
-      } else if (showcaseMode === 'custom_date_range') {
-        const start = document.getElementById('range-start').value;
-        const end = document.getElementById('range-end').value;
-        if (start && end) {
-          text += (text ? ' ' : '') + `#showcase:${start}..${end}`;
-        }
-      } else if (showcaseMode === 'recent_trip') {
-        text += (text ? ' ' : '') + '#showcase:recent_trip';
-      } else if (showcaseMode === 'last_7_days') {
-        text += (text ? ' ' : '') + '#showcase:last_7_days';
-      } else if (showcaseMode === 'last_30_days') {
-        text += (text ? ' ' : '') + '#showcase:last_30_days';
-      } else if (showcaseMode === 'all') {
-        text += (text ? ' ' : '') + '#showcase:all';
-      } else if (showcaseMode === 'custom_location') {
-        const loc = document.getElementById('custom-location-input').value.trim().replace(/\s+/g, '_');
-        if (loc) {
-          text += (text ? ' ' : '') + '#showcase:' + loc;
-        }
-      }
-
+    // --- Action Handlers ---
+    async function sendGreeting() {
+      const text = document.getElementById('msg-input').value.trim();
       if (!text) {
-        const statusBox = document.getElementById('status-box');
-        statusBox.innerText = 'Please enter an announcement message or select a showcase.';
-        statusBox.className = 'status error';
+        showToast('Please type a note or choose a greeting above.', 'error');
         return;
       }
-
-      // Pre-flight check: optimistic concurrency check on cloud relay
-      const codeInput = document.getElementById('code');
-      const code = codeInput.value.trim();
-      const aesKey = await getAesKey(code);
-
-      if (!code) {
-        await sendPayload(text);
-        return;
-      }
-
-      const btn = document.getElementById('send-btn');
+      // Optimistic concurrency conflict check against cloud relay
+      const btn = document.getElementById('send-msg-btn');
       btn.disabled = true;
       btn.innerText = 'Checking Frame state...';
+      const aesKey = await getAesKey(currentActiveChannel);
 
       try {
-        const resp = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/${encodeURIComponent(code)}`);
+        const resp = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/${encodeURIComponent(currentActiveChannel)}`);
         let currentHex = (await resp.text()).trim();
         if (currentHex.startsWith('"') && currentHex.endsWith('"')) {
           currentHex = currentHex.substring(1, currentHex.length - 1);
@@ -631,9 +867,8 @@
         if (currentHex && currentHex !== 'null') {
           const currentMsg = await decryptData(currentHex, aesKey);
           if (currentMsg && currentMsg !== '__CLEAR__' && currentMsg !== text) {
-            // Conflict detected! Active banner already on Portal
             btn.disabled = false;
-            btn.innerText = '📢 Broadcast to Portals';
+            btn.innerHTML = '<span>📢</span> Show Greeting on Frame';
             pendingPayload = text;
             document.getElementById('conflict-existing-msg').innerText = currentMsg;
             document.getElementById('conflict-modal').style.display = 'flex';
@@ -643,8 +878,7 @@
       } catch (_) {}
 
       btn.disabled = false;
-      btn.innerText = '📢 Broadcast to Portals';
-      // No conflict or empty relay, proceed directly
+      btn.innerHTML = '<span>📢</span> Show Greeting on Frame';
       await sendPayload(text);
     }
 
@@ -661,69 +895,147 @@
       }
     }
 
-    async function removeAnnouncement() {
-      await sendPayload('__CLEAR__');
+    async function triggerShowcaseUpdate() {
+      let tag = '#showcase:all';
+      let desc = 'All Photos';
+      if (activeShowcase === 'recent_trip') {
+        tag = '#showcase:recent_trip';
+        desc = 'Latest Vacation Photos';
+      } else if (activeShowcase === 'month_year') {
+        const m = document.getElementById('sc-month').value;
+        const y = document.getElementById('sc-year').value;
+        const mName = document.getElementById('sc-month').options[document.getElementById('sc-month').selectedIndex].text;
+        tag = `#showcase:${y}-${m}`;
+        desc = `${mName} ${y}`;
+      } else if (activeShowcase === 'last_30_days') {
+        tag = '#showcase:last_30_days';
+        desc = 'Last 30 Days';
+      } else if (activeShowcase === 'all') {
+        tag = '#showcase:all';
+        desc = 'All Album Photos';
+      }
+
+      await sendPayload(tag, `✓ Frame updated! Now playing: ${desc}`);
     }
 
-    async function sendPayload(content) {
-      const codeInput = document.getElementById('code');
-      const btn = document.getElementById('send-btn');
-      const statusBox = document.getElementById('status-box');
-
-      statusBox.className = 'status';
-      statusBox.style.display = 'none';
-
-      const code = codeInput.value.trim();
-      const aesKey = await getAesKey(code);
-
-      if (!code) {
-        statusBox.innerText = 'Please enter a valid pairing code or broadcast channel.';
-        statusBox.classList.add('error');
+    async function sendAlbum() {
+      const url = document.getElementById('album-input').value.trim();
+      if (!url) {
+        showToast('Please paste a Google Photos or iCloud link first.', 'error');
         return;
       }
+      const isReplace = document.querySelector('input[name="album-mode"]:checked').value === 'replace';
+      const tag = isReplace ? `#setalbum:${url}` : `#addalbum:${url}`;
+      await sendPayload(tag, '✓ Album sent! Portals are downloading and showing photos.');
+      document.getElementById('album-input').value = '';
+    }
 
-      btn.disabled = true;
-      btn.innerText = 'Broadcasting...';
+    async function removeAnnouncement() {
+      await sendPayload('__CLEAR__', '✓ Active banner removed from Frame.');
+      clearText();
+    }
 
-      const hex = await encryptData(content, aesKey);
-      if (!hex) {
-        statusBox.innerText = 'Encryption failed. Please try again.';
-        statusBox.classList.add('error');
-        btn.disabled = false;
-        btn.innerText = '📢 Broadcast to Portals';
+    async function triggerSilentUpdate() {
+      if (confirm("Send update command to all Portals? Connected frames will download and install the latest build in the background.")) {
+        await sendPayload('#update', '✓ Update command sent! Connected Portals will update silently.');
+      }
+    }
+
+    async function switchFamily() {
+      const newChannel = document.getElementById('family-input').value.trim().toLowerCase().replace(/ /g, '_');
+      if (!newChannel) {
+        showToast('Please enter a family network name.', 'error');
         return;
       }
+      showToast(`Commanding frames on '${currentActiveChannel}' to switch to '${newChannel}'...`, 'info');
+      const prevChannel = currentActiveChannel;
+      const aesKey = await getAesKey(prevChannel);
+      const hex = await encryptData(`#channel:${newChannel}`, aesKey);
 
       try {
-        const response = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(code)}/${hex}`, {
+        const response = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(prevChannel)}/${hex}`, {
           method: 'POST',
           headers: { 'Content-Length': '0' }
         });
         const result = await response.text();
         if (result === 'true') {
-          if (content === '__CLEAR__') {
-            statusBox.innerText = 'Announcement cleared across all connected Portals worldwide!';
-            document.getElementById('message').value = '';
-            updateCharCount();
-          } else if (content.startsWith('#setalbum:') || content.startsWith('#addalbum:')) {
-            statusBox.innerText = 'Success! Album sent to all Portals. Frames are now downloading photos!';
-          } else if (content === '#update') {
-            statusBox.innerText = 'Update command sent! All connected Portals will download and install the latest build in the background.';
-          } else {
-            statusBox.innerText = 'Success! Your announcement has been broadcast to all connected Portals!';
-          }
-          statusBox.classList.add('success');
+          currentActiveChannel = newChannel;
+          keyParam = null;
+          localStorage.setItem('portal_frame_channel', newChannel);
+          document.getElementById('current-family').innerText = newChannel;
+          showToast(`✓ Switched! Frames commanded to join '${newChannel}'.`, 'success');
         } else {
-          statusBox.innerText = 'Could not update relay. Please try again.';
-          statusBox.classList.add('error');
+          showToast('Could not reach relay service.', 'error');
         }
       } catch (e) {
-        statusBox.innerText = 'Network error. Please check your internet connection.';
-        statusBox.classList.add('error');
-      } finally {
-        btn.disabled = false;
-        btn.innerText = '📢 Broadcast to Portals';
+        showToast('Network error while switching channel.', 'error');
       }
+    }
+
+    async function shareToWhatsApp() {
+      const channel = currentActiveChannel;
+      const key = await getAesKey(channel);
+      const shareUrl = `https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=${encodeURIComponent(channel)}&key=${encodeURIComponent(key)}`;
+      const shareText = `🖼️ Join our Family Portal Frame! Tap this link to send photos, celebrations, and greetings to our Portals:\n${shareUrl}`;
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'Join Family Portal Frame',
+            text: shareText,
+            url: shareUrl
+          });
+          return;
+        } catch (_) {}
+      }
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
+    }
+
+    // --- Core Cloud Relay Dispatcher ---
+    async function sendPayload(content, customSuccessMsg) {
+      const toast = document.getElementById('status-toast');
+      const aesKey = await getAesKey(currentActiveChannel);
+
+      const hex = await encryptData(content, aesKey);
+      if (!hex) {
+        showToast('Encryption failed. Please try again.', 'error');
+        return;
+      }
+
+      showToast('Broadcasting to Frame...', 'info');
+
+      try {
+        const response = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(currentActiveChannel)}/${hex}`, {
+          method: 'POST',
+          headers: { 'Content-Length': '0' }
+        });
+        const result = await response.text();
+        if (result === 'true') {
+          if (customSuccessMsg) {
+            showToast(customSuccessMsg, 'success');
+          } else if (content === '__CLEAR__') {
+            showToast('✓ Active announcement removed from all frames.', 'success');
+          } else if (content.startsWith('#setalbum:') || content.startsWith('#addalbum:')) {
+            showToast('✓ Album sent! Connected Portals are downloading photos.', 'success');
+          } else if (content.startsWith('#showcase:')) {
+            showToast('✓ Frame playlist updated!', 'success');
+          } else if (content === '#update') {
+            showToast('✓ Update command sent! Portals updating in background.', 'success');
+          } else {
+            showToast(`✓ Sent! "${content}" is now floating on the Frame.`, 'success');
+          }
+        } else {
+          showToast('Could not update relay. Please try again.', 'error');
+        }
+      } catch (e) {
+        showToast('Network error. Please check your connection.', 'error');
+      }
+    }
+
+    function showToast(msg, type) {
+      const toast = document.getElementById('status-toast');
+      toast.className = `status-toast ${type}`;
+      toast.innerText = msg;
     }
   </script>
 </body>
