@@ -228,13 +228,18 @@ class AlbumServer(
                         .put("source", mediaState.source)
                         .put("hasArt", mediaState.art != null)
 
+                    val cachedCity = prefs.getString(ConfigReceiver.KEY_DEVICE_CITY, "") ?: ""
+                    val cachedCountry = prefs.getString(ConfigReceiver.KEY_DEVICE_COUNTRY, "") ?: ""
+                    val city = if (cachedCity.isNotEmpty()) cachedCity else (GeoLocator.resolveLocation(context)?.city ?: "")
+                    val country = if (cachedCountry.isNotEmpty()) cachedCountry else (prefs.getString(ConfigReceiver.KEY_DEVICE_COUNTRY, "") ?: "")
+
                     val status = JSONObject()
                         .put("status", "ok")
                         .put("deviceId", ConfigReceiver.getDeviceShortId(context))
                         .put("name", ConfigReceiver.getDeviceDisplayName(context))
                         .put("nickname", prefs.getString(ConfigReceiver.KEY_CUSTOM_NICKNAME, "") ?: "")
-                        .put("city", prefs.getString(ConfigReceiver.KEY_DEVICE_CITY, "") ?: "")
-                        .put("country", prefs.getString(ConfigReceiver.KEY_DEVICE_COUNTRY, "") ?: "")
+                        .put("city", city)
+                        .put("country", country)
                         .put("version", UpdateChecker.currentVersionName(context))
                         .put("albumsCount", enabledAlbums.size)
                         .put("presenceEnabled", prefs.getBoolean(ConfigReceiver.KEY_PRESENCE_ENABLED, ConfigReceiver.DEFAULT_PRESENCE_ENABLED))
@@ -256,7 +261,10 @@ class AlbumServer(
                     }
                     val bodyStr = String(body)
                     val newName = parseFormParam(bodyStr, "name") ?: parseJsonField(bodyStr, "name") ?: ""
-                    prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_NICKNAME, newName.trim()).apply()
+                    if (newName.isNotEmpty()) {
+                        prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_NICKNAME, newName.trim()).apply()
+                        context.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_NICKNAME).putExtra("nickname", newName.trim()))
+                    }
                     val resp = JSONObject()
                         .put("status", "saved")
                         .put("name", ConfigReceiver.getDeviceDisplayName(context))
@@ -1512,6 +1520,7 @@ class AlbumServer(
             val server = AlbumServer(context.applicationContext, port)
             server.start()
             instance = server
+            GeoLocator.resolveLocationAsync(context.applicationContext)
             return server
         }
 

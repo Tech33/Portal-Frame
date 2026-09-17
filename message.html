@@ -889,11 +889,16 @@
       <div class="fleet-header">
         <div>
           <h2 style="font-size: 16px; font-weight: 700;">Global Fleet Management</h2>
-          <p style="font-size: 12px; color: #8E8E93;">5 Portals automatically discovered & geo-located</p>
+          <p style="font-size: 12px; color: #8E8E93;">Portals automatically discovered & geo-located in Dublin</p>
         </div>
-        <button class="fleet-refresh-btn tap-scale" onclick="refreshFleet()">
-          ↻ Refresh
-        </button>
+        <div style="display: flex; gap: 8px;">
+          <button class="fleet-refresh-btn tap-scale" onclick="resetFleetToDublin()" style="background: rgba(255,255,255,0.08); color: #8E8E93;">
+            Reset Roster
+          </button>
+          <button class="fleet-refresh-btn tap-scale" onclick="refreshFleet()">
+            ↻ Refresh
+          </button>
+        </div>
       </div>
 
       <!-- Portal Fleet Cards Container -->
@@ -972,6 +977,9 @@
       <div style="display: flex; gap: 10px;">
         <button type="button" class="pill-btn" style="flex: 1;" onclick="dismissConflictModal()">Keep Existing</button>
         <button type="button" class="btn-play-showcase" style="flex: 1; margin-top: 0; font-size: 13px;" onclick="confirmOverride()">✓ Replace Banner</button>
+      </div>
+    </div>
+  </div>
   <!-- Remote Rename Modal -->
   <div id="rename-modal" class="modal-overlay">
     <div class="modal-card">
@@ -999,19 +1007,22 @@
     let pendingPayload = '';
     let renamingDeviceId = null;
 
-    // Default 5-portal fleet roster across cities
+    // Default 3-portal fleet roster in Dublin
     const DEFAULT_FLEET = [
-      { id: '1', shortId: '8F2A', name: 'Portal (London - 8F2A)', city: 'London', country: 'United Kingdom', status: 'online', presence: 'occupied', mode: 'slideshow', host: (window.location.port === '8080' ? window.location.host : '') },
-      { id: '2', shortId: '3B1C', name: 'Portal (New Delhi - 3B1C)', city: 'New Delhi', country: 'India', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' },
-      { id: '3', shortId: '7D4E', name: 'Portal (Toronto - 7D4E)', city: 'Toronto', country: 'Canada', status: 'online', presence: 'vacant', mode: 'clock', host: '' },
-      { id: '4', shortId: '9A1F', name: 'Portal (Sydney - 9A1F)', city: 'Sydney', country: 'Australia', status: 'online', presence: 'vacant', mode: 'clock', host: '' },
-      { id: '5', shortId: '2C4B', name: 'Portal (San Francisco - 2C4B)', city: 'San Francisco', country: 'United States', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' }
+      { id: '1', shortId: 'Dublin-1', name: 'Portal (Dublin 1)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: (window.location.port === '8080' ? window.location.host : '') },
+      { id: '2', shortId: 'Dublin-2', name: 'Portal (Dublin 2)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' },
+      { id: '3', shortId: 'Dublin-3', name: 'Portal (Dublin 3)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' }
     ];
 
     let fleetDevices = [];
     try {
       const saved = localStorage.getItem('portal_fleet_devices');
-      fleetDevices = saved ? JSON.parse(saved) : DEFAULT_FLEET;
+      if (saved && !saved.includes('London') && !saved.includes('San Francisco')) {
+        fleetDevices = JSON.parse(saved);
+      } else {
+        fleetDevices = DEFAULT_FLEET;
+        localStorage.setItem('portal_fleet_devices', JSON.stringify(DEFAULT_FLEET));
+      }
     } catch (_) {
       fleetDevices = DEFAULT_FLEET;
     }
@@ -1366,13 +1377,18 @@
               <span>🖼️</span>
               <span>${d.name}</span>
             </div>
-            <button class="tap-scale" style="background:none; border:none; color:#0A84FF; font-size:14px; cursor:pointer;" onclick="openRenameModal('${d.id}')">
-              ✏️ Rename
-            </button>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button class="tap-scale" style="background:none; border:none; color:#0A84FF; font-size:14px; font-weight:600; cursor:pointer;" onclick="openRenameModal('${d.id}')">
+                ✏️ Rename
+              </button>
+              <button class="tap-scale" style="background:none; border:none; color:#FF453A; font-size:13px; cursor:pointer; opacity:0.75;" onclick="removePortalDevice('${d.id}')" title="Remove from list">
+                ✕
+              </button>
+            </div>
           </div>
           <div class="portal-card-meta">
             <span class="badge-pill badge-online">🟢 Online</span>
-            <span>📍 ${d.city || 'Worldwide'}</span>
+            <span>📍 ${d.city || 'Dublin'}</span>
             <span class="badge-pill ${d.presence === 'occupied' ? 'badge-presence' : 'badge-vacant'}">
               ${d.presence === 'occupied' ? '👤 Occupied' : '🌙 Room Empty (Clock)'}
             </span>
@@ -1399,6 +1415,8 @@
               const data = await resp.json();
               if (data.name) d.name = data.name;
               if (data.city) d.city = data.city;
+              if (data.country) d.country = data.country;
+              if (data.deviceId) d.shortId = data.deviceId;
               if (data.presence) d.presence = data.presence;
               if (data.media && data.media.isPlaying) {
                 updateMediaBar(data.media, d.name);
@@ -1419,10 +1437,14 @@
 
     function openRenameModal(deviceId) {
       renamingDeviceId = deviceId;
-      const d = fleetDevices.find(x => x.id === deviceId);
-      document.getElementById('rename-input').value = d ? (d.name || '') : '';
+      const d = fleetDevices.find(x => x.id === deviceId || x.shortId === deviceId);
+      const input = document.getElementById('rename-input');
+      input.value = d ? (d.name || '') : '';
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter') savePortalNickname();
+      };
       document.getElementById('rename-modal').style.display = 'flex';
-      document.getElementById('rename-input').focus();
+      setTimeout(() => input.focus(), 50);
     }
 
     function dismissRenameModal() {
@@ -1431,17 +1453,20 @@
     }
 
     async function savePortalNickname() {
-      const newName = document.getElementById('rename-input').value.trim();
+      const input = document.getElementById('rename-input');
+      const newName = input.value.trim();
       if (!newName || !renamingDeviceId) {
         dismissRenameModal();
         return;
       }
-      const d = fleetDevices.find(x => x.id === renamingDeviceId);
+      const d = fleetDevices.find(x => x.id === renamingDeviceId || x.shortId === renamingDeviceId);
       if (d) {
         d.name = newName;
         saveFleet();
         renderFleet();
         showToast(`✓ Renamed to "${newName}"`, 'success');
+
+        // 1. Direct HTTP call if reachable
         if (d.host) {
           try {
             await fetch(`http://${d.host}/api/fleet/rename`, {
@@ -1451,32 +1476,72 @@
             });
           } catch (_) {}
         }
+        // 2. Broadcast via family channel so any Portal anywhere in Dublin/worldwide renames itself
+        try {
+          const renameCmd = `#setname:${d.shortId || d.id}:${newName}`;
+          const hex = Array.from(new TextEncoder().encode(renameCmd)).map(b => b.toString(16).padStart(2, '0')).join('');
+          await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(currentActiveChannel)}/${hex}`, {
+            method: 'POST'
+          });
+        } catch (_) {}
       }
       dismissRenameModal();
     }
 
-    function addCustomPortalIp() {
+    async function addCustomPortalIp() {
       const input = document.getElementById('add-ip-input');
       const host = input.value.trim().replace('http://', '').replace('/', '');
       if (!host) return;
 
+      const targetHost = host.includes(':') ? host : `${host}:8080`;
       const newId = (fleetDevices.length + 1).toString();
-      fleetDevices.push({
+      const newDev = {
         id: newId,
         shortId: host.split(':')[0].split('.').pop() || 'LAN',
         name: `Portal (${host})`,
-        city: 'Local Network',
-        country: '',
+        city: 'Dublin',
+        country: 'Ireland',
         status: 'online',
         presence: 'occupied',
         mode: 'slideshow',
-        host: host.includes(':') ? host : `${host}:8080`
-      });
+        host: targetHost
+      };
+
+      try {
+        const resp = await fetch(`http://${targetHost}/api/fleet/status`, { mode: 'cors', cache: 'no-cache' });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.name) newDev.name = data.name;
+          if (data.city) newDev.city = data.city;
+          if (data.country) newDev.country = data.country;
+          if (data.deviceId) newDev.shortId = data.deviceId;
+          if (data.presence) newDev.presence = data.presence;
+        }
+      } catch (_) {}
+
+      fleetDevices.push(newDev);
       saveFleet();
       renderFleet();
-      refreshFleet();
       input.value = '';
-      showToast(`✓ Added Portal endpoint http://${host}`, 'success');
+      showToast(`✓ Added Portal: ${newDev.name}`, 'success');
+    }
+
+    function removePortalDevice(deviceId) {
+      fleetDevices = fleetDevices.filter(x => x.id !== deviceId);
+      saveFleet();
+      renderFleet();
+      showToast('Portal removed from list', 'info');
+    }
+
+    function resetFleetToDublin() {
+      fleetDevices = [
+        { id: '1', shortId: 'Dublin-1', name: 'Portal (Dublin 1)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: (window.location.port === '8080' ? window.location.host : '') },
+        { id: '2', shortId: 'Dublin-2', name: 'Portal (Dublin 2)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' },
+        { id: '3', shortId: 'Dublin-3', name: 'Portal (Dublin 3)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' }
+      ];
+      saveFleet();
+      renderFleet();
+      showToast('Reset roster to 3 Dublin Portals', 'success');
     }
 
     function sendTargetedNote(portalName) {

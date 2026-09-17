@@ -37,19 +37,22 @@ internal object Weather {
     @JvmOverloads
     fun fetch(fahrenheit: Boolean, context: android.content.Context? = null): Now? {
         return try {
-            val geo = JSONObject(httpGet("https://get.geojs.io/v1/ip/geo.json"))
-            val lat = geo.optString("latitude", "")
-            val lon = geo.optString("longitude", "")
-            val city = geo.optString("city", "").trim()
-            val country = geo.optString("country", "").trim()
-
-            if (context != null && (city.isNotEmpty() || country.isNotEmpty())) {
-                val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, android.content.Context.MODE_PRIVATE)
-                val editor = prefs.edit()
-                if (city.isNotEmpty()) editor.putString(ConfigReceiver.KEY_DEVICE_CITY, city)
-                if (country.isNotEmpty()) editor.putString(ConfigReceiver.KEY_DEVICE_COUNTRY, country)
-                editor.apply()
+            val loc = if (context != null) {
+                GeoLocator.resolveLocation(context)
+            } else {
+                try {
+                    val geo = JSONObject(httpGet("https://get.geojs.io/v1/ip/geo.json"))
+                    GeoLocator.Location(
+                        city = geo.optString("city", "").trim(),
+                        country = geo.optString("country", "").trim(),
+                        latitude = geo.optString("latitude", ""),
+                        longitude = geo.optString("longitude", "")
+                    )
+                } catch (e: Exception) { null }
             }
+            val lat = loc?.latitude ?: ""
+            val lon = loc?.longitude ?: ""
+            val city = loc?.city ?: ""
 
             if (lat.isEmpty() || lon.isEmpty()) {
                 return null

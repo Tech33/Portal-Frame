@@ -170,6 +170,19 @@ class SlideshowComposeActivity : ComponentActivity() {
             return
         }
 
+        // 0.8 Remote Rename Command: #rename:<id>:<name> or #setname:<id>:<name>
+        val renameMatch = Regex("""#(?:rename|setname):([A-Za-z0-9_.-]+):([^\n\r]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+        if (renameMatch != null) {
+            val targetId = renameMatch.groupValues[1].trim()
+            val newName = renameMatch.groupValues[2].trim()
+            val myShortId = ConfigReceiver.getDeviceShortId(this)
+            if (targetId.equals("all", ignoreCase = true) || targetId.equals(myShortId, ignoreCase = true)) {
+                prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_NICKNAME, newName).apply()
+                controller.showTemporaryBanner("✏️ Portal renamed to: $newName")
+                return
+            }
+        }
+
         // 1. Album Sync: #setalbum:<url>, #replacealbum:<url>, #addalbum:<url>, #album:<url>, or raw Google/iCloud Photos URL
         val albumUrlRegex = Regex("""https?://(?:photos\.app\.goo\.gl/[^\s]+|photos\.google\.com/[^\s]+|share\.icloud\.com/photos/[^\s]+)""")
         val setAlbumMatch = Regex("""#(?:setalbum|replacealbum):([^\s]+)""", RegexOption.IGNORE_CASE).find(trimmed)
