@@ -667,7 +667,7 @@ class SettingsActivity : ComponentActivity() {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Portal Name",
-                            color = PortalColors.TextDim,
+                            color = PortalColors.TextMuted,
                             fontSize = 12.sp,
                         )
                         Spacer(Modifier.height(3.dp))
