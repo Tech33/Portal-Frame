@@ -173,6 +173,7 @@ object ScreenControl {
                     updated
                 )
                 Log.i(TAG, "enableNotificationListener: added service to enabled_notification_listeners")
+            }
             val enabledNow = isNotificationListenerEnabled(context)
             if (!enabledNow) {
                 PortalAccessibilityService.armNotificationAccessEnabler(context)

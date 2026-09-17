@@ -144,7 +144,7 @@ class PortalMediaNotificationListener : NotificationListenerService() {
                     ?: extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
                     ?: ""
                 if (title.isNotEmpty()) {
-                    var art: Bitmap? = extras.getParcelable(Notification.EXTRA_LARGE_ICON)
+                    var art: Bitmap? = extras.getParcelable<Bitmap>(Notification.EXTRA_LARGE_ICON)
                     if (art == null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                         art = notif.getLargeIcon()?.loadDrawable(this)?.let { d ->
                             if (d is android.graphics.drawable.BitmapDrawable) d.bitmap else null
@@ -227,7 +227,7 @@ class PortalMediaNotificationListener : NotificationListenerService() {
                 artist = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
             }
             if (art == null && extras != null) {
-                art = extras.getParcelable(Notification.EXTRA_LARGE_ICON)
+                art = extras.getParcelable<Bitmap>(Notification.EXTRA_LARGE_ICON)
                 if (art == null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                     art = notif.getLargeIcon()?.loadDrawable(this)?.let { d ->
                         if (d is android.graphics.drawable.BitmapDrawable) d.bitmap else null
