@@ -54,7 +54,7 @@ jobs:
           cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Decode release keystore
         run: echo "${{ secrets.FRAME_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/release.jks"
@@ -77,8 +77,9 @@ jobs:
         run: |
           APK=app/build/outputs/apk/release/app-release.apk
           UNSIGNED=app/build/outputs/apk/release/app-release-unsigned-aligned.apk
+          SDK_DIR="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           # Use the bundled apksigner from the Android SDK build-tools
-          APKSIGNER="${ANDROID_SDK_ROOT}/build-tools/$(ls ${ANDROID_SDK_ROOT}/build-tools/ | sort -V | tail -1)/apksigner"
+          APKSIGNER="${SDK_DIR}/build-tools/$(ls ${SDK_DIR}/build-tools/ | sort -V | tail -1)/apksigner"
           # Re-sign with explicit V1 and V2 enabled (AGP strips V1 for minSdk>=24)
           "$APKSIGNER" sign \
             --ks "$RUNNER_TEMP/release.jks" \
