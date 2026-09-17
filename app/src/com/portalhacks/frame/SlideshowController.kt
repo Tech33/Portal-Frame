@@ -669,7 +669,7 @@ class SlideshowController(
                 rightMargin = Ui.dp(context, 4f)
             }
             setPadding(Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f))
-            setOnClickListener { MediaMonitor.prev() }
+            setOnClickListener { MediaMonitor.prev(context) }
         }
 
         nowPlayingPlayBtn = ImageView(context).apply {
@@ -680,7 +680,7 @@ class SlideshowController(
                 rightMargin = Ui.dp(context, 4f)
             }
             setPadding(Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f))
-            setOnClickListener { MediaMonitor.playPause() }
+            setOnClickListener { MediaMonitor.playPause(context) }
         }
 
         nowPlayingNextBtn = ImageView(context).apply {
@@ -689,7 +689,7 @@ class SlideshowController(
             val s = Ui.dp(context, 28f)
             layoutParams = LinearLayout.LayoutParams(s, s)
             setPadding(Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f))
-            setOnClickListener { MediaMonitor.next() }
+            setOnClickListener { MediaMonitor.next(context) }
         }
 
         nowPlayingCard.addView(nowPlayingArt)
@@ -707,17 +707,20 @@ class SlideshowController(
             rightMargin = Ui.dp(context, 24f)
         }
         nowPlayingCard.layoutParams = nplp
+
         MediaMonitor.addListener(mediaListener)
     }
 
     private fun updateNowPlaying(state: MediaMonitor.State) {
         handler.post {
-            if (state.title.isEmpty() && !state.isPlaying) {
+            val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+            val enabled = prefs.getBoolean(ConfigReceiver.KEY_NOW_PLAYING_ENABLED, ConfigReceiver.DEFAULT_NOW_PLAYING_ENABLED)
+            if (!enabled || (state.title.isEmpty() && !state.isPlaying)) {
                 hideNowPlaying()
                 return@post
             }
-            nowPlayingTitle.text = state.title
-            nowPlayingArtist.text = if (state.artist.isNotEmpty()) state.artist else state.source
+            nowPlayingTitle.text = if (state.title.isNotEmpty()) state.title else "Playing Audio"
+            nowPlayingArtist.text = if (state.artist.isNotEmpty()) state.artist else (if (state.source.isNotEmpty()) state.source else "Media")
             if (state.art != null) {
                 nowPlayingArt.setImageBitmap(state.art)
             } else {

@@ -44,6 +44,9 @@ object MediaMonitor {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @Volatile
+    var isListenerConnected: Boolean = false
+
+    @Volatile
     var activeController: MediaController? = null
 
     @Volatile
@@ -68,12 +71,18 @@ object MediaMonitor {
         art: Bitmap? = null,
         source: String = ""
     ) {
+        val safeTitle = title.trim().ifEmpty {
+            if (isPlaying) (if (source.isNotEmpty()) source else "Playing Media") else ""
+        }
+        val safeArtist = artist.trim().ifEmpty {
+            if (safeTitle.isNotEmpty()) "Audio Playback" else ""
+        }
         val newState = State(
             isPlaying = isPlaying,
-            title = title.trim(),
-            artist = artist.trim(),
+            title = safeTitle,
+            artist = safeArtist,
             album = album.trim(),
-            art = art ?: if (isPlaying && title == currentState.title) currentState.art else null,
+            art = art ?: if (isPlaying && safeTitle == currentState.title) currentState.art else null,
             source = source,
             timestamp = System.currentTimeMillis()
         )
@@ -98,7 +107,7 @@ object MediaMonitor {
         }
     }
 
-    fun playPause() {
+    fun playPause(context: Context? = null) {
         if (currentState.source.equals("AirPlay", ignoreCase = true)) {
             airPlayActionCallback?.invoke("play_pause")
             return
@@ -111,22 +120,42 @@ object MediaMonitor {
             } else {
                 ctrl.transportControls.play()
             }
+        } else if (context != null) {
+            sendMediaKeyEvent(context, android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
         }
     }
 
-    fun next() {
+    fun next(context: Context? = null) {
         if (currentState.source.equals("AirPlay", ignoreCase = true)) {
             airPlayActionCallback?.invoke("next")
             return
         }
-        activeController?.transportControls?.skipToNext()
+        if (activeController != null) {
+            activeController?.transportControls?.skipToNext()
+        } else if (context != null) {
+            sendMediaKeyEvent(context, android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
+        }
     }
 
-    fun prev() {
+    fun prev(context: Context? = null) {
         if (currentState.source.equals("AirPlay", ignoreCase = true)) {
             airPlayActionCallback?.invoke("prev")
             return
         }
-        activeController?.transportControls?.skipToPrevious()
+        if (activeController != null) {
+            activeController?.transportControls?.skipToPrevious()
+        } else if (context != null) {
+            sendMediaKeyEvent(context, android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+        }
+    }
+
+    private fun sendMediaKeyEvent(context: Context, keyCode: Int) {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+            am?.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode))
+            am?.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode))
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed dispatching media key event $keyCode", e)
+        }
     }
 }

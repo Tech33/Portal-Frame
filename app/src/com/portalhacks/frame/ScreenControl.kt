@@ -136,4 +136,48 @@ object ScreenControl {
             false
         }
     }
+
+    /**
+     * Checks if [PortalMediaNotificationListener] is authorized in enabled_notification_listeners.
+     */
+    fun isNotificationListenerEnabled(context: Context): Boolean {
+        val target = android.content.ComponentName(context, PortalMediaNotificationListener::class.java).flattenToString()
+        val current = Settings.Secure.getString(
+            context.contentResolver,
+            "enabled_notification_listeners"
+        ) ?: ""
+        return current.contains(target) || current.contains("${context.packageName}/.PortalMediaNotificationListener")
+    }
+
+    /**
+     * Self-enables [PortalMediaNotificationListener] using WRITE_SECURE_SETTINGS without requiring ADB command.
+     */
+    fun enableNotificationListener(context: Context): Boolean {
+        if (context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.d(TAG, "enableNotificationListener: WRITE_SECURE_SETTINGS not granted")
+            return false
+        }
+        return try {
+            val target = android.content.ComponentName(context, PortalMediaNotificationListener::class.java).flattenToString()
+            val current = Settings.Secure.getString(
+                context.contentResolver,
+                "enabled_notification_listeners"
+            ) ?: ""
+            if (!current.contains(target) && !current.contains("${context.packageName}/.PortalMediaNotificationListener")) {
+                val updated = if (current.isEmpty()) target else "$current:$target"
+                Settings.Secure.putString(
+                    context.contentResolver,
+                    "enabled_notification_listeners",
+                    updated
+                )
+                Log.i(TAG, "enableNotificationListener: added service to enabled_notification_listeners")
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "enableNotificationListener: failed to write secure settings", e)
+            false
+        }
+    }
 }

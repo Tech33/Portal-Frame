@@ -185,6 +185,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_PRESENCE_ENABLED = "presence_enabled"
         const val KEY_PRESENCE_TIMEOUT_MIN = "presence_timeout_min"
         const val KEY_AIRPLAY_ENABLED = "airplay_enabled"
+        const val KEY_NOW_PLAYING_ENABLED = "now_playing_enabled"
 
         // MQTT and Embedded Home Assistant keys
         const val KEY_MQTT_ENABLED = "mqtt_enabled"
@@ -279,6 +280,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_PRESENCE_ENABLED = true
         const val DEFAULT_PRESENCE_TIMEOUT_MIN = 10
         const val DEFAULT_AIRPLAY_ENABLED = true
+        const val DEFAULT_NOW_PLAYING_ENABLED = true
 
         // ADB-settable boolean extras (extra name -> pref key) for quick testing
         private val BOOL_EXTRAS = arrayOf(
@@ -290,6 +292,7 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("auto_enhance", KEY_ENHANCE), arrayOf("zoom_fill", KEY_ZOOM_FILL),
             arrayOf("battery", KEY_BATTERY),
             arrayOf("chime", KEY_CHIME),
+            arrayOf("clock_24h", KEY_CLOCK_24H),
             arrayOf("recent_first", KEY_RECENT_FIRST),
             arrayOf("ha_bridge_mode", KEY_HA_BRIDGE_MODE),
             arrayOf("mqtt_enabled", KEY_MQTT_ENABLED),
@@ -297,6 +300,7 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("ha_button", KEY_HA_BUTTON),
             arrayOf("presence_enabled", KEY_PRESENCE_ENABLED),
             arrayOf("airplay_enabled", KEY_AIRPLAY_ENABLED),
+            arrayOf("now_playing_enabled", KEY_NOW_PLAYING_ENABLED),
         )
 
         /** True for a recognised shared-album HTTPS link (Google Photos or iCloud). */

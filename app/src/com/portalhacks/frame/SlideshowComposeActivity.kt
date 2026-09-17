@@ -392,6 +392,10 @@ class SlideshowComposeActivity : ComponentActivity() {
         }
         sleepCover = SleepCover(this)
 
+        // Ensure Protected Mode accessibility and media notification listener are enabled
+        ScreenControl.enableAccessibility(this)
+        ScreenControl.enableNotificationListener(this)
+
         loader = ImageLoader(this)
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)

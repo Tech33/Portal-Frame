@@ -887,6 +887,165 @@ class SettingsActivity : ComponentActivity() {
                 ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true, iconRes = R.drawable.ic_night_warmth, iconBg = Color(0xFFFF9500))
             }
 
+            Card("AirPlay & Media Streaming") {
+                val airplayEnabled = rememberPrefBoolean(
+                    ConfigReceiver.KEY_AIRPLAY_ENABLED,
+                    ConfigReceiver.DEFAULT_AIRPLAY_ENABLED
+                )
+                ToggleRow(
+                    label = "Built-in AirPlay Audio Receiver",
+                    key = ConfigReceiver.KEY_AIRPLAY_ENABLED,
+                    def = ConfigReceiver.DEFAULT_AIRPLAY_ENABLED,
+                    subtitle = "Stream music directly from Apple devices (iPhone, iPad, Mac) via AirPlay with zero extra apps required.",
+                    iconRes = R.drawable.ic_music,
+                    iconBg = Color(0xFF007AFF),
+                )
+                if (airplayEnabled.value) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x18007AFF))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "AirPlay Name: ${ConfigReceiver.getDeviceDisplayName(ctx)}",
+                            color = Color(0xFF007AFF),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Divider()
+                Spacer(Modifier.height(10.dp))
+
+                var isListenerGranted by remember {
+                    mutableStateOf(ScreenControl.isNotificationListenerEnabled(ctx) || MediaMonitor.isListenerConnected)
+                }
+                ToggleRow(
+                    label = "Now Playing Screen Widget",
+                    key = ConfigReceiver.KEY_NOW_PLAYING_ENABLED,
+                    def = ConfigReceiver.DEFAULT_NOW_PLAYING_ENABLED,
+                    subtitle = "Floating album art, title, and playback controls (⏮ ⏯ ⏭) when music is playing (Spotify, YouTube, AirPlay).",
+                    iconRes = R.drawable.ic_music,
+                    iconBg = Color(0xFF34C759),
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    if (isListenerGranted) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x3334C759))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        ) {
+                            Text(
+                                "✓ Media Listener Active",
+                                color = Color(0xFF34C759),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x33FF9500))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        ) {
+                            Text(
+                                "Media Listener Inactive",
+                                color = Color(0xFFFF9500),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                        SmallAction("Enable Listener", true) {
+                            val success = ScreenControl.enableNotificationListener(ctx)
+                            if (success) {
+                                isListenerGranted = true
+                                Toast.makeText(ctx, "Media listener auto-enabled via Protected Mode!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                try {
+                                    val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+                                    ctx.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(ctx, "Grant Protected Mode via ADB to auto-enable media listener", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Divider()
+                Spacer(Modifier.height(10.dp))
+                Body(
+                    "You can also sideload standalone media receivers via OpenPortal / Immortal to stream music from your phone in the background behind Frame's photo slideshow.",
+                )
+                Spacer(Modifier.height(14.dp))
+                for (receiver in MediaReceivers.ALL_RECEIVERS) {
+                    val installed = MediaReceivers.isInstalled(ctx, receiver)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0x12FFFFFF))
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    receiver.name,
+                                    color = PortalColors.Text,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (installed) Color(0x3334C759) else Color(0x228E8E93))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                ) {
+                                    Text(
+                                        if (installed) "Installed ✓" else "Not detected",
+                                        color = if (installed) Color(0xFF34C759) else Color(0xFF8E8E93),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                receiver.shortDesc,
+                                color = PortalColors.Text.copy(alpha = 0.65f),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        if (installed) {
+                            SmallAction("Launch", true) {
+                                MediaReceivers.launch(ctx, receiver)
+                            }
+                        } else {
+                            SmallAction("Setup", true) {
+                                selectedReceiverGuide = receiver
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
+
             Card("Hourly chime") {
                 ToggleRow(
                     label = "Hourly chime",
@@ -1008,78 +1167,6 @@ class SettingsActivity : ComponentActivity() {
                             iconBg = Color(0xFF007AFF),
                         )
                     }
-                }
-            }
-
-            Card("Audio Receivers & Background Streaming") {
-                ToggleRow(
-                    label = "Built-in AirPlay Audio Receiver",
-                    key = ConfigReceiver.KEY_AIRPLAY_ENABLED,
-                    def = ConfigReceiver.DEFAULT_AIRPLAY_ENABLED,
-                    subtitle = "Stream music directly from Apple devices (iPhone, iPad, Mac) with zero extra apps required.",
-                    iconRes = R.drawable.ic_music,
-                    iconBg = Color(0xFF007AFF),
-                )
-                Spacer(Modifier.height(10.dp))
-                Divider()
-                Spacer(Modifier.height(10.dp))
-                Body(
-                    "You can also sideload standalone media receivers via OpenPortal / Immortal to stream music from your phone in the background behind Frame's photo slideshow.",
-                )
-                Spacer(Modifier.height(14.dp))
-                for (receiver in MediaReceivers.ALL_RECEIVERS) {
-                    val installed = MediaReceivers.isInstalled(ctx, receiver)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0x12FFFFFF))
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    receiver.name,
-                                    color = PortalColors.Text,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(if (installed) Color(0x3334C759) else Color(0x228E8E93))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                                ) {
-                                    Text(
-                                        if (installed) "Installed ✓" else "Not detected",
-                                        color = if (installed) Color(0xFF34C759) else Color(0xFF8E8E93),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                receiver.shortDesc,
-                                color = PortalColors.Text.copy(alpha = 0.65f),
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp,
-                            )
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        if (installed) {
-                            SmallAction("Launch", true) {
-                                MediaReceivers.launch(ctx, receiver)
-                            }
-                        } else {
-                            SmallAction("Setup", true) {
-                                selectedReceiverGuide = receiver
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(10.dp))
                 }
             }
 
