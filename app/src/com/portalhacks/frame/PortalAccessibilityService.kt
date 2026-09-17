@@ -14,54 +14,52 @@ class PortalAccessibilityService : AccessibilityService() {
         private const val TAG = "PortalAccessibility"
         @Volatile var autoInstallArmed = false
         private var armedTimestamp = 0L
+        private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+        private val pollRunnable = object : Runnable {
+            var attempts = 0
+            override fun run() {
+                if (!autoInstallArmed || attempts++ > 60) {
+                    disarmAutoInstall()
+                    return
+                }
+                instance?.let { s ->
+                    val root = s.rootInActiveWindow
+                    if (root != null) {
+                        if (s.clickInstallButton(root)) {
+                            Log.i(TAG, "polling auto-install performed action")
+                        }
+                    }
+                }
+                mainHandler.postDelayed(this, 400L)
+            }
+        }
 
         fun armAutoInstall() {
             autoInstallArmed = true
             armedTimestamp = System.currentTimeMillis()
-            instance?.let { s ->
-                try {
-                    val info = s.serviceInfo ?: AccessibilityServiceInfo()
-                    info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
-                            AccessibilityEvent.TYPE_WINDOWS_CHANGED
-                    info.packageNames = null // Capture all package installers and system dialog overlays
-                    info.flags = info.flags or
-                            AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                            AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
-                    s.serviceInfo = info
-                    Log.i(TAG, "armed auto-install accessibility interception")
-                } catch (e: Exception) {
-                    Log.w(TAG, "failed to update serviceInfo for auto-install", e)
-                }
-            }
+            mainHandler.removeCallbacks(pollRunnable)
+            pollRunnable.attempts = 0
+            mainHandler.post(pollRunnable)
+            Log.i(TAG, "armed auto-install with window polling and event interception")
         }
 
         fun disarmAutoInstall() {
             autoInstallArmed = false
-            instance?.let { s ->
-                try {
-                    val info = s.serviceInfo ?: return@let
-                    info.eventTypes = 0
-                    info.packageNames = null
-                    s.serviceInfo = info
-                } catch (_: Exception) {}
-            }
+            mainHandler.removeCallbacks(pollRunnable)
+            Log.i(TAG, "disarmed auto-install")
         }
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        try {
-            val info = serviceInfo ?: AccessibilityServiceInfo()
-            info.eventTypes = 0
-            serviceInfo = info
-        } catch (_: Exception) {}
         Log.i(TAG, "PortalAccessibilityService connected and ready")
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         instance = null
+        mainHandler.removeCallbacks(pollRunnable)
         Log.i(TAG, "PortalAccessibilityService unbound")
         return super.onUnbind(intent)
     }
@@ -72,22 +70,37 @@ class PortalAccessibilityService : AccessibilityService() {
             disarmAutoInstall()
             return
         }
-        val root = rootInActiveWindow ?: return
-        if (clickInstallButton(root)) {
-            Log.i(TAG, "auto-install target action performed")
-        }
+        val root = rootInActiveWindow ?: event?.source ?: return
+        clickInstallButton(root)
     }
 
-    private fun clickInstallButton(node: AccessibilityNodeInfo): Boolean {
+    fun clickInstallButton(node: AccessibilityNodeInfo): Boolean {
         val text = node.text?.toString()?.trim()?.lowercase() ?: ""
         val desc = node.contentDescription?.toString()?.trim()?.lowercase() ?: ""
         val viewId = node.viewIdResourceName?.lowercase() ?: ""
 
-        val isInstallTarget = text == "install" || text == "update" ||
-                desc == "install" || desc == "update" ||
-                viewId.endsWith(":id/ok_button") ||
-                viewId.endsWith(":id/button1")
+        // 1. Check for Unknown Sources Toggle ("Allow from this source")
+        val isAllowSourceSwitch = (viewId.contains("switch") || text.contains("allow from this source") || desc.contains("allow from this source")) &&
+                node.isCheckable && !node.isChecked
+        if (isAllowSourceSwitch) {
+            if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                Log.i(TAG, "auto-install enabled unknown sources switch")
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                return true
+            }
+        }
 
+        // 2. Check for Install / Update button
+        val isInstallTarget = text == "install" || text == "update" ||
+                text.contains("install") || text.contains("update") ||
+                desc == "install" || desc == "update" ||
+                desc.contains("install") || desc.contains("update") ||
+                viewId.endsWith(":id/ok_button") ||
+                viewId.endsWith(":id/button1") ||
+                viewId.endsWith(":id/install_confirm_button") ||
+                viewId.endsWith(":id/package_installer_install_button")
+
+        // 3. Check for Done / Open button
         val isDoneOrOpen = text == "open" || text == "done" ||
                 desc == "open" || desc == "done" ||
                 viewId.endsWith(":id/done_button") ||

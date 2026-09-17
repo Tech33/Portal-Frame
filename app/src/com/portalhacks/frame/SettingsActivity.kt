@@ -251,10 +251,12 @@ class SettingsActivity : ComponentActivity() {
     ) {
         val cached = UpdateInstaller.isCachedAndValid(this, manifest)
         if (cached != null) {
-            onStatus("Update already downloaded. Opening installer…")
+            onStatus("Installing update automatically…")
+            ScreenControl.enableAccessibility(this)
+            PortalAccessibilityService.armAutoInstall()
             val launched = UpdateInstaller.promptInstall(this, cached)
             if (launched) {
-                onStatus("Follow the system prompt to complete installation.")
+                onStatus("Installing update automatically in background…")
             } else {
                 onStatus("Permission required: allow Frame to install unknown apps, then tap Install.")
             }
@@ -277,10 +279,12 @@ class SettingsActivity : ComponentActivity() {
             runOnUiThread {
                 when (result) {
                     is UpdateInstaller.Result.Ready -> {
-                        onStatus("Download complete. Opening installer…")
+                        onStatus("Installing update automatically…")
+                        ScreenControl.enableAccessibility(this)
+                        PortalAccessibilityService.armAutoInstall()
                         val launched = UpdateInstaller.promptInstall(this, result.file)
                         if (launched) {
-                            onStatus("Follow the system prompt to complete installation.")
+                            onStatus("Installing update automatically in background…")
                         } else {
                             onStatus("Permission required: allow Frame to install unknown apps, then tap Install.")
                         }
