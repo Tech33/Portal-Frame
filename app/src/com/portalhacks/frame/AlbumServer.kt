@@ -7,8 +7,11 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.math.BigInteger
@@ -75,11 +78,43 @@ class AlbumServer(
         Log.i(TAG, "Local AlbumServer stopped")
     }
 
+    private fun readHttpLine(input: InputStream): String? {
+        val baos = ByteArrayOutputStream()
+        while (true) {
+            val b = input.read()
+            if (b == -1) {
+                if (baos.size() == 0) return null
+                break
+            }
+            if (b == '\n'.code) {
+                val bytes = baos.toByteArray()
+                val len = if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes.size - 1 else bytes.size
+                return String(bytes, 0, len, Charsets.ISO_8859_1)
+            }
+            baos.write(b)
+        }
+        val bytes = baos.toByteArray()
+        val len = if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes.size - 1 else bytes.size
+        return String(bytes, 0, len, Charsets.ISO_8859_1)
+    }
+
+    private fun readBodyString(input: InputStream, contentLength: Int): String {
+        val len = contentLength.coerceIn(0, 256 * 1024)
+        if (len <= 0) return ""
+        val buf = ByteArray(len)
+        var total = 0
+        while (total < len) {
+            val n = input.read(buf, total, len - total)
+            if (n == -1) break
+            total += n
+        }
+        return String(buf, 0, total, Charsets.UTF_8)
+    }
+
     private fun handleClient(socket: Socket) {
         try {
             val input = socket.getInputStream()
-            val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
-            val line = reader.readLine() ?: return
+            val line = readHttpLine(input) ?: return
 
             // Parse request line: e.g. "GET /slideshow HTTP/1.1"
             val parts = line.split(" ")
@@ -97,7 +132,7 @@ class AlbumServer(
             // Read headers
             var contentLength = 0
             while (true) {
-                val headerLine = reader.readLine() ?: break
+                val headerLine = readHttpLine(input) ?: break
                 if (headerLine.isEmpty()) break
                 if (headerLine.startsWith("Content-Length:", ignoreCase = true)) {
                     contentLength = headerLine.substring(15).trim().toIntOrNull() ?: 0
@@ -108,7 +143,7 @@ class AlbumServer(
 
             when {
                 method == "OPTIONS" -> {
-                    val headers = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    val headers = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, PUT, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                     socket.getOutputStream().write(headers.toByteArray(Charsets.UTF_8))
                     socket.getOutputStream().flush()
                 }
@@ -143,14 +178,7 @@ class AlbumServer(
 
                 // Submit or clear custom message banner
                 method == "POST" && (rawPath == "/message" || rawPath == "/api/message") -> {
-                    val body = CharArray(contentLength.coerceAtMost(64 * 1024))
-                    var read = 0
-                    while (read < body.size) {
-                        val n = reader.read(body, read, body.size - read)
-                        if (n == -1) break
-                        read += n
-                    }
-                    val bodyStr = String(body)
+                    val bodyStr = readBodyString(input, contentLength)
                     val msg = parseFormParam(bodyStr, "message") ?: parseJsonMessage(bodyStr) ?: ""
                     val sanitized = sanitizeHtml(msg.trim().take(200))
                     prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, sanitized).apply()
@@ -178,14 +206,7 @@ class AlbumServer(
 
                 // Save clock/date transform config from webview drag & pinch
                 method == "POST" && rawPath == "/api/config" -> {
-                    val body = CharArray(contentLength.coerceAtMost(64 * 1024))
-                    var read = 0
-                    while (read < body.size) {
-                        val n = reader.read(body, read, body.size - read)
-                        if (n == -1) break
-                        read += n
-                    }
-                    val bodyStr = String(body)
+                    val bodyStr = readBodyString(input, contentLength)
                     try {
                         val json = JSONObject(bodyStr)
                         val editor = prefs.edit()
@@ -267,16 +288,71 @@ class AlbumServer(
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
                 }
 
+                // Remote Binary APK Upload and Auto-Install
+                (method == "POST" || method == "PUT") && (rawPath == "/api/apps/upload" || rawPath == "/apps/upload") -> {
+                    val rawFilename = parseQueryParam(queryString, "filename")?.takeIf { it.isNotBlank() }
+                        ?: parseQueryParam(queryString, "name")?.takeIf { it.isNotBlank() }
+                        ?: "sideload_${System.currentTimeMillis()}.apk"
+                    val safeName = rawFilename.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+                    val destFile = File(context.externalCacheDir ?: context.cacheDir, safeName)
+                    if (destFile.exists()) destFile.delete()
+
+                    var remaining = contentLength.toLong()
+                    var totalRead = 0L
+                    try {
+                        FileOutputStream(destFile).use { fos ->
+                            val buf = ByteArray(65536)
+                            if (remaining > 0) {
+                                while (remaining > 0) {
+                                    val toRead = remaining.coerceAtMost(buf.size.toLong()).toInt()
+                                    val n = input.read(buf, 0, toRead)
+                                    if (n == -1) break
+                                    fos.write(buf, 0, n)
+                                    remaining -= n
+                                    totalRead += n
+                                }
+                            } else {
+                                while (true) {
+                                    val n = input.read(buf)
+                                    if (n == -1) break
+                                    fos.write(buf, 0, n)
+                                    totalRead += n
+                                }
+                            }
+                            fos.flush()
+                        }
+
+                        if (totalRead > 0 && destFile.length() > 0) {
+                            val pm = context.packageManager
+                            val pi = pm.getPackageArchiveInfo(destFile.absolutePath, 0)
+                            val pkgName = pi?.packageName ?: "custom.app"
+                            val appVersion = pi?.versionName ?: ""
+
+                            ScreenControl.enableAccessibility(context)
+                            PortalAccessibilityService.armAutoInstall()
+                            val launched = UpdateInstaller.promptInstall(context, destFile)
+
+                            val resp = JSONObject()
+                                .put("status", "ok")
+                                .put("filename", safeName)
+                                .put("package", pkgName)
+                                .put("version", appVersion)
+                                .put("bytes", totalRead)
+                                .put("launched", launched)
+                                .put("message", "APK uploaded successfully. Installer triggered on Portal.")
+                            sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
+                        } else {
+                            sendResponse(socket, 400, "Bad Request", "application/json; charset=utf-8", "{\"status\":\"error\",\"message\":\"Empty file uploaded\"}".toByteArray(Charsets.UTF_8))
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error uploading APK", e)
+                        sendResponse(socket, 500, "Internal Error", "application/json; charset=utf-8", "{\"status\":\"error\",\"message\":\"${e.message}\"}".toByteArray(Charsets.UTF_8))
+                    }
+                }
+
                 // Remote Rename from message.html
                 method == "POST" && (rawPath == "/api/fleet/rename" || rawPath == "/fleet/rename") -> {
-                    val body = CharArray(contentLength.coerceAtMost(64 * 1024))
-                    var read = 0
-                    while (read < body.size) {
-                        val n = reader.read(body, read, body.size - read)
-                        if (n == -1) break
-                        read += n
-                    }
-                    val bodyStr = String(body)
+                    val bodyStr = readBodyString(input, contentLength)
                     val newName = parseFormParam(bodyStr, "name") ?: parseJsonField(bodyStr, "name") ?: ""
                     if (newName.isNotEmpty()) {
                         prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_NICKNAME, newName.trim()).apply()
@@ -290,14 +366,7 @@ class AlbumServer(
 
                 // Remote Media Control (Play/Pause, Next, Prev)
                 method == "POST" && (rawPath == "/api/media/control" || rawPath == "/media/control") -> {
-                    val body = CharArray(contentLength.coerceAtMost(64 * 1024))
-                    var read = 0
-                    while (read < body.size) {
-                        val n = reader.read(body, read, body.size - read)
-                        if (n == -1) break
-                        read += n
-                    }
-                    val bodyStr = String(body)
+                    val bodyStr = readBodyString(input, contentLength)
                     val action = parseFormParam(bodyStr, "action") ?: parseJsonField(bodyStr, "action") ?: "play_pause"
                     when (action.lowercase(java.util.Locale.US)) {
                         "play", "pause", "play_pause" -> MediaMonitor.playPause()
@@ -315,14 +384,7 @@ class AlbumServer(
 
                 // Submit new album URL
                 method == "POST" && (rawPath == "/add" || rawPath == "/api/add") -> {
-                    val body = CharArray(contentLength.coerceAtMost(64 * 1024))
-                    var read = 0
-                    while (read < body.size) {
-                        val n = reader.read(body, read, body.size - read)
-                        if (n == -1) break
-                        read += n
-                    }
-                    val bodyStr = String(body)
+                    val bodyStr = readBodyString(input, contentLength)
                     val url = parseFormUrl(bodyStr)
                     if (url != null && handleNewAlbumUrl(prefs, url)) {
                         sendResponse(socket, 200, "Success", "text/html; charset=utf-8", getSuccessHtml().toByteArray(Charsets.UTF_8))
@@ -475,6 +537,8 @@ class AlbumServer(
                 "Content-Type: $contentType\r\n" +
                 "Content-Length: ${content.size}\r\n" +
                 "Access-Control-Allow-Origin: *\r\n" +
+                "Access-Control-Allow-Methods: GET, POST, PUT, OPTIONS\r\n" +
+                "Access-Control-Allow-Headers: *\r\n" +
                 "Connection: close\r\n\r\n"
         out.write(headers.toByteArray(Charsets.UTF_8))
         out.write(content)

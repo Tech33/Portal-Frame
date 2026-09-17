@@ -652,6 +652,50 @@ class SettingsActivity : ComponentActivity() {
 
         // Right Column: Software Update (top) -> Playback -> Display & Accessibility -> Clock & Weather -> Night Mode -> Chime -> MQTT & HA -> Revert/Uninstall
         val settingsCards: @Composable () -> Unit = {
+            Card("Portal Identity") {
+                val displayName = ConfigReceiver.getDeviceDisplayName(ctx)
+                val shortId = ConfigReceiver.getDeviceShortId(ctx)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0x18FFFFFF))
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Portal Name",
+                            color = PortalColors.TextDim,
+                            fontSize = 12.sp,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = displayName,
+                            color = PortalColors.Text,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0x220A84FF))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = "ID: $shortId",
+                            color = Color(0xFF0A84FF),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Body("Portal name is non-editable here. To change the name, send a rename broadcast (#rename:<id>:<name>) or use the Fleet tab on the Web interface.")
+            }
+
             Card("Software update & system") {
                 Body("Installed: $installedVersion")
                 Spacer(Modifier.height(8.dp))
@@ -891,37 +935,10 @@ class SettingsActivity : ComponentActivity() {
                 ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true, iconRes = R.drawable.ic_night_warmth, iconBg = Color(0xFFFF9500))
             }
 
-            Card("AirPlay & Media Streaming") {
-                val airplayEnabled = rememberPrefBoolean(
-                    ConfigReceiver.KEY_AIRPLAY_ENABLED,
-                    ConfigReceiver.DEFAULT_AIRPLAY_ENABLED
+            Card("Media & Audio Streaming") {
+                Body(
+                    "Stream music from your iPhone, iPad, Mac, or Spotify using standalone companion apps (AirReceiver, AirScreen, Spotify Connect). Frame automatically displays the floating Now Playing mini-player over your photo slideshow.",
                 )
-                ToggleRow(
-                    label = "Built-in AirPlay Audio Receiver",
-                    key = ConfigReceiver.KEY_AIRPLAY_ENABLED,
-                    def = ConfigReceiver.DEFAULT_AIRPLAY_ENABLED,
-                    subtitle = "Stream music directly from Apple devices (iPhone, iPad, Mac) via AirPlay with zero extra apps required.",
-                    iconRes = R.drawable.ic_music,
-                    iconBg = Color(0xFF007AFF),
-                )
-                if (airplayEnabled.value) {
-                    Spacer(Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x18007AFF))
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "AirPlay Name: ${ConfigReceiver.getDeviceDisplayName(ctx)}",
-                            color = Color(0xFF007AFF),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
                 Spacer(Modifier.height(10.dp))
                 Divider()
                 Spacer(Modifier.height(10.dp))

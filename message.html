@@ -713,7 +713,7 @@
         <span>📸</span> Photos
       </button>
       <button id="tab-btn-fleet" class="tab-btn inactive tap-scale" onclick="switchTab('fleet')">
-        <span>🌐</span> Fleet (5)
+        <span id="tab-btn-fleet-label"><span>🌐</span> Fleet</span>
       </button>
       <button id="tab-btn-settings" class="tab-btn inactive tap-scale" onclick="switchTab('settings')">
         <span>⚙️</span> Tools
@@ -769,8 +769,8 @@
       <!-- Live Delivery Confirmation Box -->
       <div id="delivery-receipts" class="delivery-receipts hidden">
         <div class="delivery-receipts-title">
-          <span>📡 Delivery Receipts (Fleet of 5)</span>
-          <span id="receipts-count" class="receipts-badge">0/5</span>
+          <span>📡 Delivery Receipts (Family Fleet)</span>
+          <span id="receipts-count" class="receipts-badge">0</span>
         </div>
         <div id="receipts-list" class="receipts-list"></div>
       </div>
@@ -884,15 +884,18 @@
       </div>
     </div>
 
-    <!-- ================= TAB 3: FLEET (5 PORTALS) ================= -->
+    <!-- ================= TAB 3: FLEET ================= -->
     <div id="tab-fleet" class="tab-pane hidden">
       <div class="fleet-header">
         <div>
-          <h2 style="font-size: 16px; font-weight: 700;">Global Fleet Management</h2>
-          <p style="font-size: 12px; color: #8E8E93;">Portals automatically discovered & geo-located in Dublin</p>
+          <h2 style="font-size: 16px; font-weight: 700;">Family Fleet Management</h2>
+          <p style="font-size: 12px; color: #8E8E93;">Portals active across Dublin, Delhi, and family locations</p>
         </div>
         <div style="display: flex; gap: 8px;">
-          <button class="fleet-refresh-btn tap-scale" onclick="resetFleetToDublin()" style="background: rgba(255,255,255,0.08); color: #8E8E93;">
+          <button class="fleet-refresh-btn tap-scale" onclick="openAddPortalModal()" style="background: rgba(10,132,255,0.15); color: #0A84FF; font-weight: 600;">
+            ➕ Add Portal
+          </button>
+          <button class="fleet-refresh-btn tap-scale" onclick="resetFleetDefaults()" style="background: rgba(255,255,255,0.08); color: #8E8E93;">
             Reset Roster
           </button>
           <button class="fleet-refresh-btn tap-scale" onclick="refreshFleet()">
@@ -981,11 +984,11 @@
     </div>
   </div>
   <!-- Remote Rename Modal -->
-  <div id="rename-modal" class="modal-overlay">
+  <div id="rename-modal" class="modal-overlay" style="display:none;">
     <div class="modal-card">
       <h3 style="color: #0A84FF; font-size: 17px; margin-bottom: 8px; font-weight: 700;">✏️ Remote Rename Portal</h3>
       <p style="font-size: 13px; color: #A1A1A6; margin-bottom: 12px; line-height: 1.4;">
-        Give this Portal a custom family nickname (e.g. "Mom's Kitchen", "London Living Room"):
+        Give this Portal a custom family nickname (e.g. "Living Room", "Grandma's Portal"):
       </p>
       <input type="text" id="rename-input" class="input-text" maxlength="40" placeholder="Enter nickname..." style="margin-bottom: 16px;">
       <div style="display: flex; gap: 10px;">
@@ -994,6 +997,51 @@
       </div>
     </div>
   </div>
+
+  <!-- Add Family Portal Modal -->
+  <div id="add-portal-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+      <h3 style="color: #0A84FF; font-size: 17px; margin-bottom: 8px; font-weight: 700;">➕ Add Family Portal</h3>
+      <p style="font-size: 13px; color: #A1A1A6; margin-bottom: 12px; line-height: 1.4;">
+        Add a family Portal (Delhi, Dublin, or any location):
+      </p>
+      <label class="field-label" style="font-size: 11px;">Portal Name</label>
+      <input type="text" id="new-portal-name" class="input-text" maxlength="40" placeholder="e.g. Portal (Delhi - Living Room)" style="margin-bottom: 10px;">
+      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+        <div style="flex: 1;">
+          <label class="field-label" style="font-size: 11px;">City</label>
+          <input type="text" id="new-portal-city" class="input-text" placeholder="e.g. Delhi">
+        </div>
+        <div style="flex: 1;">
+          <label class="field-label" style="font-size: 11px;">Country</label>
+          <input type="text" id="new-portal-country" class="input-text" placeholder="e.g. India">
+        </div>
+      </div>
+      <label class="field-label" style="font-size: 11px;">LAN IP (Optional, for direct APK upload)</label>
+      <input type="text" id="new-portal-host" class="input-text" placeholder="e.g. 192.168.1.150:8080" style="margin-bottom: 16px;">
+      <div style="display: flex; gap: 10px;">
+        <button type="button" class="pill-btn" style="flex: 1;" onclick="dismissAddPortalModal()">Cancel</button>
+        <button type="button" class="btn-play-showcase" style="flex: 1; margin-top: 0; font-size: 13px;" onclick="saveNewFamilyPortal()">✓ Add Portal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload APK Progress Modal -->
+  <div id="upload-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+      <h3 style="color: #30D158; font-size: 17px; margin-bottom: 8px; font-weight: 700;">📤 Uploading APK to Portal</h3>
+      <p id="upload-target-name" style="font-size: 13px; color: #A1A1A6; margin-bottom: 12px;"></p>
+      <div style="background: rgba(255,255,255,0.08); border-radius: 8px; height: 12px; overflow: hidden; margin-bottom: 10px;">
+        <div id="upload-progress-bar" style="background: #30D158; height: 100%; width: 0%; transition: width 0.2s;"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 12px; color: #8E8E93; margin-bottom: 16px;">
+        <span id="upload-status-text">Connecting...</span>
+        <span id="upload-pct-text">0%</span>
+      </div>
+      <button type="button" class="pill-btn" style="width: 100%;" onclick="dismissUploadModal()">Close</button>
+    </div>
+  </div>
+  <input type="file" id="portal-apk-file-picker" accept=".apk" style="display:none;">
 
   <script>
     // --- State & URL Parameters ---
@@ -1006,12 +1054,15 @@
     let activeShowcase = 'recent_trip';
     let pendingPayload = '';
     let renamingDeviceId = null;
+    let uploadingTargetPortal = null;
 
-    // Default 3-portal fleet roster in Dublin
+    // Default family fleet roster: Dublin and Delhi Portals
     const DEFAULT_FLEET = [
       { id: '1', shortId: 'Dublin-1', name: 'Portal (Dublin 1)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: (window.location.port === '8080' ? window.location.host : '') },
       { id: '2', shortId: 'Dublin-2', name: 'Portal (Dublin 2)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' },
-      { id: '3', shortId: 'Dublin-3', name: 'Portal (Dublin 3)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' }
+      { id: '3', shortId: 'Dublin-3', name: 'Portal (Dublin 3)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' },
+      { id: '4', shortId: 'Delhi-1', name: 'Portal (Delhi 1)', city: 'Delhi', country: 'India', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' },
+      { id: '5', shortId: 'Delhi-2', name: 'Portal (Delhi 2)', city: 'Delhi', country: 'India', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' }
     ];
 
     let fleetDevices = [];
@@ -1030,6 +1081,7 @@
     // Initialize UI with channel
     document.getElementById('current-family').innerText = currentActiveChannel;
     document.getElementById('family-input').value = currentActiveChannel;
+    updateFleetTabLabel();
 
     // --- Tab Navigation ---
     function switchTab(tab) {
@@ -1299,7 +1351,7 @@
         return;
       }
 
-      showToast('Broadcasting to all 5 Portals...', 'info');
+      showToast(`Broadcasting to all ${fleetDevices.length} family Portals...`, 'info');
       renderDeliveryReceipts(content);
 
       try {
@@ -1365,8 +1417,14 @@
       });
     }
 
-    // --- Global Fleet Management ---
+    function updateFleetTabLabel() {
+      const lbl = document.getElementById('tab-btn-fleet-label');
+      if (lbl) lbl.innerHTML = `<span>🌐</span> Fleet (${fleetDevices.length})`;
+    }
+
+    // --- Family Fleet Management ---
     function renderFleet() {
+      updateFleetTabLabel();
       const container = document.getElementById('fleet-container');
       if (!container) return;
 
@@ -1388,12 +1446,12 @@
           </div>
           <div class="portal-card-meta">
             <span class="badge-pill badge-online">🟢 Online</span>
-            <span>📍 ${d.city || 'Dublin'}</span>
+            <span>📍 ${d.city || 'Family'}${d.country ? ', ' + d.country : ''}</span>
             <span class="badge-pill ${d.presence === 'occupied' ? 'badge-presence' : 'badge-vacant'}">
               ${d.presence === 'occupied' ? '👤 Occupied' : '🌙 Room Empty (Clock)'}
             </span>
-            <span class="badge-pill ${d.spotifyInstalled ? 'badge-presence' : ''}" style="${d.spotifyInstalled ? '' : 'background:rgba(255,255,255,0.08); color:#8E8E93;'}">
-              ${d.spotifyInstalled ? '🟢 Spotify Ready' : '⚪ Spotify Not Installed'}
+            <span class="badge-pill" style="${d.host ? 'background:rgba(48,209,88,0.15); color:#30D158;' : 'background:rgba(255,255,255,0.08); color:#8E8E93;'}">
+              ${d.host ? '🌐 ' + d.host : '⚪ LAN IP not set'}
             </span>
             <span style="color:#636366;">ID: ${d.shortId || d.id}</span>
           </div>
@@ -1401,36 +1459,107 @@
             <button class="portal-act-btn tap-scale" onclick="sendTargetedNote('${d.name}')">
               💌 Send Note
             </button>
-            <button class="portal-act-btn tap-scale" onclick="togglePortalMode('${d.id}')">
-              ⏰ Toggle Clock
+            <button class="portal-act-btn tap-scale" style="border-color:#30D158; color:#30D158; font-weight:600;" onclick="triggerPortalApkUpload('${d.id}')" title="Wirelessly upload and install Spotify, SmartTube or any APK">
+              📤 Upload APK
             </button>
-            ${!d.spotifyInstalled ? `
-            <button class="portal-act-btn tap-scale" style="border-color:#1DB954; color:#1DB954;" onclick="installSpotifyToPortal('${d.id}')" title="Wirelessly install Spotify Connect companion">
-              📥 Install Spotify
-            </button>` : ''}
+            <button class="portal-act-btn tap-scale" onclick="setPortalIp('${d.id}')" title="Configure Local IP for APK sideloading and direct controls">
+              ${d.host ? '⚙️ Edit IP' : '⚙️ Set IP'}
+            </button>
+            <button class="portal-act-btn tap-scale" onclick="togglePortalMode('${d.id}')">
+              ⏰ Clock
+            </button>
           </div>
         </div>
       `).join('');
     }
 
-    async function installSpotifyToPortal(deviceId) {
+    function setPortalIp(deviceId) {
       const d = fleetDevices.find(x => x.id === deviceId || x.shortId === deviceId);
-      if (!d || !d.host) {
-        showStatus('Device unreachable', 'error');
-        return;
+      if (!d) return;
+      const current = d.host || '';
+      const input = prompt(`Enter local IP:port for ${d.name}\n(e.g. 192.168.1.150:8080):`, current);
+      if (input !== null) {
+        const trimmed = input.trim();
+        d.host = trimmed ? (trimmed.includes(':') ? trimmed : `${trimmed}:8080`) : '';
+        saveFleet();
+        renderFleet();
+        if (d.host) showToast(`IP saved for ${d.name}: ${d.host}`, 'success');
       }
-      showStatus(`Triggering Spotify install on ${d.name}...`, 'info');
-      try {
-        const resp = await fetch(`http://${d.host}/api/apps/spotify/install`, { method: 'POST', mode: 'cors' });
-        if (resp.ok) {
-          showStatus(`Spotify download & silent install started on ${d.name}!`, 'success');
-          setTimeout(refreshFleet, 4000);
-        } else {
-          showStatus('Failed to trigger install', 'error');
+    }
+
+    function triggerPortalApkUpload(deviceId) {
+      const d = fleetDevices.find(x => x.id === deviceId || x.shortId === deviceId);
+      if (!d) return;
+      if (!d.host) {
+        const input = prompt(`Direct APK upload requires the Portal's local IP.\nEnter IP for ${d.name} (e.g. 192.168.1.150:8080):`);
+        if (!input || !input.trim()) return;
+        const trimmed = input.trim();
+        d.host = trimmed.includes(':') ? trimmed : `${trimmed}:8080`;
+        saveFleet();
+        renderFleet();
+      }
+      uploadingTargetPortal = d;
+      const filePicker = document.getElementById('portal-apk-file-picker');
+      filePicker.value = '';
+      filePicker.onchange = () => {
+        if (filePicker.files && filePicker.files[0]) {
+          performApkUpload(uploadingTargetPortal, filePicker.files[0]);
         }
-      } catch (e) {
-        showStatus('Error connecting to Portal: ' + e.message, 'error');
-      }
+      };
+      filePicker.click();
+    }
+
+    function performApkUpload(portal, file) {
+      if (!portal || !portal.host || !file) return;
+      const modal = document.getElementById('upload-modal');
+      const title = document.getElementById('upload-target-name');
+      const bar = document.getElementById('upload-progress-bar');
+      const statusText = document.getElementById('upload-status-text');
+      const pctText = document.getElementById('upload-pct-text');
+
+      modal.style.display = 'flex';
+      title.innerText = `${file.name} ➔ ${portal.name}`;
+      bar.style.width = '0%';
+      pctText.innerText = '0%';
+      statusText.innerText = 'Uploading APK to Portal...';
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `http://${portal.host}/api/apps/upload?filename=${encodeURIComponent(file.name)}`);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          bar.style.width = pct + '%';
+          pctText.innerText = pct + '%';
+          const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
+          const totalMb = (e.total / (1024 * 1024)).toFixed(1);
+          statusText.innerText = `Uploading: ${loadedMb} MB / ${totalMb} MB (${pct}%)`;
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          bar.style.width = '100%';
+          pctText.innerText = '100%';
+          statusText.innerHTML = '<b style="color:#30D158;">✓ Uploaded! Auto-installing on Portal…</b>';
+          showToast(`✓ ${file.name} uploaded to ${portal.name}! Installing...`, 'success');
+        } else {
+          statusText.innerHTML = `<b style="color:#FF453A;">Upload failed (${xhr.status})</b>`;
+          showToast('Failed to upload APK to Portal', 'error');
+        }
+      };
+
+      xhr.onerror = () => {
+        statusText.innerHTML = `<b style="color:#FF453A;">Network error. Check Portal IP.</b>`;
+        showToast(`Could not connect to http://${portal.host}`, 'error');
+      };
+
+      xhr.send(file);
+    }
+
+    function dismissUploadModal() {
+      document.getElementById('upload-modal').style.display = 'none';
+      uploadingTargetPortal = null;
     }
 
     async function refreshFleet() {
@@ -1494,7 +1623,7 @@
         renderFleet();
         showToast(`✓ Renamed to "${newName}"`, 'success');
 
-        // 1. Direct HTTP call if reachable
+        // 1. Direct HTTP call if local host is reachable
         if (d.host) {
           try {
             await fetch(`http://${d.host}/api/fleet/rename`, {
@@ -1504,16 +1633,65 @@
             });
           } catch (_) {}
         }
-        // 2. Broadcast via family channel so any Portal anywhere in Dublin/worldwide renames itself
+        // 2. Broadcast via AES-encrypted family channel so any Portal in Dublin/Delhi/worldwide renames itself
         try {
           const renameCmd = `#setname:${d.shortId || d.id}:${newName}`;
-          const hex = Array.from(new TextEncoder().encode(renameCmd)).map(b => b.toString(16).padStart(2, '0')).join('');
-          await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(currentActiveChannel)}/${hex}`, {
-            method: 'POST'
-          });
+          const aesKey = await getAesKey(currentActiveChannel);
+          const hex = await encryptData(renameCmd, aesKey);
+          if (hex) {
+            await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(currentActiveChannel)}/${hex}`, {
+              method: 'POST',
+              headers: { 'Content-Length': '0' }
+            });
+          }
         } catch (_) {}
       }
       dismissRenameModal();
+    }
+
+    function openAddPortalModal() {
+      document.getElementById('new-portal-name').value = '';
+      document.getElementById('new-portal-city').value = '';
+      document.getElementById('new-portal-country').value = '';
+      document.getElementById('new-portal-host').value = '';
+      document.getElementById('add-portal-modal').style.display = 'flex';
+      setTimeout(() => document.getElementById('new-portal-name').focus(), 50);
+    }
+
+    function dismissAddPortalModal() {
+      document.getElementById('add-portal-modal').style.display = 'none';
+    }
+
+    function saveNewFamilyPortal() {
+      const name = document.getElementById('new-portal-name').value.trim();
+      const city = document.getElementById('new-portal-city').value.trim() || 'Family';
+      const country = document.getElementById('new-portal-country').value.trim() || '';
+      let host = document.getElementById('new-portal-host').value.trim().replace('http://', '').replace('/', '');
+      if (host && !host.includes(':')) host += ':8080';
+
+      if (!name) {
+        showToast('Please enter a Portal name', 'error');
+        return;
+      }
+
+      const newId = (fleetDevices.length + 1).toString();
+      const newDev = {
+        id: newId,
+        shortId: city.substring(0, 5) + '-' + newId,
+        name: name,
+        city: city,
+        country: country,
+        status: 'online',
+        presence: 'occupied',
+        mode: 'slideshow',
+        host: host
+      };
+
+      fleetDevices.push(newDev);
+      saveFleet();
+      renderFleet();
+      dismissAddPortalModal();
+      showToast(`✓ Added ${newDev.name} to Family Fleet`, 'success');
     }
 
     async function addCustomPortalIp() {
@@ -1527,8 +1705,8 @@
         id: newId,
         shortId: host.split(':')[0].split('.').pop() || 'LAN',
         name: `Portal (${host})`,
-        city: 'Dublin',
-        country: 'Ireland',
+        city: 'Local Network',
+        country: '',
         status: 'online',
         presence: 'occupied',
         mode: 'slideshow',
@@ -1561,15 +1739,13 @@
       showToast('Portal removed from list', 'info');
     }
 
-    function resetFleetToDublin() {
-      fleetDevices = [
-        { id: '1', shortId: 'Dublin-1', name: 'Portal (Dublin 1)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: (window.location.port === '8080' ? window.location.host : '') },
-        { id: '2', shortId: 'Dublin-2', name: 'Portal (Dublin 2)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' },
-        { id: '3', shortId: 'Dublin-3', name: 'Portal (Dublin 3)', city: 'Dublin', country: 'Ireland', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' }
-      ];
-      saveFleet();
-      renderFleet();
-      showToast('Reset roster to 3 Dublin Portals', 'success');
+    function resetFleetDefaults() {
+      if (confirm('Reset fleet roster to default Dublin and Delhi Portals?')) {
+        fleetDevices = JSON.parse(JSON.stringify(DEFAULT_FLEET));
+        saveFleet();
+        renderFleet();
+        showToast('Reset roster to Dublin & Delhi Portals', 'success');
+      }
     }
 
     function sendTargetedNote(portalName) {

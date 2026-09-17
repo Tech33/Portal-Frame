@@ -66,7 +66,6 @@ class SlideshowComposeActivity : ComponentActivity() {
     private var scheduledClockOnly = false
     private var noPresenceClockOnly = false
     private var presenceDetector: PresenceDetector? = null
-    private var airPlayServer: AirPlayServer? = null
     private var useFlipClock = false
     private val prefs by lazy { getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE) }
 
@@ -170,14 +169,29 @@ class SlideshowComposeActivity : ComponentActivity() {
             return
         }
 
-        // 0.8 Remote Rename Command: #rename:<id>:<name> or #setname:<id>:<name>
+        // 0.8 Remote Rename Command: #rename:<id>:<name> or #setname:<id>:<name> or #rename:<name>
         val renameMatch = Regex("""#(?:rename|setname):([A-Za-z0-9_.-]+):([^\n\r]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+            ?: Regex("""#(?:rename|setname):([^\n\r:]+)""", RegexOption.IGNORE_CASE).find(trimmed)
         if (renameMatch != null) {
-            val targetId = renameMatch.groupValues[1].trim()
-            val newName = renameMatch.groupValues[2].trim()
+            val hasTarget = renameMatch.groupValues.size > 2
+            val targetId = if (hasTarget) renameMatch.groupValues[1].trim() else "all"
+            val newName = if (hasTarget) renameMatch.groupValues[2].trim() else renameMatch.groupValues[1].trim()
             val myShortId = ConfigReceiver.getDeviceShortId(this)
-            if (targetId.equals("all", ignoreCase = true) || targetId.equals(myShortId, ignoreCase = true)) {
+            val currentNickname = prefs.getString(ConfigReceiver.KEY_CUSTOM_NICKNAME, "")?.trim() ?: ""
+            val currentDisplay = ConfigReceiver.getDeviceDisplayName(this)
+            val currentCity = prefs.getString(ConfigReceiver.KEY_DEVICE_CITY, "")?.trim() ?: ""
+            val devId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
+
+            val matches = targetId.equals("all", ignoreCase = true) ||
+                    targetId.equals(myShortId, ignoreCase = true) ||
+                    (devId.isNotEmpty() && devId.endsWith(targetId, ignoreCase = true)) ||
+                    (currentNickname.isNotEmpty() && currentNickname.contains(targetId, ignoreCase = true)) ||
+                    currentDisplay.contains(targetId, ignoreCase = true) ||
+                    (currentCity.isNotEmpty() && targetId.contains(currentCity, ignoreCase = true))
+
+            if (matches && newName.isNotEmpty()) {
                 prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_NICKNAME, newName).apply()
+                sendBroadcast(Intent(ConfigReceiver.ACTION_SET_NICKNAME).putExtra("nickname", newName))
                 controller.showTemporaryBanner("✏️ Portal renamed to: $newName")
                 return
             }
@@ -499,9 +513,6 @@ class SlideshowComposeActivity : ComponentActivity() {
                 applyClockOnlyMode()
             }
         }.also { it.start() }
-
-        // Start AirPlay 1 Audio Receiver
-        airPlayServer = AirPlayServer(this).also { it.start() }
 
         // GestureDetector to dismiss/exit screensaver or open settings from the WebView flip clock
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
@@ -830,8 +841,6 @@ class SlideshowComposeActivity : ComponentActivity() {
         super.onDestroy()
         presenceDetector?.stop()
         presenceDetector = null
-        airPlayServer?.stop()
-        airPlayServer = null
         try {
             unregisterReceiver(commandReceiver)
         } catch (_: Exception) {}
