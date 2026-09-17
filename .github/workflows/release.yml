@@ -143,25 +143,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          EXTRA_ASSETS=()
+          ASSETS=(
+            "${{ steps.artifact.outputs.apk }}"
+            "${{ steps.artifact.outputs.apk }}.sha256"
+            "${{ steps.artifact.outputs.stable }}"
+            "${{ steps.artifact.outputs.stable }}.sha256"
+            "version.json"
+          )
           if [ -f "spotify.apk" ]; then
-            EXTRA_ASSETS+=("spotify.apk")
+            ASSETS+=("spotify.apk")
           fi
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
             --generate-notes \
-            "${{ steps.artifact.outputs.apk }}" \
-            "${{ steps.artifact.outputs.apk }}.sha256" \
-            "${{ steps.artifact.outputs.stable }}" \
-            "${{ steps.artifact.outputs.stable }}.sha256" \
-            version.json "${EXTRA_ASSETS[@]}" || \
+            "${ASSETS[@]}" || \
           gh release upload "${{ github.ref_name }}" \
             --clobber \
-            "${{ steps.artifact.outputs.apk }}" \
-            "${{ steps.artifact.outputs.apk }}.sha256" \
-            "${{ steps.artifact.outputs.stable }}" \
-            "${{ steps.artifact.outputs.stable }}.sha256" \
-            version.json "${EXTRA_ASSETS[@]}"
+            "${ASSETS[@]}"
 
       - name: Commit version.json to main (tag pushes only)
         if: startsWith(github.ref, 'refs/tags/v')
