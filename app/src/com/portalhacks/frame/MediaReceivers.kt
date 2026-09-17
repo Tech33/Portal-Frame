@@ -29,6 +29,7 @@ object MediaReceivers {
             protocol = "Spotify Connect",
             shortDesc = "Stream audio directly from the Spotify app on iPhone, iPad, Mac, or Android.",
             packageNames = listOf(
+                "com.facebook.aloha.spotifystandalone",
                 "com.spotify.music",
                 "com.spotify.tv.android",
                 "com.spotify.lite",

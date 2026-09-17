@@ -44,11 +44,16 @@ class AirPlayServer(
     private val isRunning = AtomicBoolean(false)
     private var serverSocket: ServerSocket? = null
     private var nsdManager: NsdManager? = null
-    private var registrationListener: NsdManager.RegistrationListener? = null
+    private var raopRegistrationListener: NsdManager.RegistrationListener? = null
+    private var airplayRegistrationListener: NsdManager.RegistrationListener? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     private var audioTrack: AudioTrack? = null
     private var audioSocket: DatagramSocket? = null
     private var controlSocket: DatagramSocket? = null
+
+    @Volatile
+    private var alacDecoder: AlacDecoder = AlacDecoder()
 
     @Volatile
     private var currentTitle: String = ""
@@ -65,6 +70,17 @@ class AirPlayServer(
             Log.i(TAG, "AirPlay disabled in settings")
             isRunning.set(false)
             return
+        }
+
+        try {
+            val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            multicastLock = wm?.createMulticastLock("AirPlayBonjour")?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            Log.i(TAG, "Acquired Wi-Fi MulticastLock for AirPlay Bonjour")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed acquiring Wi-Fi multicast lock", e)
         }
 
         thread(name = "AirPlay-RTSP") {
@@ -91,6 +107,13 @@ class AirPlayServer(
         isRunning.set(false)
         unregisterBonjourService()
         try {
+            if (multicastLock?.isHeld == true) {
+                multicastLock?.release()
+            }
+        } catch (_: Exception) {}
+        multicastLock = null
+
+        try {
             serverSocket?.close()
         } catch (ignored: Exception) {}
         serverSocket = null
@@ -104,7 +127,8 @@ class AirPlayServer(
             val displayName = ConfigReceiver.getDeviceDisplayName(context)
             val mac = getMacAddressClean()
 
-            val serviceInfo = NsdServiceInfo().apply {
+            // 1. Register _raop._tcp (Remote Audio Output Protocol on port 5000)
+            val raopInfo = NsdServiceInfo().apply {
                 serviceType = "_raop._tcp"
                 serviceName = "$mac@$displayName"
                 port = rtspPort
@@ -120,32 +144,68 @@ class AirPlayServer(
                 setAttribute("md", "0,1,2")
                 setAttribute("vn", "3")
                 setAttribute("txtvers", "1")
+                setAttribute("sf", "0x4")
+                setAttribute("vs", "220.68")
             }
 
-            registrationListener = object : NsdManager.RegistrationListener {
+            raopRegistrationListener = object : NsdManager.RegistrationListener {
                 override fun onServiceRegistered(info: NsdServiceInfo?) {
-                    Log.i(TAG, "Bonjour registered: ${info?.serviceName}")
+                    Log.i(TAG, "Bonjour RAOP registered: ${info?.serviceName}")
                 }
                 override fun onRegistrationFailed(info: NsdServiceInfo?, errorCode: Int) {
-                    Log.w(TAG, "Bonjour registration failed: code=$errorCode")
+                    Log.w(TAG, "Bonjour RAOP registration failed: code=$errorCode")
                 }
                 override fun onServiceUnregistered(info: NsdServiceInfo?) {
-                    Log.i(TAG, "Bonjour unregistered")
+                    Log.i(TAG, "Bonjour RAOP unregistered")
                 }
                 override fun onUnregistrationFailed(info: NsdServiceInfo?, errorCode: Int) {}
             }
+            nsdManager?.registerService(raopInfo, NsdManager.PROTOCOL_DNS_SD, raopRegistrationListener)
 
-            nsdManager?.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+            // 2. Register _airplay._tcp (AirPlay device discovery on port 7000)
+            val airplayInfo = NsdServiceInfo().apply {
+                serviceType = "_airplay._tcp"
+                serviceName = displayName
+                port = 7000
+                setAttribute("deviceid", mac)
+                setAttribute("features", "0x5A7FFFF7,0x1E")
+                setAttribute("model", "AppleTV3,2")
+                setAttribute("srcvers", "220.68")
+                setAttribute("flags", "0x4")
+                setAttribute("pk", "b07727d6f6cd534b47a62ec7be7bed045cdd6985")
+                setAttribute("pi", "2e388006-13ba-4041-9a67-25dd4a43d536")
+                setAttribute("vv", "2")
+            }
+
+            airplayRegistrationListener = object : NsdManager.RegistrationListener {
+                override fun onServiceRegistered(info: NsdServiceInfo?) {
+                    Log.i(TAG, "Bonjour AirPlay registered: ${info?.serviceName}")
+                }
+                override fun onRegistrationFailed(info: NsdServiceInfo?, errorCode: Int) {
+                    Log.w(TAG, "Bonjour AirPlay registration failed: code=$errorCode")
+                }
+                override fun onServiceUnregistered(info: NsdServiceInfo?) {
+                    Log.i(TAG, "Bonjour AirPlay unregistered")
+                }
+                override fun onUnregistrationFailed(info: NsdServiceInfo?, errorCode: Int) {}
+            }
+            nsdManager?.registerService(airplayInfo, NsdManager.PROTOCOL_DNS_SD, airplayRegistrationListener)
+
         } catch (e: Exception) {
-            Log.w(TAG, "Failed registering AirPlay Bonjour service", e)
+            Log.w(TAG, "Failed registering AirPlay Bonjour services", e)
         }
     }
 
     private fun unregisterBonjourService() {
         try {
-            registrationListener?.let { nsdManager?.unregisterService(it) }
+            raopRegistrationListener?.let { nsdManager?.unregisterService(it) }
         } catch (ignored: Exception) {}
-        registrationListener = null
+        raopRegistrationListener = null
+
+        try {
+            airplayRegistrationListener?.let { nsdManager?.unregisterService(it) }
+        } catch (ignored: Exception) {}
+        airplayRegistrationListener = null
     }
 
     private fun handleRtspClient(socket: Socket) {
@@ -283,6 +343,13 @@ class AirPlayServer(
         currentTitle = ""
         currentArtist = ""
         currentAlbum = ""
+        for (line in sdp.lines()) {
+            val trimmed = line.trim()
+            if (trimmed.startsWith("a=fmtp:")) {
+                alacDecoder = AlacDecoder.parseFmtp(trimmed)
+                Log.i(TAG, "Initialized AlacDecoder from SDP: frameLength=${alacDecoder.frameLength}, channels=${alacDecoder.channels}")
+            }
+        }
     }
 
     private fun handleSetParameter(contentType: String, body: ByteArray) {
@@ -365,7 +432,7 @@ class AirPlayServer(
         try {
             audioSocket?.close()
             audioSocket = DatagramSocket(port)
-            val buf = ByteArray(2048)
+            val buf = ByteArray(4096)
 
             thread(name = "AirPlay-Audio-UDP") {
                 val packet = DatagramPacket(buf, buf.size)
@@ -376,9 +443,12 @@ class AirPlayServer(
                         val len = packet.length
                         // Skip 12-byte RTP header
                         if (len > 12) {
-                            val payloadOffset = 12
-                            val payloadLen = len - payloadOffset
-                            audioTrack?.write(buf, payloadOffset, payloadLen)
+                            try {
+                                val pcm = alacDecoder.decodeFrame(buf, 12, len - 12)
+                                audioTrack?.write(pcm, 0, pcm.size)
+                            } catch (_: Exception) {
+                                audioTrack?.write(buf, 12, len - 12)
+                            }
                         }
                     } catch (e: Exception) {
                         break

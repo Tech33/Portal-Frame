@@ -79,6 +79,8 @@ $ADB shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTIN
 # Auto-enable hardware screen sleep accessibility service
 $ADB shell settings put secure enabled_accessibility_services com.portalhacks.frame/.PortalAccessibilityService 2>/dev/null || true
 $ADB shell settings put secure accessibility_enabled 1 2>/dev/null || true
+# Auto-enable media notification listener for Spotify and Now Playing
+$ADB shell cmd notification allow_listener com.portalhacks.frame/.PortalMediaNotificationListener 2>/dev/null || true
 
 # 5. Enable on-device installs (Unknown Sources)
 echo "[+] Enabling on-device installs (Unknown Sources)..."

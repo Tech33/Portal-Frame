@@ -1040,6 +1040,20 @@ class SettingsActivity : ComponentActivity() {
                             SmallAction("Launch", true) {
                                 MediaReceivers.launch(ctx, receiver)
                             }
+                        } else if (receiver.id == "spotify") {
+                            var installStatus by remember { mutableStateOf("") }
+                            Column(horizontalAlignment = Alignment.End) {
+                                SmallAction(if (installStatus.isEmpty()) "Install OTA" else "Installing…", installStatus.isEmpty()) {
+                                    CompanionAppInstaller.installSpotify(ctx) { st ->
+                                        installStatus = st
+                                        Toast.makeText(ctx, st, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                if (installStatus.isNotEmpty()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(installStatus, color = Color(0xFF007AFF), fontSize = 10.sp)
+                                }
+                            }
                         } else {
                             SmallAction("Setup", true) {
                                 selectedReceiverGuide = receiver

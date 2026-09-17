@@ -1392,6 +1392,9 @@
             <span class="badge-pill ${d.presence === 'occupied' ? 'badge-presence' : 'badge-vacant'}">
               ${d.presence === 'occupied' ? '👤 Occupied' : '🌙 Room Empty (Clock)'}
             </span>
+            <span class="badge-pill ${d.spotifyInstalled ? 'badge-presence' : ''}" style="${d.spotifyInstalled ? '' : 'background:rgba(255,255,255,0.08); color:#8E8E93;'}">
+              ${d.spotifyInstalled ? '🟢 Spotify Ready' : '⚪ Spotify Not Installed'}
+            </span>
             <span style="color:#636366;">ID: ${d.shortId || d.id}</span>
           </div>
           <div class="portal-card-actions">
@@ -1401,9 +1404,33 @@
             <button class="portal-act-btn tap-scale" onclick="togglePortalMode('${d.id}')">
               ⏰ Toggle Clock
             </button>
+            ${!d.spotifyInstalled ? `
+            <button class="portal-act-btn tap-scale" style="border-color:#1DB954; color:#1DB954;" onclick="installSpotifyToPortal('${d.id}')" title="Wirelessly install Spotify Connect companion">
+              📥 Install Spotify
+            </button>` : ''}
           </div>
         </div>
       `).join('');
+    }
+
+    async function installSpotifyToPortal(deviceId) {
+      const d = fleetDevices.find(x => x.id === deviceId || x.shortId === deviceId);
+      if (!d || !d.host) {
+        showStatus('Device unreachable', 'error');
+        return;
+      }
+      showStatus(`Triggering Spotify install on ${d.name}...`, 'info');
+      try {
+        const resp = await fetch(`http://${d.host}/api/apps/spotify/install`, { method: 'POST', mode: 'cors' });
+        if (resp.ok) {
+          showStatus(`Spotify download & silent install started on ${d.name}!`, 'success');
+          setTimeout(refreshFleet, 4000);
+        } else {
+          showStatus('Failed to trigger install', 'error');
+        }
+      } catch (e) {
+        showStatus('Error connecting to Portal: ' + e.message, 'error');
+      }
     }
 
     async function refreshFleet() {
@@ -1418,6 +1445,7 @@
               if (data.country) d.country = data.country;
               if (data.deviceId) d.shortId = data.deviceId;
               if (data.presence) d.presence = data.presence;
+              d.spotifyInstalled = !!data.spotifyInstalled;
               if (data.media && data.media.isPlaying) {
                 updateMediaBar(data.media, d.name);
               }

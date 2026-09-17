@@ -173,10 +173,14 @@ object ScreenControl {
                     updated
                 )
                 Log.i(TAG, "enableNotificationListener: added service to enabled_notification_listeners")
+            val enabledNow = isNotificationListenerEnabled(context)
+            if (!enabledNow) {
+                PortalAccessibilityService.armNotificationAccessEnabler(context)
             }
             true
         } catch (e: Exception) {
-            Log.w(TAG, "enableNotificationListener: failed to write secure settings", e)
+            Log.w(TAG, "enableNotificationListener: failed to write secure settings; falling back to accessibility auto-enabler", e)
+            PortalAccessibilityService.armNotificationAccessEnabler(context)
             false
         }
     }

@@ -19,11 +19,14 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Native hardware CV presence detection via Aloha PresenceManager logcat -->
     <uses-permission android:name="android.permission.READ_LOGS" />
+    <!-- Wi-Fi Multicast Lock for AirPlay mDNS Bonjour discovery -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Package queries for standalone media receivers sideloaded via OpenPortal / Immortal -->
     <queries>
-        <!-- Spotify (Spotify Connect) -->
+        <!-- Spotify (Meta Portal Aloha Spotify & Spotify Connect) -->
+        <package android:name="com.facebook.aloha.spotifystandalone" />
         <package android:name="com.spotify.music" />
         <package android:name="com.spotify.tv.android" />
         <package android:name="com.spotify.lite" />

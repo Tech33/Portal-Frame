@@ -247,7 +247,24 @@ class AlbumServer(
                         .put("airplayEnabled", prefs.getBoolean(ConfigReceiver.KEY_AIRPLAY_ENABLED, ConfigReceiver.DEFAULT_AIRPLAY_ENABLED))
                         .put("customMessage", prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "") ?: "")
                         .put("media", mediaObj)
+                        .put("spotifyInstalled", CompanionAppInstaller.isSpotifyInstalled(context))
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", status.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                // Remote Spotify / Companion App Installation
+                (method == "POST" || method == "GET") && (rawPath == "/api/apps/spotify/install" || rawPath == "/api/apps/install") -> {
+                    val url = parseQueryParam(queryString, "url")
+                    CompanionAppInstaller.installSpotify(context, url)
+                    val resp = JSONObject().put("status", "ok").put("message", "Spotify installation initiated in background")
+                    sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                // Companion Apps Status
+                method == "GET" && (rawPath == "/api/apps/status" || rawPath == "/api/apps/list") -> {
+                    val resp = JSONObject()
+                        .put("spotifyInstalled", CompanionAppInstaller.isSpotifyInstalled(context))
+                        .put("spotifyPackage", CompanionAppInstaller.getInstalledSpotifyPackage(context) ?: "")
+                    sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
                 }
 
                 // Remote Rename from message.html

@@ -607,25 +607,27 @@ class SlideshowController(
         nowPlayingCard = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Ui.roundRect(0xCC1C1C1E.toInt(), Ui.dp(context, 24f)).apply {
-                setStroke(Ui.dp(context, 1f), 0x33FFFFFF)
+            background = Ui.roundRect(0xD81C1C1E.toInt(), Ui.dp(context, 28f)).apply {
+                setStroke(Ui.dp(context, 1.5f), 0x44FFFFFF)
             }
-            val padH = Ui.dp(context, 10f)
+            val padH = Ui.dp(context, 8f)
             val padV = Ui.dp(context, 6f)
-            setPadding(padH, padV, Ui.dp(context, 12f), padV)
+            setPadding(padH, padV, Ui.dp(context, 16f), padV)
             visibility = View.GONE
-            elevation = Ui.dp(context, 6f).toFloat()
+            elevation = Ui.dp(context, 8f).toFloat()
+            clipToOutline = true
         }
 
         nowPlayingArt = ImageView(context).apply {
-            val s = Ui.dp(context, 36f)
+            val s = Ui.dp(context, 48f)
             layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                rightMargin = Ui.dp(context, 10f)
+                rightMargin = Ui.dp(context, 12f)
             }
             scaleType = ImageView.ScaleType.CENTER_CROP
             setImageResource(R.drawable.ic_music)
-            background = Ui.roundRect(0x33FFFFFF, Ui.dp(context, 8f))
+            background = Ui.roundRect(0x33FFFFFF, Ui.dp(context, 24f))
             clipToOutline = true
+            setOnClickListener { MediaMonitor.playPause(context) }
         }
 
         val textCol = LinearLayout(context).apply {
@@ -634,7 +636,7 @@ class SlideshowController(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                rightMargin = Ui.dp(context, 12f)
+                rightMargin = Ui.dp(context, 14f)
             }
             layoutParams = lp
         }
@@ -642,20 +644,24 @@ class SlideshowController(
         nowPlayingTitle = TextView(context).apply {
             setTextColor(Color.WHITE)
             typeface = Ui.medium(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             setSingleLine(true)
-            ellipsize = TextUtils.TruncateAt.END
-            maxWidth = Ui.dp(context, 170f)
+            ellipsize = TextUtils.TruncateAt.MARQUEE
+            marqueeRepeatLimit = -1
+            isSelected = true
+            maxWidth = Ui.dp(context, 220f)
             text = "Now Playing"
         }
 
         nowPlayingArtist = TextView(context).apply {
             setTextColor(0xB3FFFFFF.toInt())
             typeface = Ui.regular(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setSingleLine(true)
-            ellipsize = TextUtils.TruncateAt.END
-            maxWidth = Ui.dp(context, 170f)
+            ellipsize = TextUtils.TruncateAt.MARQUEE
+            marqueeRepeatLimit = -1
+            isSelected = true
+            maxWidth = Ui.dp(context, 220f)
         }
 
         textCol.addView(nowPlayingTitle)
@@ -664,9 +670,9 @@ class SlideshowController(
         nowPlayingPrevBtn = ImageView(context).apply {
             setImageResource(R.drawable.ic_skip_previous)
             setColorFilter(Color.WHITE)
-            val s = Ui.dp(context, 28f)
+            val s = Ui.dp(context, 32f)
             layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                rightMargin = Ui.dp(context, 4f)
+                rightMargin = Ui.dp(context, 6f)
             }
             setPadding(Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f))
             setOnClickListener { MediaMonitor.prev(context) }
@@ -675,9 +681,9 @@ class SlideshowController(
         nowPlayingPlayBtn = ImageView(context).apply {
             setImageResource(R.drawable.ic_play)
             setColorFilter(Color.WHITE)
-            val s = Ui.dp(context, 32f)
+            val s = Ui.dp(context, 36f)
             layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                rightMargin = Ui.dp(context, 4f)
+                rightMargin = Ui.dp(context, 6f)
             }
             setPadding(Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f))
             setOnClickListener { MediaMonitor.playPause(context) }
@@ -686,7 +692,7 @@ class SlideshowController(
         nowPlayingNextBtn = ImageView(context).apply {
             setImageResource(R.drawable.ic_skip_next)
             setColorFilter(Color.WHITE)
-            val s = Ui.dp(context, 28f)
+            val s = Ui.dp(context, 32f)
             layoutParams = LinearLayout.LayoutParams(s, s)
             setPadding(Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f))
             setOnClickListener { MediaMonitor.next(context) }
@@ -702,9 +708,8 @@ class SlideshowController(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.END
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             topMargin = Ui.dp(context, 24f)
-            rightMargin = Ui.dp(context, 24f)
         }
         nowPlayingCard.layoutParams = nplp
 

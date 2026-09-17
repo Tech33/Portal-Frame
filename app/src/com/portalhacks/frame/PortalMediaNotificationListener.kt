@@ -201,6 +201,21 @@ class PortalMediaNotificationListener : NotificationListenerService() {
         val album = metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: ""
         var art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+
+        if (art == null && metadata != null) {
+            val artUriStr = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI)
+                ?: metadata.getString(MediaMetadata.METADATA_KEY_ART_URI)
+                ?: metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI)
+            if (!artUriStr.isNullOrBlank()) {
+                try {
+                    val uri = android.net.Uri.parse(artUriStr)
+                    contentResolver.openInputStream(uri)?.use { stream ->
+                        art = android.graphics.BitmapFactory.decodeStream(stream)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
 
         // Notification extras fallback for web / YouTube streaming
         if (notif != null) {
