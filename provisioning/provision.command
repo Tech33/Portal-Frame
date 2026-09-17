@@ -70,6 +70,10 @@ echo "[+] Automating application permissions..."
 $ADB shell pm grant com.portalhacks.frame android.permission.CAMERA 2>/dev/null
 # Optional: sound level amplitude monitoring for Home Assistant
 $ADB shell pm grant com.portalhacks.frame android.permission.RECORD_AUDIO 2>/dev/null || true
+# Grant READ_LOGS for native hardware presence detection
+$ADB shell pm grant com.portalhacks.frame android.permission.READ_LOGS 2>/dev/null || true
+# Auto-enable media session notification listener for Now Playing widget
+$ADB shell cmd notification allow_listener com.portalhacks.frame/.PortalMediaNotificationListener 2>/dev/null || true
 # Secure settings grant for screensaver management and hardware display control
 $ADB shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS 2>/dev/null
 # Auto-enable hardware screen sleep accessibility service

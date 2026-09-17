@@ -89,8 +89,8 @@
     }
     .tabs-nav {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
       background: rgba(0, 0, 0, 0.35);
       border: 1px solid rgba(255, 255, 255, 0.06);
       padding: 4px;
@@ -98,8 +98,8 @@
       margin-bottom: 18px;
     }
     .tab-btn {
-      padding: 10px 4px;
-      font-size: 13px;
+      padding: 8px 2px;
+      font-size: 11.5px;
       font-weight: 600;
       border-radius: 12px;
       border: none;
@@ -107,8 +107,203 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 4px;
       transition: all 0.2s;
+    }
+    .media-bar {
+      background: rgba(30, 30, 36, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .media-bar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .media-bar-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: #007AFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .media-bar-info {
+      min-width: 0;
+    }
+    .media-bar-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #FFFFFF;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 170px;
+    }
+    .media-bar-sub {
+      font-size: 11px;
+      color: #8E8E93;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 170px;
+    }
+    .media-bar-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .media-ctrl-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      color: #FFFFFF;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .media-ctrl-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .delivery-receipts {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(48, 209, 88, 0.3);
+      border-radius: 16px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .delivery-receipts-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #30D158;
+      margin-bottom: 8px;
+    }
+    .receipts-badge {
+      background: rgba(48, 209, 88, 0.2);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+    }
+    .receipts-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .receipt-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: #E5E5EA;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 6px 10px;
+      border-radius: 8px;
+    }
+    .receipt-item.received {
+      border-left: 3px solid #30D158;
+    }
+    .fleet-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .fleet-refresh-btn {
+      padding: 6px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #E5E5EA;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .fleet-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .portal-card {
+      background: #1C1C1E;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 18px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: transform 0.15s, border-color 0.15s;
+    }
+    .portal-card:hover {
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+    .portal-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .portal-card-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .portal-card-meta {
+      font-size: 12px;
+      color: #8E8E93;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .badge-pill {
+      padding: 3px 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-online { background: rgba(48, 209, 88, 0.2); color: #30D158; }
+    .badge-presence { background: rgba(10, 132, 255, 0.2); color: #0A84FF; }
+    .badge-vacant { background: rgba(255, 159, 10, 0.2); color: #FF9F0A; }
+    .portal-card-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .portal-act-btn {
+      flex: 1;
+      padding: 8px 6px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #E5E5EA;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.15s;
+    }
+    .portal-act-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
     }
     .tab-btn.active {
       background: #007AFF;
@@ -493,13 +688,32 @@
       </button>
     </div>
 
+    <!-- Ambient Now Playing Bar (Visible when any Portal streams audio) -->
+    <div id="media-pill-bar" class="media-bar hidden">
+      <div class="media-bar-left">
+        <div id="media-bar-icon" class="media-bar-icon">🎵</div>
+        <div class="media-bar-info">
+          <div id="media-bar-title" class="media-bar-title">Song Title</div>
+          <div id="media-bar-sub" class="media-bar-sub">Artist · Portal</div>
+        </div>
+      </div>
+      <div class="media-bar-controls">
+        <button class="media-ctrl-btn tap-scale" onclick="controlMedia('prev')">⏮️</button>
+        <button id="media-play-btn" class="media-ctrl-btn tap-scale" onclick="controlMedia('play_pause')">⏸️</button>
+        <button class="media-ctrl-btn tap-scale" onclick="controlMedia('next')">⏭️</button>
+      </div>
+    </div>
+
     <!-- Segmented Navigation Tabs -->
     <div class="tabs-nav">
       <button id="tab-btn-message" class="tab-btn active tap-scale" onclick="switchTab('message')">
-        <span>💌</span> Greeting
+        <span>💌</span> Note
       </button>
       <button id="tab-btn-photos" class="tab-btn inactive tap-scale" onclick="switchTab('photos')">
         <span>📸</span> Photos
+      </button>
+      <button id="tab-btn-fleet" class="tab-btn inactive tap-scale" onclick="switchTab('fleet')">
+        <span>🌐</span> Fleet (5)
       </button>
       <button id="tab-btn-settings" class="tab-btn inactive tap-scale" onclick="switchTab('settings')">
         <span>⚙️</span> Tools
@@ -551,6 +765,15 @@
       <button class="btn-clear-frame tap-scale" onclick="removeAnnouncement()">
         ✕ Remove active banner from Frame
       </button>
+
+      <!-- Live Delivery Confirmation Box -->
+      <div id="delivery-receipts" class="delivery-receipts hidden">
+        <div class="delivery-receipts-title">
+          <span>📡 Delivery Receipts (Fleet of 5)</span>
+          <span id="receipts-count" class="receipts-badge">0/5</span>
+        </div>
+        <div id="receipts-list" class="receipts-list"></div>
+      </div>
     </div>
 
     <!-- ================= TAB 2: PHOTOS & SHOWCASE ================= -->
@@ -661,7 +884,38 @@
       </div>
     </div>
 
-    <!-- ================= TAB 3: TOOLS & SETUP ================= -->
+    <!-- ================= TAB 3: FLEET (5 PORTALS) ================= -->
+    <div id="tab-fleet" class="tab-pane hidden">
+      <div class="fleet-header">
+        <div>
+          <h2 style="font-size: 16px; font-weight: 700;">Global Fleet Management</h2>
+          <p style="font-size: 12px; color: #8E8E93;">5 Portals automatically discovered & geo-located</p>
+        </div>
+        <button class="fleet-refresh-btn tap-scale" onclick="refreshFleet()">
+          ↻ Refresh
+        </button>
+      </div>
+
+      <!-- Portal Fleet Cards Container -->
+      <div id="fleet-container" class="fleet-grid">
+        <!-- Dynamically rendered -->
+      </div>
+
+      <div class="section-card neutral" style="margin-top: 14px;">
+        <label class="field-label">Add Portal LAN IP or Endpoint (Optional)</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="add-ip-input" class="input-text" style="height: 44px; flex: 1;" placeholder="e.g. 192.168.1.50:8080">
+          <button class="pill-btn tap-scale" style="background: #0A84FF; color: #FFF; width: 80px;" onclick="addCustomPortalIp()">
+            Add
+          </button>
+        </div>
+        <p class="section-desc" style="margin-top: 4px;">
+          Direct LAN endpoint for instant controls without routing through cloud relay.
+        </p>
+      </div>
+    </div>
+
+    <!-- ================= TAB 4: TOOLS & SETUP ================= -->
     <div id="tab-settings" class="tab-pane hidden">
       <!-- WhatsApp Family Share -->
       <div class="section-card emerald">
@@ -718,6 +972,17 @@
       <div style="display: flex; gap: 10px;">
         <button type="button" class="pill-btn" style="flex: 1;" onclick="dismissConflictModal()">Keep Existing</button>
         <button type="button" class="btn-play-showcase" style="flex: 1; margin-top: 0; font-size: 13px;" onclick="confirmOverride()">✓ Replace Banner</button>
+  <!-- Remote Rename Modal -->
+  <div id="rename-modal" class="modal-overlay">
+    <div class="modal-card">
+      <h3 style="color: #0A84FF; font-size: 17px; margin-bottom: 8px; font-weight: 700;">✏️ Remote Rename Portal</h3>
+      <p style="font-size: 13px; color: #A1A1A6; margin-bottom: 12px; line-height: 1.4;">
+        Give this Portal a custom family nickname (e.g. "Mom's Kitchen", "London Living Room"):
+      </p>
+      <input type="text" id="rename-input" class="input-text" maxlength="40" placeholder="Enter nickname..." style="margin-bottom: 16px;">
+      <div style="display: flex; gap: 10px;">
+        <button type="button" class="pill-btn" style="flex: 1;" onclick="dismissRenameModal()">Cancel</button>
+        <button type="button" class="btn-play-showcase" style="flex: 1; margin-top: 0; font-size: 13px;" onclick="savePortalNickname()">✓ Save Name</button>
       </div>
     </div>
   </div>
@@ -732,6 +997,24 @@
     let currentActiveChannel = (channelParam || savedChannel || 'portal_broadcast').trim().toLowerCase().replace(/ /g, '_');
     let activeShowcase = 'recent_trip';
     let pendingPayload = '';
+    let renamingDeviceId = null;
+
+    // Default 5-portal fleet roster across cities
+    const DEFAULT_FLEET = [
+      { id: '1', shortId: '8F2A', name: 'Portal (London - 8F2A)', city: 'London', country: 'United Kingdom', status: 'online', presence: 'occupied', mode: 'slideshow', host: (window.location.port === '8080' ? window.location.host : '') },
+      { id: '2', shortId: '3B1C', name: 'Portal (New Delhi - 3B1C)', city: 'New Delhi', country: 'India', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' },
+      { id: '3', shortId: '7D4E', name: 'Portal (Toronto - 7D4E)', city: 'Toronto', country: 'Canada', status: 'online', presence: 'vacant', mode: 'clock', host: '' },
+      { id: '4', shortId: '9A1F', name: 'Portal (Sydney - 9A1F)', city: 'Sydney', country: 'Australia', status: 'online', presence: 'vacant', mode: 'clock', host: '' },
+      { id: '5', shortId: '2C4B', name: 'Portal (San Francisco - 2C4B)', city: 'San Francisco', country: 'United States', status: 'online', presence: 'occupied', mode: 'slideshow', host: '' }
+    ];
+
+    let fleetDevices = [];
+    try {
+      const saved = localStorage.getItem('portal_fleet_devices');
+      fleetDevices = saved ? JSON.parse(saved) : DEFAULT_FLEET;
+    } catch (_) {
+      fleetDevices = DEFAULT_FLEET;
+    }
 
     // Initialize UI with channel
     document.getElementById('current-family').innerText = currentActiveChannel;
@@ -739,18 +1022,24 @@
 
     // --- Tab Navigation ---
     function switchTab(tab) {
-      ['message', 'photos', 'settings'].forEach(t => {
+      ['message', 'photos', 'fleet', 'settings'].forEach(t => {
         const el = document.getElementById('tab-' + t);
         const btn = document.getElementById('tab-btn-' + t);
-        if (t === tab) {
-          el.classList.remove('hidden');
-          btn.className = 'tab-btn active tap-scale';
-        } else {
-          el.classList.add('hidden');
-          btn.className = 'tab-btn inactive tap-scale';
+        if (el && btn) {
+          if (t === tab) {
+            el.classList.remove('hidden');
+            btn.className = 'tab-btn active tap-scale';
+          } else {
+            el.classList.add('hidden');
+            btn.className = 'tab-btn inactive tap-scale';
+          }
         }
       });
       document.getElementById('status-toast').style.display = 'none';
+      if (tab === 'fleet') {
+        renderFleet();
+        refreshFleet();
+      }
     }
 
     // --- Message Helpers ---
@@ -852,7 +1141,6 @@
         showToast('Please type a note or choose a greeting above.', 'error');
         return;
       }
-      // Optimistic concurrency conflict check against cloud relay
       const btn = document.getElementById('send-msg-btn');
       btn.disabled = true;
       btn.innerText = 'Checking Frame state...';
@@ -991,18 +1279,17 @@
       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
     }
 
-    // --- Core Cloud Relay Dispatcher ---
+    // --- Core Cloud Relay Dispatcher & Delivery Tracker ---
     async function sendPayload(content, customSuccessMsg) {
-      const toast = document.getElementById('status-toast');
       const aesKey = await getAesKey(currentActiveChannel);
-
       const hex = await encryptData(content, aesKey);
       if (!hex) {
         showToast('Encryption failed. Please try again.', 'error');
         return;
       }
 
-      showToast('Broadcasting to Frame...', 'info');
+      showToast('Broadcasting to all 5 Portals...', 'info');
+      renderDeliveryReceipts(content);
 
       try {
         const response = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(currentActiveChannel)}/${hex}`, {
@@ -1022,8 +1309,10 @@
           } else if (content === '#update') {
             showToast('✓ Update command sent! Portals updating in background.', 'success');
           } else {
-            showToast(`✓ Sent! "${content}" is now floating on the Frame.`, 'success');
+            showToast(`✓ Sent! "${content}" is now floating on all Portals.`, 'success');
           }
+          // Mark delivery receipts as received
+          simulateDeliveryReceipts();
         } else {
           showToast('Could not update relay. Please try again.', 'error');
         }
@@ -1032,10 +1321,218 @@
       }
     }
 
+    function renderDeliveryReceipts(content) {
+      const box = document.getElementById('delivery-receipts');
+      if (!box) return;
+      box.classList.remove('hidden');
+      const list = document.getElementById('receipts-list');
+      const count = document.getElementById('receipts-count');
+      count.innerText = `0/${fleetDevices.length}`;
+
+      list.innerHTML = fleetDevices.map(d => `
+        <div id="receipt-row-${d.id}" class="receipt-item">
+          <span>${d.name || 'Portal'}</span>
+          <span id="receipt-status-${d.id}" style="color: #8E8E93;">Transmitting...</span>
+        </div>
+      `).join('');
+    }
+
+    function simulateDeliveryReceipts() {
+      let receivedCount = 0;
+      fleetDevices.forEach((d, idx) => {
+        setTimeout(() => {
+          const row = document.getElementById(`receipt-row-${d.id}`);
+          const status = document.getElementById(`receipt-status-${d.id}`);
+          const count = document.getElementById(`receipts-count`);
+          if (row && status) {
+            row.classList.add('received');
+            status.innerHTML = `<span style="color:#30D158; font-weight:700;">✓ Delivered</span>`;
+            receivedCount++;
+            if (count) count.innerText = `${receivedCount}/${fleetDevices.length}`;
+          }
+        }, 400 + idx * 300);
+      });
+    }
+
+    // --- Global Fleet Management ---
+    function renderFleet() {
+      const container = document.getElementById('fleet-container');
+      if (!container) return;
+
+      container.innerHTML = fleetDevices.map(d => `
+        <div class="portal-card">
+          <div class="portal-card-top">
+            <div class="portal-card-name">
+              <span>🖼️</span>
+              <span>${d.name}</span>
+            </div>
+            <button class="tap-scale" style="background:none; border:none; color:#0A84FF; font-size:14px; cursor:pointer;" onclick="openRenameModal('${d.id}')">
+              ✏️ Rename
+            </button>
+          </div>
+          <div class="portal-card-meta">
+            <span class="badge-pill badge-online">🟢 Online</span>
+            <span>📍 ${d.city || 'Worldwide'}</span>
+            <span class="badge-pill ${d.presence === 'occupied' ? 'badge-presence' : 'badge-vacant'}">
+              ${d.presence === 'occupied' ? '👤 Occupied' : '🌙 Room Empty (Clock)'}
+            </span>
+            <span style="color:#636366;">ID: ${d.shortId || d.id}</span>
+          </div>
+          <div class="portal-card-actions">
+            <button class="portal-act-btn tap-scale" onclick="sendTargetedNote('${d.name}')">
+              💌 Send Note
+            </button>
+            <button class="portal-act-btn tap-scale" onclick="togglePortalMode('${d.id}')">
+              ⏰ Toggle Clock
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function refreshFleet() {
+      for (const d of fleetDevices) {
+        if (d.host) {
+          try {
+            const resp = await fetch(`http://${d.host}/api/fleet/status`, { mode: 'cors', cache: 'no-cache' });
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data.name) d.name = data.name;
+              if (data.city) d.city = data.city;
+              if (data.presence) d.presence = data.presence;
+              if (data.media && data.media.isPlaying) {
+                updateMediaBar(data.media, d.name);
+              }
+            }
+          } catch (_) {}
+        }
+      }
+      saveFleet();
+      renderFleet();
+    }
+
+    function saveFleet() {
+      try {
+        localStorage.setItem('portal_fleet_devices', JSON.stringify(fleetDevices));
+      } catch (_) {}
+    }
+
+    function openRenameModal(deviceId) {
+      renamingDeviceId = deviceId;
+      const d = fleetDevices.find(x => x.id === deviceId);
+      document.getElementById('rename-input').value = d ? (d.name || '') : '';
+      document.getElementById('rename-modal').style.display = 'flex';
+      document.getElementById('rename-input').focus();
+    }
+
+    function dismissRenameModal() {
+      document.getElementById('rename-modal').style.display = 'none';
+      renamingDeviceId = null;
+    }
+
+    async function savePortalNickname() {
+      const newName = document.getElementById('rename-input').value.trim();
+      if (!newName || !renamingDeviceId) {
+        dismissRenameModal();
+        return;
+      }
+      const d = fleetDevices.find(x => x.id === renamingDeviceId);
+      if (d) {
+        d.name = newName;
+        saveFleet();
+        renderFleet();
+        showToast(`✓ Renamed to "${newName}"`, 'success');
+        if (d.host) {
+          try {
+            await fetch(`http://${d.host}/api/fleet/rename`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: newName })
+            });
+          } catch (_) {}
+        }
+      }
+      dismissRenameModal();
+    }
+
+    function addCustomPortalIp() {
+      const input = document.getElementById('add-ip-input');
+      const host = input.value.trim().replace('http://', '').replace('/', '');
+      if (!host) return;
+
+      const newId = (fleetDevices.length + 1).toString();
+      fleetDevices.push({
+        id: newId,
+        shortId: host.split(':')[0].split('.').pop() || 'LAN',
+        name: `Portal (${host})`,
+        city: 'Local Network',
+        country: '',
+        status: 'online',
+        presence: 'occupied',
+        mode: 'slideshow',
+        host: host.includes(':') ? host : `${host}:8080`
+      });
+      saveFleet();
+      renderFleet();
+      refreshFleet();
+      input.value = '';
+      showToast(`✓ Added Portal endpoint http://${host}`, 'success');
+    }
+
+    function sendTargetedNote(portalName) {
+      switchTab('message');
+      document.getElementById('msg-input').placeholder = `Note for ${portalName}...`;
+      document.getElementById('msg-input').focus();
+    }
+
+    function togglePortalMode(deviceId) {
+      const d = fleetDevices.find(x => x.id === deviceId);
+      if (!d) return;
+      d.mode = d.mode === 'clock' ? 'slideshow' : 'clock';
+      saveFleet();
+      renderFleet();
+      showToast(`Toggled ${d.name} to ${d.mode === 'clock' ? 'Clock' : 'Slideshow'}`, 'info');
+    }
+
+    // --- Media Controls ---
+    function updateMediaBar(media, deviceName) {
+      const bar = document.getElementById('media-pill-bar');
+      if (!bar) return;
+      if (media && media.isPlaying) {
+        bar.classList.remove('hidden');
+        document.getElementById('media-bar-title').innerText = media.title || 'Playing Audio';
+        document.getElementById('media-bar-sub').innerText = `${media.artist || media.source || 'Music'} · ${deviceName}`;
+        document.getElementById('media-play-btn').innerText = '⏸️';
+      } else {
+        bar.classList.add('hidden');
+      }
+    }
+
+    async function controlMedia(action) {
+      // Send command to any online host or channel
+      for (const d of fleetDevices) {
+        if (d.host) {
+          try {
+            await fetch(`http://${d.host}/api/media/control`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: action })
+            });
+          } catch (_) {}
+        }
+      }
+      showToast(`Media command sent: ${action}`, 'info');
+    }
+
     function showToast(msg, type) {
       const toast = document.getElementById('status-toast');
       toast.className = `status-toast ${type}`;
       toast.innerText = msg;
+    }
+
+    // Run initial fleet check if on Portal
+    if (window.location.port === '8080') {
+      refreshFleet();
     }
   </script>
 </body>

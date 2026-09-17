@@ -17,6 +17,8 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Optional: sound level amplitude monitoring for Home Assistant -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Native hardware CV presence detection via Aloha PresenceManager logcat -->
+    <uses-permission android:name="android.permission.READ_LOGS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Package queries for standalone media receivers sideloaded via OpenPortal / Immortal -->
@@ -68,6 +70,17 @@
             <intent-filter>
                 <action android:name="android.service.dreams.DreamService" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
+        <!-- Media Session & Notification Listener for Now Playing widgets -->
+        <service
+            android:name=".PortalMediaNotificationListener"
+            android:exported="true"
+            android:label="Frame Media Controller"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
 

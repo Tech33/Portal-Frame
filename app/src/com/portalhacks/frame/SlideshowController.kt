@@ -25,6 +25,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Spannable
 import android.text.SpannableStringBuilder
+import android.text.TextUtils
 import android.text.style.ImageSpan
 import android.util.Log
 import android.util.TypedValue
@@ -87,6 +88,19 @@ class SlideshowController(
     private val broadcastBanner: TextView
     private val dateLine: TextView
     private val clockEditHint: TextView // "drag/pinch/tap" hint shown while editing the clock
+    private lateinit var nowPlayingCard: LinearLayout
+    private lateinit var nowPlayingArt: ImageView
+    private lateinit var nowPlayingTitle: TextView
+    private lateinit var nowPlayingArtist: TextView
+    private lateinit var nowPlayingPlayBtn: ImageView
+    private lateinit var nowPlayingPrevBtn: ImageView
+    private lateinit var nowPlayingNextBtn: ImageView
+    private val nowPlayingHideRunnable = Runnable { hideNowPlaying() }
+    private val mediaListener = object : MediaMonitor.Listener {
+        override fun onMediaStateChanged(state: MediaMonitor.State) {
+            updateNowPlaying(state)
+        }
+    }
     private val shimmer: ShimmerView
     private val timeFmt: DateFormat
     private val bigTimeFmt: DateFormat
@@ -550,6 +564,8 @@ class SlideshowController(
         root.addView(clockExit)
         initHaButton()
         root.addView(haButton)
+        initNowPlaying()
+        root.addView(nowPlayingCard)
         root.addView(actionMenuBackdrop)
         root.addView(actionMenuCard)
         clockBox.post { applyClockTransformNow() } // apply saved position/size once laid out
@@ -584,6 +600,150 @@ class SlideshowController(
             val haUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, "")?.trim() ?: ""
             visibility = if (haEnabled && showBtn && haUrl.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
             setOnClickListener { onOpenHomeAssistant?.run() }
+        }
+    }
+
+    private fun initNowPlaying() {
+        nowPlayingCard = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.roundRect(0xCC1C1C1E.toInt(), Ui.dp(context, 24f)).apply {
+                setStroke(Ui.dp(context, 1f), 0x33FFFFFF)
+            }
+            val padH = Ui.dp(context, 10f)
+            val padV = Ui.dp(context, 6f)
+            setPadding(padH, padV, Ui.dp(context, 12f), padV)
+            visibility = View.GONE
+            elevation = Ui.dp(context, 6f).toFloat()
+        }
+
+        nowPlayingArt = ImageView(context).apply {
+            val s = Ui.dp(context, 36f)
+            layoutParams = LinearLayout.LayoutParams(s, s).apply {
+                rightMargin = Ui.dp(context, 10f)
+            }
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageResource(R.drawable.ic_music)
+            background = Ui.roundRect(0x33FFFFFF, Ui.dp(context, 8f))
+            clipToOutline = true
+        }
+
+        val textCol = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                rightMargin = Ui.dp(context, 12f)
+            }
+            layoutParams = lp
+        }
+
+        nowPlayingTitle = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            typeface = Ui.medium(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.END
+            maxWidth = Ui.dp(context, 170f)
+            text = "Now Playing"
+        }
+
+        nowPlayingArtist = TextView(context).apply {
+            setTextColor(0xB3FFFFFF.toInt())
+            typeface = Ui.regular(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.END
+            maxWidth = Ui.dp(context, 170f)
+        }
+
+        textCol.addView(nowPlayingTitle)
+        textCol.addView(nowPlayingArtist)
+
+        nowPlayingPrevBtn = ImageView(context).apply {
+            setImageResource(R.drawable.ic_skip_previous)
+            setColorFilter(Color.WHITE)
+            val s = Ui.dp(context, 28f)
+            layoutParams = LinearLayout.LayoutParams(s, s).apply {
+                rightMargin = Ui.dp(context, 4f)
+            }
+            setPadding(Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f))
+            setOnClickListener { MediaMonitor.prev() }
+        }
+
+        nowPlayingPlayBtn = ImageView(context).apply {
+            setImageResource(R.drawable.ic_play)
+            setColorFilter(Color.WHITE)
+            val s = Ui.dp(context, 32f)
+            layoutParams = LinearLayout.LayoutParams(s, s).apply {
+                rightMargin = Ui.dp(context, 4f)
+            }
+            setPadding(Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f))
+            setOnClickListener { MediaMonitor.playPause() }
+        }
+
+        nowPlayingNextBtn = ImageView(context).apply {
+            setImageResource(R.drawable.ic_skip_next)
+            setColorFilter(Color.WHITE)
+            val s = Ui.dp(context, 28f)
+            layoutParams = LinearLayout.LayoutParams(s, s)
+            setPadding(Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f), Ui.dp(context, 4f))
+            setOnClickListener { MediaMonitor.next() }
+        }
+
+        nowPlayingCard.addView(nowPlayingArt)
+        nowPlayingCard.addView(textCol)
+        nowPlayingCard.addView(nowPlayingPrevBtn)
+        nowPlayingCard.addView(nowPlayingPlayBtn)
+        nowPlayingCard.addView(nowPlayingNextBtn)
+
+        val nplp = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.END
+            topMargin = Ui.dp(context, 24f)
+            rightMargin = Ui.dp(context, 24f)
+        }
+        nowPlayingCard.layoutParams = nplp
+        MediaMonitor.addListener(mediaListener)
+    }
+
+    private fun updateNowPlaying(state: MediaMonitor.State) {
+        handler.post {
+            if (state.title.isEmpty() && !state.isPlaying) {
+                hideNowPlaying()
+                return@post
+            }
+            nowPlayingTitle.text = state.title
+            nowPlayingArtist.text = if (state.artist.isNotEmpty()) state.artist else state.source
+            if (state.art != null) {
+                nowPlayingArt.setImageBitmap(state.art)
+            } else {
+                nowPlayingArt.setImageResource(R.drawable.ic_music)
+            }
+            nowPlayingPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
+
+            if (state.isPlaying) {
+                handler.removeCallbacks(nowPlayingHideRunnable)
+                if (nowPlayingCard.visibility != View.VISIBLE && !clockOnly) {
+                    nowPlayingCard.alpha = 0f
+                    nowPlayingCard.visibility = View.VISIBLE
+                    nowPlayingCard.animate().alpha(1f).setDuration(350).start()
+                }
+            } else {
+                handler.removeCallbacks(nowPlayingHideRunnable)
+                handler.postDelayed(nowPlayingHideRunnable, 10000L)
+            }
+        }
+    }
+
+    private fun hideNowPlaying() {
+        if (nowPlayingCard.visibility == View.VISIBLE) {
+            nowPlayingCard.animate().alpha(0f).setDuration(400).withEndAction {
+                nowPlayingCard.visibility = View.GONE
+            }.start()
         }
     }
 
@@ -1602,6 +1762,7 @@ class SlideshowController(
             applyClockOnlyTransform()
             clockBox.visibility = View.GONE // hide the bottom overlay clock
             broadcastBanner.visibility = View.GONE
+            nowPlayingCard.visibility = View.GONE
             clockOnlyBox.visibility = View.VISIBLE // big centered clock instead
             clockExit.visibility = View.VISIBLE
             startClock() // ensure ticking + populate the big clock now
@@ -1612,6 +1773,9 @@ class SlideshowController(
                 shimmer.startSweep()
             }
             clockBox.visibility = if (showClock) View.VISIBLE else View.GONE
+            if (MediaMonitor.currentState.isPlaying) {
+                nowPlayingCard.visibility = View.VISIBLE
+            }
             val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
             val lastMsg = prefs.getString("last_broadcast_msg", "") ?: ""
             if (lastMsg.isNotEmpty()) {
@@ -2506,7 +2670,7 @@ class SlideshowController(
 
     private fun refreshWeather() {
         loader.executor().execute {
-            val now = Weather.fetch(fahrenheit) ?: return@execute
+            val now = Weather.fetch(fahrenheit, context) ?: return@execute
             handler.post {
                 weather = now
                 updateClock()

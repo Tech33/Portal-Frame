@@ -107,6 +107,12 @@ class AlbumServer(
             val prefs = context.getSharedPreferences("portalframe", Context.MODE_PRIVATE)
 
             when {
+                method == "OPTIONS" -> {
+                    val headers = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    socket.getOutputStream().write(headers.toByteArray(Charsets.UTF_8))
+                    socket.getOutputStream().flush()
+                }
+
                 // HTML5 Apple-styled slideshow endpoint
                 method == "GET" && (rawPath == "/" || rawPath == "/slideshow" || rawPath == "/frame") -> {
                     val html = getSlideshowHtml(prefs)
@@ -150,7 +156,17 @@ class AlbumServer(
                     prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, sanitized).apply()
                     context.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", sanitized))
                     MqttManager.getInstance(context).publishAllStates()
-                    sendResponse(socket, 200, "Success", "text/html; charset=utf-8", getMessageSuccessHtml(sanitized).toByteArray(Charsets.UTF_8))
+                    if (rawPath == "/api/message" || queryString.contains("format=json")) {
+                        val receipt = JSONObject()
+                            .put("status", "success")
+                            .put("message", sanitized)
+                            .put("deviceId", ConfigReceiver.getDeviceShortId(context))
+                            .put("name", ConfigReceiver.getDeviceDisplayName(context))
+                            .put("receivedAt", System.currentTimeMillis())
+                        sendResponse(socket, 200, "Success", "application/json; charset=utf-8", receipt.toString().toByteArray(Charsets.UTF_8))
+                    } else {
+                        sendResponse(socket, 200, "Success", "text/html; charset=utf-8", getMessageSuccessHtml(sanitized).toByteArray(Charsets.UTF_8))
+                    }
                 }
 
                 method == "POST" && (rawPath == "/api/message/clear" || rawPath == "/message/clear") -> {
@@ -198,6 +214,73 @@ class AlbumServer(
                         .put("albumsCount", enabledAlbums.size)
                         .put("slideshowUrl", "http://127.0.0.1:$port/slideshow")
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", status.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                // Fleet Status: auto-detected city, hardware ID, nickname, presence, media
+                method == "GET" && (rawPath == "/api/fleet/status" || rawPath == "/fleet/status") -> {
+                    val enabledAlbums = Albums.enabled(prefs)
+                    val mediaState = MediaMonitor.currentState
+                    val mediaObj = JSONObject()
+                        .put("isPlaying", mediaState.isPlaying)
+                        .put("title", mediaState.title)
+                        .put("artist", mediaState.artist)
+                        .put("album", mediaState.album)
+                        .put("source", mediaState.source)
+                        .put("hasArt", mediaState.art != null)
+
+                    val status = JSONObject()
+                        .put("status", "ok")
+                        .put("deviceId", ConfigReceiver.getDeviceShortId(context))
+                        .put("name", ConfigReceiver.getDeviceDisplayName(context))
+                        .put("nickname", prefs.getString(ConfigReceiver.KEY_CUSTOM_NICKNAME, "") ?: "")
+                        .put("city", prefs.getString(ConfigReceiver.KEY_DEVICE_CITY, "") ?: "")
+                        .put("country", prefs.getString(ConfigReceiver.KEY_DEVICE_COUNTRY, "") ?: "")
+                        .put("version", UpdateChecker.currentVersionName(context))
+                        .put("albumsCount", enabledAlbums.size)
+                        .put("presenceEnabled", prefs.getBoolean(ConfigReceiver.KEY_PRESENCE_ENABLED, ConfigReceiver.DEFAULT_PRESENCE_ENABLED))
+                        .put("presenceTimeoutMin", prefs.getInt(ConfigReceiver.KEY_PRESENCE_TIMEOUT_MIN, ConfigReceiver.DEFAULT_PRESENCE_TIMEOUT_MIN))
+                        .put("airplayEnabled", prefs.getBoolean(ConfigReceiver.KEY_AIRPLAY_ENABLED, ConfigReceiver.DEFAULT_AIRPLAY_ENABLED))
+                        .put("customMessage", prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "") ?: "")
+                        .put("media", mediaObj)
+                    sendResponse(socket, 200, "OK", "application/json; charset=utf-8", status.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                // Remote Rename from message.html
+                method == "POST" && (rawPath == "/api/fleet/rename" || rawPath == "/fleet/rename") -> {
+                    val body = CharArray(contentLength.coerceAtMost(64 * 1024))
+                    var read = 0
+                    while (read < body.size) {
+                        val n = reader.read(body, read, body.size - read)
+                        if (n == -1) break
+                        read += n
+                    }
+                    val bodyStr = String(body)
+                    val newName = parseFormParam(bodyStr, "name") ?: parseJsonField(bodyStr, "name") ?: ""
+                    prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_NICKNAME, newName.trim()).apply()
+                    val resp = JSONObject()
+                        .put("status", "saved")
+                        .put("name", ConfigReceiver.getDeviceDisplayName(context))
+                    sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                // Remote Media Control (Play/Pause, Next, Prev)
+                method == "POST" && (rawPath == "/api/media/control" || rawPath == "/media/control") -> {
+                    val body = CharArray(contentLength.coerceAtMost(64 * 1024))
+                    var read = 0
+                    while (read < body.size) {
+                        val n = reader.read(body, read, body.size - read)
+                        if (n == -1) break
+                        read += n
+                    }
+                    val bodyStr = String(body)
+                    val action = parseFormParam(bodyStr, "action") ?: parseJsonField(bodyStr, "action") ?: "play_pause"
+                    when (action.lowercase(java.util.Locale.US)) {
+                        "play", "pause", "play_pause" -> MediaMonitor.playPause()
+                        "next" -> MediaMonitor.next()
+                        "prev", "previous" -> MediaMonitor.prev()
+                    }
+                    val resp = JSONObject().put("status", "ok").put("action", action)
+                    sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
                 }
 
                 // Form to add album via QR code
@@ -900,6 +983,15 @@ class AlbumServer(
         return try {
             val json = JSONObject(body)
             if (json.has("message")) json.getString("message") else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun parseJsonField(body: String, field: String): String? {
+        return try {
+            val json = JSONObject(body)
+            if (json.has(field)) json.optString(field, null) else null
         } catch (_: Exception) {
             null
         }

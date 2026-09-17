@@ -100,6 +100,18 @@ class ConfigReceiver : BroadcastReceiver() {
                 any = true
             }
         }
+        if (intent.hasExtra("nickname") || intent.hasExtra(KEY_CUSTOM_NICKNAME)) {
+            val nick = (intent.getStringExtra("nickname") ?: intent.getStringExtra(KEY_CUSTOM_NICKNAME))?.trim() ?: ""
+            ed.putString(KEY_CUSTOM_NICKNAME, nick)
+            Log.i("PortalFrame", "custom_nickname set to: $nick")
+            any = true
+        }
+        if (intent.hasExtra(KEY_PRESENCE_TIMEOUT_MIN)) {
+            val to = intent.getIntExtra(KEY_PRESENCE_TIMEOUT_MIN, DEFAULT_PRESENCE_TIMEOUT_MIN)
+            ed.putInt(KEY_PRESENCE_TIMEOUT_MIN, to)
+            Log.i("PortalFrame", "presence_timeout_min set to: $to")
+            any = true
+        }
         if (any) {
             ed.apply()
         }
@@ -166,6 +178,14 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_FONT_SCALE = "font_scale" // float multiplier for universal text sizing (1.0f, 1.15f, 1.30f, 1.50f)
         const val KEY_HA_BRIDGE_MODE = "ha_bridge_mode" // Home Assistant & portal-ha-bridge web kiosk mode
 
+        // Fleet, Presence, Media & AirPlay Keys
+        const val KEY_DEVICE_CITY = "device_city"
+        const val KEY_DEVICE_COUNTRY = "device_country"
+        const val KEY_CUSTOM_NICKNAME = "custom_nickname"
+        const val KEY_PRESENCE_ENABLED = "presence_enabled"
+        const val KEY_PRESENCE_TIMEOUT_MIN = "presence_timeout_min"
+        const val KEY_AIRPLAY_ENABLED = "airplay_enabled"
+
         // MQTT and Embedded Home Assistant keys
         const val KEY_MQTT_ENABLED = "mqtt_enabled"
         const val KEY_MQTT_HOST = "mqtt_host"
@@ -190,6 +210,11 @@ class ConfigReceiver : BroadcastReceiver() {
         const val ACTION_WAKE = "com.portalhacks.frame.WAKE"
         const val ACTION_SLEEP = "com.portalhacks.frame.SLEEP"
         const val ACTION_SET_SHOWCASE = "com.portalhacks.frame.SET_SHOWCASE"
+        const val ACTION_SET_NICKNAME = "com.portalhacks.frame.SET_NICKNAME"
+        const val ACTION_SET_PRESENCE = "com.portalhacks.frame.SET_PRESENCE"
+        const val ACTION_MEDIA_PLAY_PAUSE = "com.portalhacks.frame.MEDIA_PLAY_PAUSE"
+        const val ACTION_MEDIA_NEXT = "com.portalhacks.frame.MEDIA_NEXT"
+        const val ACTION_MEDIA_PREV = "com.portalhacks.frame.MEDIA_PREV"
 
         /** Stable URL — always serves the latest release's version.json asset. */
         const val UPDATE_MANIFEST_URL =
@@ -251,6 +276,10 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_HA_IDLE_TIMEOUT_SEC = 60
         const val DEFAULT_HA_BUTTON = true
 
+        const val DEFAULT_PRESENCE_ENABLED = true
+        const val DEFAULT_PRESENCE_TIMEOUT_MIN = 10
+        const val DEFAULT_AIRPLAY_ENABLED = true
+
         // ADB-settable boolean extras (extra name -> pref key) for quick testing
         private val BOOL_EXTRAS = arrayOf(
             arrayOf("shuffle", KEY_SHUFFLE), arrayOf("pairs", KEY_PAIRS), arrayOf("ken_burns", KEY_KEN_BURNS),
@@ -266,9 +295,35 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("mqtt_enabled", KEY_MQTT_ENABLED),
             arrayOf("ha_embedded", KEY_HA_EMBEDDED),
             arrayOf("ha_button", KEY_HA_BUTTON),
+            arrayOf("presence_enabled", KEY_PRESENCE_ENABLED),
+            arrayOf("airplay_enabled", KEY_AIRPLAY_ENABLED),
         )
 
         /** True for a recognised shared-album HTTPS link (Google Photos or iCloud). */
         fun isAlbumUrl(s: String?): Boolean = PhotoSources.matches(s)
+
+        /**
+         * Resolves the human-readable display name for this Portal.
+         * Priority:
+         * 1. Custom remote nickname set by user (e.g. "Mom's Kitchen Portal")
+         * 2. Auto IP geolocation city + hardware ID (e.g. "Portal (London - 8F2A)")
+         * 3. Hardware ID fallback (e.g. "Portal (8F2A)")
+         */
+        fun getDeviceDisplayName(ctx: Context): String {
+            val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val custom = prefs.getString(KEY_CUSTOM_NICKNAME, "")?.trim() ?: ""
+            if (custom.isNotEmpty()) return custom
+
+            val city = prefs.getString(KEY_DEVICE_CITY, "")?.trim() ?: ""
+            val devId = android.provider.Settings.Secure.getString(ctx.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "PORTAL"
+            val shortId = if (devId.length >= 4) devId.takeLast(4).uppercase(java.util.Locale.US) else devId.uppercase(java.util.Locale.US)
+
+            return if (city.isNotEmpty()) "Portal ($city - $shortId)" else "Portal ($shortId)"
+        }
+
+        fun getDeviceShortId(ctx: Context): String {
+            val devId = android.provider.Settings.Secure.getString(ctx.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "PORTAL"
+            return if (devId.length >= 4) devId.takeLast(4).uppercase(java.util.Locale.US) else devId.uppercase(java.util.Locale.US)
+        }
     }
 }

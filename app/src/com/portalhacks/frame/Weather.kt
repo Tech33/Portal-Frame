@@ -24,6 +24,7 @@ internal object Weather {
         @JvmField val description: String,
         @JvmField val temp: Int,
         @JvmField val moon: Boolean, // clear/mainly-clear at night → draw a blue crescent
+        @JvmField val city: String = "",
     ) {
         /** e.g. "☀️ 72°" */
         fun label(): String = "$emoji $temp°"
@@ -33,11 +34,23 @@ internal object Weather {
     }
 
     @JvmStatic
-    fun fetch(fahrenheit: Boolean): Now? {
+    @JvmOverloads
+    fun fetch(fahrenheit: Boolean, context: android.content.Context? = null): Now? {
         return try {
             val geo = JSONObject(httpGet("https://get.geojs.io/v1/ip/geo.json"))
             val lat = geo.optString("latitude", "")
             val lon = geo.optString("longitude", "")
+            val city = geo.optString("city", "").trim()
+            val country = geo.optString("country", "").trim()
+
+            if (context != null && (city.isNotEmpty() || country.isNotEmpty())) {
+                val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, android.content.Context.MODE_PRIVATE)
+                val editor = prefs.edit()
+                if (city.isNotEmpty()) editor.putString(ConfigReceiver.KEY_DEVICE_CITY, city)
+                if (country.isNotEmpty()) editor.putString(ConfigReceiver.KEY_DEVICE_COUNTRY, country)
+                editor.apply()
+            }
+
             if (lat.isEmpty() || lon.isEmpty()) {
                 return null
             }
@@ -50,7 +63,7 @@ internal object Weather {
             val code = cur.optInt("weather_code", 0)
             val day = cur.optInt("is_day", 1) == 1
             val moon = !day && (code == 0 || code == 1) // clear / mainly-clear night
-            Now(emojiFor(code, day), descriptionFor(code, day), t.roundToInt(), moon)
+            Now(emojiFor(code, day), descriptionFor(code, day), t.roundToInt(), moon, city)
         } catch (e: Exception) {
             Log.w(TAG, "weather fetch failed", e)
             null

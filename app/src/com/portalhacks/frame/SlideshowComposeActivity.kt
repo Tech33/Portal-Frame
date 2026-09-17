@@ -64,6 +64,9 @@ class SlideshowComposeActivity : ComponentActivity() {
     private var currentIds: List<String> = ArrayList()
     private var lowLightClockOnly = false
     private var scheduledClockOnly = false
+    private var noPresenceClockOnly = false
+    private var presenceDetector: PresenceDetector? = null
+    private var airPlayServer: AirPlayServer? = null
     private var useFlipClock = false
     private val prefs by lazy { getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE) }
 
@@ -128,12 +131,19 @@ class SlideshowComposeActivity : ComponentActivity() {
                     val loc = intent?.getStringExtra("location")
                     applyShowcase(mode, loc)
                 }
+                ConfigReceiver.ACTION_SET_PRESENCE -> {
+                    val present = intent?.getBooleanExtra("present", true) ?: true
+                    presenceDetector?.setPresenceState(present)
+                }
+                ConfigReceiver.ACTION_MEDIA_PLAY_PAUSE -> MediaMonitor.playPause()
+                ConfigReceiver.ACTION_MEDIA_NEXT -> MediaMonitor.next()
+                ConfigReceiver.ACTION_MEDIA_PREV -> MediaMonitor.prev()
             }
         }
     }
 
     private fun isClockModeActive(): Boolean =
-        (flipWebView?.visibility == View.VISIBLE) || controller.isClockOnly() || lowLightClockOnly || scheduledClockOnly
+        (flipWebView?.visibility == View.VISIBLE) || controller.isClockOnly() || lowLightClockOnly || scheduledClockOnly || noPresenceClockOnly
 
     private fun handleIncomingBroadcastMessage(msg: String) {
         val trimmed = msg.trim()
@@ -454,11 +464,27 @@ class SlideshowComposeActivity : ComponentActivity() {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(ConfigReceiver.ACTION_SET_SHOWCASE)
+            addAction(ConfigReceiver.ACTION_SET_PRESENCE)
+            addAction(ConfigReceiver.ACTION_MEDIA_PLAY_PAUSE)
+            addAction(ConfigReceiver.ACTION_MEDIA_NEXT)
+            addAction(ConfigReceiver.ACTION_MEDIA_PREV)
         }
         registerReceiver(commandReceiver, cmdFilter)
 
         // Start MQTT if enabled
         MqttManager.startIfEnabled(this)
+
+        // Start Presence Detector (Aloha CV heartbeats)
+        presenceDetector = PresenceDetector(this) { isPresent ->
+            val wasClockOnly = noPresenceClockOnly
+            noPresenceClockOnly = !isPresent
+            if (wasClockOnly != noPresenceClockOnly) {
+                applyClockOnlyMode()
+            }
+        }.also { it.start() }
+
+        // Start AirPlay 1 Audio Receiver
+        airPlayServer = AirPlayServer(this).also { it.start() }
 
         // GestureDetector to dismiss/exit screensaver or open settings from the WebView flip clock
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
@@ -785,6 +811,10 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        presenceDetector?.stop()
+        presenceDetector = null
+        airPlayServer?.stop()
+        airPlayServer = null
         try {
             unregisterReceiver(commandReceiver)
         } catch (_: Exception) {}
@@ -805,7 +835,7 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     private fun applyClockOnlyMode() {
         val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-        val clockOnlyActive = lowLightClockOnly || scheduledClockOnly
+        val clockOnlyActive = lowLightClockOnly || scheduledClockOnly || noPresenceClockOnly
         val useFlipForNight = prefs.getBoolean(ConfigReceiver.KEY_CLOCK_FLIP, ConfigReceiver.DEFAULT_CLOCK_FLIP)
 
         if (clockOnlyActive) {

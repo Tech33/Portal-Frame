@@ -835,6 +835,15 @@ class SettingsActivity : ComponentActivity() {
                 )
                 Divider()
                 ToggleRow(
+                    label = "Clock on room empty (Presence)",
+                    key = ConfigReceiver.KEY_PRESENCE_ENABLED,
+                    def = ConfigReceiver.DEFAULT_PRESENCE_ENABLED,
+                    subtitle = "Automatically drops to clock when no motion or person is detected in the room, resuming photos when someone enters.",
+                    iconRes = R.drawable.ic_motion,
+                    iconBg = Color(0xFF34C759),
+                )
+                Divider()
+                ToggleRow(
                     label = "Scheduled full-screen night clock",
                     key = ConfigReceiver.KEY_NIGHT_CLOCK,
                     def = ConfigReceiver.DEFAULT_NIGHT_CLOCK,
@@ -1003,8 +1012,19 @@ class SettingsActivity : ComponentActivity() {
             }
 
             Card("Audio Receivers & Background Streaming") {
+                ToggleRow(
+                    label = "Built-in AirPlay Audio Receiver",
+                    key = ConfigReceiver.KEY_AIRPLAY_ENABLED,
+                    def = ConfigReceiver.DEFAULT_AIRPLAY_ENABLED,
+                    subtitle = "Stream music directly from Apple devices (iPhone, iPad, Mac) with zero extra apps required.",
+                    iconRes = R.drawable.ic_music,
+                    iconBg = Color(0xFF007AFF),
+                )
+                Spacer(Modifier.height(10.dp))
+                Divider()
+                Spacer(Modifier.height(10.dp))
                 Body(
-                    "Sideload standalone media receivers via OpenPortal / Immortal to stream music from your phone in the background behind Frame's photo slideshow.",
+                    "You can also sideload standalone media receivers via OpenPortal / Immortal to stream music from your phone in the background behind Frame's photo slideshow.",
                 )
                 Spacer(Modifier.height(14.dp))
                 for (receiver in MediaReceivers.ALL_RECEIVERS) {

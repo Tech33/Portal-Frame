@@ -104,6 +104,8 @@ echo 3. Granting permissions...
 %ADB% shell pm grant com.portalhacks.frame android.permission.WRITE_SECURE_SETTINGS
 %ADB% shell pm grant com.portalhacks.frame android.permission.CAMERA
 %ADB% shell pm grant com.portalhacks.frame android.permission.RECORD_AUDIO >nul 2>nul
+%ADB% shell pm grant com.portalhacks.frame android.permission.READ_LOGS >nul 2>nul
+%ADB% shell cmd notification allow_listener com.portalhacks.frame/.PortalMediaNotificationListener >nul 2>nul
 %ADB% shell settings put secure enabled_accessibility_services com.portalhacks.frame/.PortalAccessibilityService >nul 2>nul
 %ADB% shell settings put secure accessibility_enabled 1 >nul 2>nul
 
