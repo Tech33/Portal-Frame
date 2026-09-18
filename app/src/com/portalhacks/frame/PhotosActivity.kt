@@ -639,7 +639,7 @@ class PhotosActivity : Activity() {
         val displayName = ConfigReceiver.getDeviceDisplayName(this)
         val encodedName = java.net.URLEncoder.encode(displayName, "UTF-8")
         val hostParam = if (localIp != null) "&host=${localIp}:8080" else ""
-        val cloudUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.22"
+        val cloudUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.23"
 
         overrideBrightness()
 
@@ -718,7 +718,7 @@ class PhotosActivity : Activity() {
 
         val subtitle = TextView(this)
         this.scanHint = subtitle
-        val ipNotice = if (localIp != null) "\nWi-Fi LAN IP: $localIp:8080 (1-Tap Paired)" else ""
+        val ipNotice = if (localIp != null) "\nWi-Fi LAN IP: $localIp:8080 (1-Tap Paired)\nDirect APK Sideload: http://$localIp:8080/upload" else ""
         val helperText = "Scan QR with your phone to pair & control wirelessly$ipNotice\nFamily Network: $channel"
         subtitle.text = helperText
         subtitle.setTextColor(0xFFE5E5EA.toInt())

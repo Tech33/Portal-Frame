@@ -749,7 +749,7 @@ class SettingsActivity : ComponentActivity() {
                     val aesKey = CryptoUtils.deriveAesKey(currentChannel)
                     val encodedName = java.net.URLEncoder.encode(displayName, "UTF-8")
                     val hostParam = if (localIp != null) "&host=${localIp}:8080" else ""
-                    val pairUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$currentChannel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.22"
+                    val pairUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$currentChannel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.23"
                     val qrBmp = remember(pairUrl) { generateQrBitmap(pairUrl, 360) }
 
                     Column(

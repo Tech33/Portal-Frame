@@ -1678,8 +1678,8 @@
       };
 
       xhr.onerror = () => {
-        statusText.innerHTML = `<b style="color:#FF453A;">Network error. Check Portal IP.</b>`;
-        showToast(`Could not connect to http://${portal.host}`, 'error');
+        statusText.innerHTML = `<b style="color:#FF453A;">Browser blocked connection or Portal offline.</b><br><br><a href="http://${portal.host}/upload" target="_blank" style="display:inline-block; margin-top:8px; padding:8px 16px; background:#007AFF; color:#FFF; border-radius:10px; text-decoration:none; font-weight:700; font-size:13px;">➔ Open Direct Uploader (http://${portal.host}/upload)</a>`;
+        showToast(`Could not connect to http://${portal.host}. Tap Direct Uploader link.`, 'error');
       };
 
       xhr.send(file);

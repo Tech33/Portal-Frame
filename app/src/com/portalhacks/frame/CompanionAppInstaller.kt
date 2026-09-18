@@ -68,75 +68,122 @@ object CompanionAppInstaller {
         }
     }
 
+    private fun openConnectionWithRedirects(initialUrl: String, maxRedirects: Int = 5): HttpURLConnection {
+        var currentUrl = initialUrl
+        var redirects = 0
+        while (redirects < maxRedirects) {
+            val conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15000
+                readTimeout = 30000
+                instanceFollowRedirects = false // Manually handle cross-protocol/cross-host redirects (e.g. GitHub to AWS S3)
+                setRequestProperty("User-Agent", "Portal-Frame")
+            }
+            val status = conn.responseCode
+            if (status in 301..308) {
+                val location = conn.getHeaderField("Location")
+                conn.disconnect()
+                if (!location.isNullOrBlank()) {
+                    currentUrl = if (location.startsWith("http://") || location.startsWith("https://")) {
+                        location
+                    } else {
+                        URL(URL(currentUrl), location).toString()
+                    }
+                    redirects++
+                    continue
+                }
+            }
+            return conn
+        }
+        throw Exception("Too many redirects ($redirects) from $initialUrl")
+    }
+
     fun installSpotify(
         context: Context,
         fallbackUrl: String? = null,
         onStatus: (String) -> Unit = {}
     ) {
         val mainHandler = Handler(Looper.getMainLooper())
-        val targetUrl = fallbackUrl ?: OFFICIAL_SPOTIFY_RELEASE_URL
+        val candidateUrls = if (fallbackUrl != null) {
+            listOf(fallbackUrl)
+        } else {
+            listOf(
+                OFFICIAL_SPOTIFY_RELEASE_URL,
+                "https://raw.githubusercontent.com/Tech33/Portal-Frame/main/spotify.apk"
+            )
+        }
 
         mainHandler.post { onStatus("Connecting to download server…") }
 
         thread(name = "Spotify-Downloader") {
-            try {
-                val destFile = File(context.cacheDir, "spotify_installer.apk")
-                if (destFile.exists()) destFile.delete()
+            var lastError: Exception? = null
+            var success = false
 
-                mainHandler.post { onStatus("Downloading Spotify for Meta Portal…") }
+            for (targetUrl in candidateUrls) {
+                try {
+                    val destFile = File(context.cacheDir, "spotify_installer.apk")
+                    if (destFile.exists()) destFile.delete()
 
-                val url = URL(targetUrl)
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 15000
-                    readTimeout = 30000
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "Portal-Frame")
-                }
+                    mainHandler.post { onStatus("Downloading Spotify for Meta Portal…") }
 
-                if (conn.responseCode !in 200..299) {
-                    throw Exception("HTTP error ${conn.responseCode} while downloading Spotify")
-                }
+                    val conn = openConnectionWithRedirects(targetUrl)
+                    if (conn.responseCode !in 200..299) {
+                        val code = conn.responseCode
+                        conn.disconnect()
+                        throw Exception("HTTP error $code from $targetUrl")
+                    }
 
-                val totalBytes = conn.contentLength
-                var downloadedBytes = 0L
+                    val totalBytes = conn.contentLength
+                    var downloadedBytes = 0L
 
-                conn.inputStream.use { input ->
-                    FileOutputStream(destFile).use { output ->
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        var lastReport = System.currentTimeMillis()
+                    conn.inputStream.use { input ->
+                        FileOutputStream(destFile).use { output ->
+                            val buffer = ByteArray(8192)
+                            var bytesRead: Int
+                            var lastReport = System.currentTimeMillis()
 
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            downloadedBytes += bytesRead
-                            val now = System.currentTimeMillis()
-                            if (now - lastReport > 500L && totalBytes > 0) {
-                                val pct = (downloadedBytes * 100 / totalBytes).toInt()
-                                mainHandler.post { onStatus("Downloading Spotify ($pct%)…") }
-                                lastReport = now
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                output.write(buffer, 0, bytesRead)
+                                downloadedBytes += bytesRead
+                                val now = System.currentTimeMillis()
+                                if (now - lastReport > 500L && totalBytes > 0) {
+                                    val pct = (downloadedBytes * 100 / totalBytes).toInt()
+                                    mainHandler.post { onStatus("Downloading Spotify ($pct%)…") }
+                                    lastReport = now
+                                }
                             }
                         }
                     }
-                }
+                    conn.disconnect()
 
-                mainHandler.post { onStatus("Installing Spotify automatically…") }
-
-                // Arm the accessibility service to auto-click Install/Update
-                ScreenControl.enableAccessibility(context)
-                PortalAccessibilityService.armAutoInstall()
-
-                val launched = UpdateInstaller.promptInstall(context, destFile)
-                mainHandler.post {
-                    if (launched) {
-                        onStatus("Installing Spotify in background…")
-                    } else {
-                        onStatus("Permission needed: Allow installing unknown apps.")
+                    if (destFile.length() < 100_000) {
+                        throw Exception("Downloaded file too small (${destFile.length()} bytes)")
                     }
-                }
 
-            } catch (e: Exception) {
-                Log.e(TAG, "Error downloading/installing Spotify", e)
-                mainHandler.post { onStatus("Installation failed: ${e.message ?: "network error"}") }
+                    mainHandler.post { onStatus("Installing Spotify automatically…") }
+
+                    // Arm the accessibility service to auto-click Install/Update
+                    ScreenControl.enableAccessibility(context)
+                    PortalAccessibilityService.armAutoInstall()
+
+                    val launched = UpdateInstaller.promptInstall(context, destFile)
+                    mainHandler.post {
+                        if (launched) {
+                            onStatus("Installing Spotify in background…")
+                        } else {
+                            onStatus("Permission needed: Allow installing unknown apps.")
+                        }
+                    }
+                    success = true
+                    break
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed downloading Spotify from $targetUrl: ${e.message}")
+                    lastError = e
+                }
+            }
+
+            if (!success) {
+                Log.e(TAG, "All Spotify download URLs failed", lastError)
+                mainHandler.post { onStatus("Installation failed: ${lastError?.message ?: "network error"}") }
             }
         }
     }
@@ -154,16 +201,11 @@ object CompanionAppInstaller {
                 val destFile = File(context.cacheDir, "custom_app.apk")
                 if (destFile.exists()) destFile.delete()
 
-                val url = URL(apkUrl)
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 15000
-                    readTimeout = 30000
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "Portal-Frame")
-                }
-
+                val conn = openConnectionWithRedirects(apkUrl)
                 if (conn.responseCode !in 200..299) {
-                    throw Exception("HTTP ${conn.responseCode}")
+                    val code = conn.responseCode
+                    conn.disconnect()
+                    throw Exception("HTTP $code")
                 }
 
                 conn.inputStream.use { input ->

@@ -377,6 +377,13 @@ class AlbumServer(
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
                 }
 
+                // Standalone APK Upload and Spotify Installer Webpage
+                method == "GET" && (rawPath == "/upload" || rawPath == "/apk") -> {
+                    val deviceName = ConfigReceiver.getDeviceDisplayName(context)
+                    val isSpotify = CompanionAppInstaller.isSpotifyInstalled(context)
+                    sendResponse(socket, 200, "OK", "text/html; charset=utf-8", getUploadApkHtml(deviceName, isSpotify).toByteArray(Charsets.UTF_8))
+                }
+
                 // Form to add album via QR code
                 method == "GET" && rawPath == "/add" -> {
                     sendResponse(socket, 200, "OK", "text/html; charset=utf-8", getAddAlbumHtml().toByteArray(Charsets.UTF_8))
@@ -1444,6 +1451,330 @@ class AlbumServer(
                 <p style="color: #FFFFFF; font-weight: 600;">"$msg"</p>
                 <a href="/message">Back</a>
               </div>
+            </body>
+            </html>
+        """.trimIndent()
+    }
+
+    private fun getUploadApkHtml(deviceName: String, isSpotifyInstalled: Boolean): String {
+        val safeName = sanitizeHtml(deviceName)
+        return """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+              <title>App Installer - $safeName</title>
+              <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                  background-color: #0A0A0C;
+                  color: #FFFFFF;
+                  min-height: 100vh;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  padding: 16px;
+                  -webkit-tap-highlight-color: transparent;
+                }
+                .card {
+                  background-color: #1C1C1E;
+                  border: 1px solid rgba(255, 255, 255, 0.12);
+                  border-radius: 28px;
+                  padding: 28px 24px;
+                  width: 100%;
+                  max-width: 420px;
+                  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.7);
+                  text-align: center;
+                }
+                .header {
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 10px;
+                  margin-bottom: 6px;
+                }
+                .badge {
+                  background: rgba(48, 209, 88, 0.15);
+                  border: 1px solid rgba(48, 209, 88, 0.3);
+                  color: #30D158;
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 4px 10px;
+                  border-radius: 20px;
+                  display: inline-block;
+                  margin-bottom: 14px;
+                }
+                h1 {
+                  font-size: 20px;
+                  font-weight: 700;
+                  margin-bottom: 4px;
+                  color: #FFFFFF;
+                }
+                .subtitle {
+                  font-size: 13px;
+                  color: #8E8E93;
+                  margin-bottom: 24px;
+                  line-height: 1.4;
+                }
+                .section {
+                  background: rgba(255, 255, 255, 0.04);
+                  border: 1px solid rgba(255, 255, 255, 0.08);
+                  border-radius: 18px;
+                  padding: 18px;
+                  margin-bottom: 16px;
+                  text-align: left;
+                }
+                .section-title {
+                  font-size: 14px;
+                  font-weight: 700;
+                  margin-bottom: 4px;
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                }
+                .section-desc {
+                  font-size: 12px;
+                  color: #A1A1A6;
+                  margin-bottom: 14px;
+                  line-height: 1.4;
+                }
+                .btn-spotify {
+                  width: 100%;
+                  height: 48px;
+                  background: #1DB954;
+                  border: none;
+                  border-radius: 14px;
+                  color: #000000;
+                  font-size: 15px;
+                  font-weight: 700;
+                  cursor: pointer;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 8px;
+                  box-shadow: 0 4px 16px rgba(29, 185, 84, 0.3);
+                  transition: transform 0.1s, opacity 0.2s;
+                }
+                .btn-spotify:active { transform: scale(0.98); }
+                .btn-spotify:disabled { opacity: 0.5; cursor: not-allowed; }
+                .file-drop {
+                  border: 2px dashed rgba(255, 255, 255, 0.2);
+                  border-radius: 14px;
+                  padding: 20px 14px;
+                  text-align: center;
+                  cursor: pointer;
+                  background: rgba(0, 0, 0, 0.2);
+                  transition: border-color 0.2s, background 0.2s;
+                }
+                .file-drop:hover {
+                  border-color: #0A84FF;
+                  background: rgba(10, 132, 255, 0.05);
+                }
+                .file-drop-icon { font-size: 28px; margin-bottom: 6px; }
+                .file-drop-text { font-size: 13px; font-weight: 600; color: #E5E5EA; }
+                .file-drop-sub { font-size: 11px; color: #8E8E93; margin-top: 2px; }
+                .progress-box {
+                  margin-top: 12px;
+                  display: none;
+                }
+                .progress-track {
+                  background: rgba(255, 255, 255, 0.1);
+                  border-radius: 6px;
+                  height: 8px;
+                  overflow: hidden;
+                  margin-bottom: 6px;
+                }
+                .progress-fill {
+                  background: #30D158;
+                  height: 100%;
+                  width: 0%;
+                  transition: width 0.2s;
+                }
+                .progress-text {
+                  font-size: 12px;
+                  color: #A1A1A6;
+                  display: flex;
+                  justify-content: space-between;
+                }
+                .status-msg {
+                  font-size: 13px;
+                  margin-top: 10px;
+                  padding: 8px 12px;
+                  border-radius: 10px;
+                  display: none;
+                  font-weight: 600;
+                }
+                .status-msg.success {
+                  display: block;
+                  background: rgba(48, 209, 88, 0.15);
+                  color: #30D158;
+                  border: 1px solid rgba(48, 209, 88, 0.3);
+                }
+                .status-msg.error {
+                  display: block;
+                  background: rgba(255, 69, 58, 0.15);
+                  color: #FF453A;
+                  border: 1px solid rgba(255, 69, 58, 0.3);
+                }
+                .status-msg.info {
+                  display: block;
+                  background: rgba(10, 132, 255, 0.15);
+                  color: #0A84FF;
+                  border: 1px solid rgba(10, 132, 255, 0.3);
+                }
+                .links-footer {
+                  margin-top: 20px;
+                  font-size: 12px;
+                  display: flex;
+                  justify-content: center;
+                  gap: 16px;
+                }
+                .links-footer a {
+                  color: #8E8E93;
+                  text-decoration: none;
+                }
+                .links-footer a:hover { color: #FFFFFF; }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <div class="header">
+                  <h1>$safeName</h1>
+                </div>
+                <div class="badge">● Local Wi-Fi Connected</div>
+                <p class="subtitle">Install apps wirelessly on your Meta Portal without any USB cable or PC.</p>
+
+                <!-- Section 1: 1-Click Spotify -->
+                <div class="section">
+                  <div class="section-title">
+                    <span>🎵</span> Spotify Connect
+                  </div>
+                  <p class="section-desc">Installs the official Meta Portal Spotify standalone player. Stream music directly from your phone via Spotify Connect.</p>
+                  <button id="spotify-btn" class="btn-spotify" onclick="installSpotify()">
+                    <span>⚡</span> ${if (isSpotifyInstalled) "Reinstall / Update Spotify" else "1-Click Install Spotify"}
+                  </button>
+                  <div id="spotify-status" class="status-msg"></div>
+                </div>
+
+                <!-- Section 2: Direct Upload Any APK -->
+                <div class="section">
+                  <div class="section-title">
+                    <span>📤</span> Sideload Custom APK
+                  </div>
+                  <p class="section-desc">Upload any Android APK (e.g. SmartTube, YouTube Music, VLC). It will be auto-installed on the Portal.</p>
+                  <input type="file" id="apk-file-input" accept=".apk" style="display:none;" onchange="handleFileSelect(this)">
+                  <div class="file-drop" onclick="document.getElementById('apk-file-input').click()">
+                    <div class="file-drop-icon">📦</div>
+                    <div class="file-drop-text">Tap to select APK file</div>
+                    <div class="file-drop-sub">Direct local upload (No size limits)</div>
+                  </div>
+
+                  <div id="upload-progress-box" class="progress-box">
+                    <div class="progress-track">
+                      <div id="upload-progress-fill" class="progress-fill"></div>
+                    </div>
+                    <div class="progress-text">
+                      <span id="upload-progress-status">Uploading...</span>
+                      <span id="upload-progress-pct">0%</span>
+                    </div>
+                  </div>
+
+                  <div id="upload-status" class="status-msg"></div>
+                </div>
+
+                <div class="links-footer">
+                  <a href="/">Slideshow</a>
+                  <a href="/message">Send Note</a>
+                  <a href="/add">Add Photos</a>
+                </div>
+              </div>
+
+              <script>
+                async function installSpotify() {
+                  const btn = document.getElementById('spotify-btn');
+                  const status = document.getElementById('spotify-status');
+                  btn.disabled = true;
+                  btn.innerText = 'Connecting to download server…';
+                  status.className = 'status-msg info';
+                  status.innerText = 'Downloading Spotify APK on Portal…';
+
+                  try {
+                    const res = await fetch('/api/apps/spotify/install', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.status === 'ok') {
+                      status.className = 'status-msg success';
+                      status.innerText = '✓ Download & Auto-install started! Check Portal screen in ~10s.';
+                      btn.innerText = '✓ Install Initiated';
+                    } else {
+                      throw new Error(data.message || 'Unknown error');
+                    }
+                  } catch (e) {
+                    status.className = 'status-msg error';
+                    status.innerText = 'Failed: ' + e.message;
+                    btn.disabled = false;
+                    btn.innerText = '⚡ 1-Click Install Spotify';
+                  }
+                }
+
+                function handleFileSelect(input) {
+                  if (!input.files || !input.files[0]) return;
+                  const file = input.files[0];
+                  if (!file.name.toLowerCase().endsWith('.apk')) {
+                    alert('Please select an .apk file');
+                    return;
+                  }
+                  uploadApkFile(file);
+                }
+
+                function uploadApkFile(file) {
+                  const progressBox = document.getElementById('upload-progress-box');
+                  const fill = document.getElementById('upload-progress-fill');
+                  const statusText = document.getElementById('upload-progress-status');
+                  const pctText = document.getElementById('upload-progress-pct');
+                  const status = document.getElementById('upload-status');
+
+                  progressBox.style.display = 'block';
+                  status.style.display = 'none';
+                  fill.style.width = '0%';
+                  pctText.innerText = '0%';
+                  statusText.innerText = 'Uploading ' + file.name + '...';
+
+                  const xhr = new XMLHttpRequest();
+                  xhr.open('POST', '/api/apps/upload?filename=' + encodeURIComponent(file.name));
+
+                  xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                      const pct = Math.round((e.loaded / e.total) * 100);
+                      fill.style.width = pct + '%';
+                      pctText.innerText = pct + '%';
+                      const mbLoaded = (e.loaded / (1024 * 1024)).toFixed(1);
+                      const mbTotal = (e.total / (1024 * 1024)).toFixed(1);
+                      statusText.innerText = mbLoaded + ' MB / ' + mbTotal + ' MB (' + pct + '%)';
+                    }
+                  };
+
+                  xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                      fill.style.width = '100%';
+                      pctText.innerText = '100%';
+                      status.className = 'status-msg success';
+                      status.innerText = '✓ Uploaded! Installing ' + file.name + ' automatically on Portal…';
+                    } else {
+                      status.className = 'status-msg error';
+                      status.innerText = 'Upload failed (HTTP ' + xhr.status + ')';
+                    }
+                  };
+
+                  xhr.onerror = () => {
+                    status.className = 'status-msg error';
+                    status.innerText = 'Network error during upload.';
+                  };
+
+                  xhr.send(file);
+                }
+              </script>
             </body>
             </html>
         """.trimIndent()
