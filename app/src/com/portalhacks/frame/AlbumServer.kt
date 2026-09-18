@@ -1080,7 +1080,7 @@ class AlbumServer(
     private fun parseJsonField(body: String, field: String): String? {
         return try {
             val json = JSONObject(body)
-            if (json.has(field)) json.optString(field, null) else null
+            if (json.has(field) && !json.isNull(field)) json.optString(field) else null
         } catch (_: Exception) {
             null
         }

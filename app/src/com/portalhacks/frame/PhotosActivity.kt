@@ -631,7 +631,15 @@ class PhotosActivity : Activity() {
         val channel = p.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL)?.trim()
             ?.ifEmpty { ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL } ?: ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL
         val aesKey = CryptoUtils.deriveAesKey(channel)
-        val cloudUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&v=1.6.5"
+        val localIp = getLocalIpAddress()
+        if (localIp != null) {
+            try { AlbumServer.startServer(this, 8080) } catch (_: Exception) {}
+        }
+        val shortId = ConfigReceiver.getDeviceShortId(this)
+        val displayName = ConfigReceiver.getDeviceDisplayName(this)
+        val encodedName = java.net.URLEncoder.encode(displayName, "UTF-8")
+        val hostParam = if (localIp != null) "&host=${localIp}:8080" else ""
+        val cloudUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.21"
 
         overrideBrightness()
 
@@ -710,7 +718,8 @@ class PhotosActivity : Activity() {
 
         val subtitle = TextView(this)
         this.scanHint = subtitle
-        val helperText = "Scan the QR code to post greetings, celebrations, or photo showcases from your phone, or visit:\nraw.githack.com/Tech33/Portal-Frame/main/message.html\nFamily Network: $channel"
+        val ipNotice = if (localIp != null) "\nWi-Fi LAN IP: $localIp:8080 (1-Tap Paired)" else ""
+        val helperText = "Scan QR with your phone to pair & control wirelessly$ipNotice\nFamily Network: $channel"
         subtitle.text = helperText
         subtitle.setTextColor(0xFFE5E5EA.toInt())
         subtitle.typeface = Ui.medium(this)

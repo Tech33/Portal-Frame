@@ -891,7 +891,10 @@
           <h2 style="font-size: 16px; font-weight: 700;">Family Fleet Management</h2>
           <p style="font-size: 12px; color: #8E8E93;">Portals active across Dublin, Delhi, and family locations</p>
         </div>
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="fleet-refresh-btn tap-scale" onclick="autoFindLocalPortals()" style="background: rgba(48,209,88,0.15); color: #30D158; font-weight: 600;" title="Scan local Wi-Fi for Portals on port 8080">
+            🔍 Auto-Find
+          </button>
           <button class="fleet-refresh-btn tap-scale" onclick="openAddPortalModal()" style="background: rgba(10,132,255,0.15); color: #0A84FF; font-weight: 600;">
             ➕ Add Portal
           </button>
@@ -1034,9 +1037,16 @@
       <div style="background: rgba(255,255,255,0.08); border-radius: 8px; height: 12px; overflow: hidden; margin-bottom: 10px;">
         <div id="upload-progress-bar" style="background: #30D158; height: 100%; width: 0%; transition: width 0.2s;"></div>
       </div>
-      <div style="display: flex; justify-content: space-between; font-size: 12px; color: #8E8E93; margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; font-size: 12px; color: #8E8E93; margin-bottom: 12px;">
         <span id="upload-status-text">Connecting...</span>
         <span id="upload-pct-text">0%</span>
+      </div>
+      <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; margin-bottom: 14px; font-size: 12px; color: #A1A1A6; line-height: 1.4;">
+        <span>💡 Need the APK? </span>
+        <a href="https://github.com/Tech33/Portal-Frame/releases/latest/download/spotify.apk" target="_blank" style="color: #1DB954; font-weight: 600; text-decoration: underline;">
+          Download Spotify APK (13MB)
+        </a>
+        <span> to your phone, then tap Choose File below.</span>
       </div>
       <button type="button" class="pill-btn" style="width: 100%;" onclick="dismissUploadModal()">Close</button>
     </div>
@@ -1090,6 +1100,56 @@
       }
     } catch (_) {
       fleetDevices = JSON.parse(JSON.stringify(DEFAULT_FLEET));
+    }
+
+    // --- 1-Tap QR Auto-Pairing ---
+    const hostParam = urlParams.get('host') || urlParams.get('ip');
+    const deviceIdParam = urlParams.get('id') || urlParams.get('deviceId');
+    const nameParam = urlParams.get('name');
+
+    if (hostParam) {
+      const cleanHost = hostParam.trim().replace('http://', '').replace('/', '');
+      const formattedHost = cleanHost.includes(':') ? cleanHost : `${cleanHost}:8080`;
+      
+      let matchedDev = null;
+      if (deviceIdParam) {
+        matchedDev = fleetDevices.find(d => d.id === deviceIdParam || d.shortId === deviceIdParam);
+      }
+      if (!matchedDev && nameParam) {
+        try {
+          const decoded = decodeURIComponent(nameParam);
+          matchedDev = fleetDevices.find(d => d.name.toLowerCase() === decoded.toLowerCase() || d.name.includes(decoded));
+        } catch (_) {}
+      }
+      if (!matchedDev) {
+        matchedDev = fleetDevices.find(d => d.host === formattedHost) || fleetDevices[0];
+      }
+
+      if (matchedDev) {
+        matchedDev.host = formattedHost;
+        if (nameParam) {
+          try { matchedDev.name = decodeURIComponent(nameParam); } catch (_) { matchedDev.name = nameParam; }
+        }
+        if (deviceIdParam) matchedDev.shortId = deviceIdParam;
+      } else {
+        matchedDev = {
+          id: (fleetDevices.length + 1).toString(),
+          shortId: deviceIdParam || 'Portal-LAN',
+          name: nameParam ? decodeURIComponent(nameParam) : `Portal (${formattedHost.split(':')[0]})`,
+          city: 'Family',
+          country: '',
+          status: 'online',
+          presence: 'occupied',
+          mode: 'slideshow',
+          host: formattedHost
+        };
+        fleetDevices.unshift(matchedDev);
+      }
+      saveFleet();
+      setTimeout(() => {
+        switchTab('fleet');
+        showToast(`✓ 1-Tap Paired with ${matchedDev.name} (${formattedHost})`, 'success');
+      }, 400);
     }
 
     // Initialize UI with channel
@@ -1473,6 +1533,10 @@
             <button class="portal-act-btn tap-scale" onclick="sendTargetedNote('${d.name}')">
               💌 Send Note
             </button>
+            ${d.host ? `
+            <button class="portal-act-btn tap-scale" style="border-color:#1DB954; color:#1DB954; font-weight:600;" onclick="installSpotifyDirectly('${d.id}')" title="1-Tap background download and auto-install of Spotify on Portal">
+              ⚡ 1-Tap Spotify
+            </button>` : ''}
             <button class="portal-act-btn tap-scale" style="border-color:#30D158; color:#30D158; font-weight:600;" onclick="triggerPortalApkUpload('${d.id}')" title="Wirelessly upload and install Spotify, SmartTube or any APK">
               📤 Upload APK
             </button>
@@ -1498,6 +1562,28 @@
         saveFleet();
         renderFleet();
         if (d.host) showToast(`IP saved for ${d.name}: ${d.host}`, 'success');
+      }
+    }
+
+    async function installSpotifyDirectly(deviceId) {
+      const d = fleetDevices.find(x => x.id === deviceId || x.shortId === deviceId);
+      if (!d || !d.host) {
+        showToast('Please set or pair Portal IP first', 'error');
+        return;
+      }
+      if (!confirm(`Download and install Spotify directly onto ${d.name}?\n\nThis will stream spotify.apk from GitHub directly onto the Portal in the background and auto-install it.`)) {
+        return;
+      }
+      showToast(`⚡ Initiating background Spotify install on ${d.name}...`, 'info');
+      try {
+        const resp = await fetch(`http://${d.host}/api/apps/spotify/install`, { method: 'POST', mode: 'cors' });
+        if (resp.ok) {
+          showToast(`✓ Spotify download & auto-install started on ${d.name}!`, 'success');
+        } else {
+          showToast(`Install request failed (${resp.status})`, 'error');
+        }
+      } catch (e) {
+        showToast(`Could not connect to http://${d.host}: ` + e.message, 'error');
       }
     }
 
@@ -1759,6 +1845,81 @@
         saveFleet();
         renderFleet();
         showToast('Reset roster to Dublin & Delhi Portals', 'success');
+      }
+    }
+
+    async function autoFindLocalPortals() {
+      showToast('Scanning local network for Portals on port 8080...', 'info');
+      let defaultSubnet = '192.168.1';
+      for (const d of fleetDevices) {
+        if (d.host && d.host.startsWith('192.168.')) {
+          const parts = d.host.split(':')[0].split('.');
+          if (parts.length >= 3) {
+            defaultSubnet = parts.slice(0, 3).join('.');
+            break;
+          }
+        }
+      }
+      const subnet = prompt('Enter your Wi-Fi subnet prefix to scan (e.g. 192.168.1 or 192.168.0):', defaultSubnet);
+      if (!subnet || !subnet.trim()) return;
+      const cleanSubnet = subnet.trim();
+      showToast(`Scanning ${cleanSubnet}.1 to 254 on port 8080...`, 'info');
+
+      let found = 0;
+      const candidates = [];
+      for (let i = 1; i <= 254; i++) {
+        candidates.push(`${cleanSubnet}.${i}:8080`);
+      }
+
+      const batchSize = 25;
+      for (let i = 0; i < candidates.length; i += batchSize) {
+        const batch = candidates.slice(i, i + batchSize);
+        await Promise.all(batch.map(async (candidate) => {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 1200);
+            const resp = await fetch(`http://${candidate}/api/fleet/status`, {
+              signal: controller.signal,
+              mode: 'cors',
+              cache: 'no-cache'
+            });
+            clearTimeout(timer);
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data && data.status === 'ok') {
+                found++;
+                const shortId = data.deviceId || candidate.split(':')[0].split('.').pop();
+                const name = data.name || data.nickname || `Portal (${candidate})`;
+                let d = fleetDevices.find(x => x.id === shortId || x.shortId === shortId || x.host === candidate);
+                if (d) {
+                  d.host = candidate;
+                  d.name = name;
+                } else {
+                  d = {
+                    id: (fleetDevices.length + 1).toString(),
+                    shortId: shortId,
+                    name: name,
+                    city: data.city || 'Family',
+                    country: data.country || '',
+                    status: 'online',
+                    presence: 'occupied',
+                    mode: 'slideshow',
+                    host: candidate
+                  };
+                  fleetDevices.unshift(d);
+                }
+                saveFleet();
+                renderFleet();
+                showToast(`✓ Discovered ${name} at ${candidate}!`, 'success');
+              }
+            }
+          } catch (_) {}
+        }));
+      }
+      if (found === 0) {
+        showToast(`Scan finished. No new Portals responded on ${cleanSubnet}.x:8080. Tip: Use 1-Tap QR code instead!`, 'info');
+      } else {
+        showToast(`Scan complete! Found ${found} Portal(s).`, 'success');
       }
     }
 

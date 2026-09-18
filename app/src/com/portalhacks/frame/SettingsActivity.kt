@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -655,6 +656,9 @@ class SettingsActivity : ComponentActivity() {
             Card("Portal Identity") {
                 val displayName = ConfigReceiver.getDeviceDisplayName(ctx)
                 val shortId = ConfigReceiver.getDeviceShortId(ctx)
+                val localIp = remember { getLocalIpAddress() }
+                var showPairQr by remember { mutableStateOf(false) }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -692,6 +696,93 @@ class SettingsActivity : ComponentActivity() {
                         )
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0x18FFFFFF))
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Wi-Fi LAN IP & Port",
+                            color = PortalColors.TextMuted,
+                            fontSize = 12.sp,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = if (localIp != null) "$localIp:8080" else "Wi-Fi not connected",
+                            color = if (localIp != null) Color(0xFF30D158) else Color(0xFFFF453A),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            if (localIp != null) {
+                                try { AlbumServer.startServer(ctx, 8080) } catch (_: Exception) {}
+                            }
+                            showPairQr = !showPairQr
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (showPairQr) Color(0x33FF9500) else Color(0x220A84FF)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = if (showPairQr) "✕ Close QR" else "📱 Pair Phone",
+                            color = if (showPairQr) Color(0xFFFF9500) else Color(0xFF0A84FF),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                if (showPairQr) {
+                    Spacer(Modifier.height(12.dp))
+                    val currentChannel = prefs.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL) ?: ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL
+                    val aesKey = CryptoUtils.deriveAesKey(currentChannel)
+                    val encodedName = java.net.URLEncoder.encode(displayName, "UTF-8")
+                    val hostParam = if (localIp != null) "&host=${localIp}:8080" else ""
+                    val pairUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$currentChannel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.21"
+                    val qrBmp = remember(pairUrl) { generateQrBitmap(pairUrl, 360) }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White)
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (qrBmp != null) {
+                            Image(
+                                bitmap = qrBmp.asImageBitmap(),
+                                contentDescription = "Pairing QR Code",
+                                modifier = Modifier.size(200.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Scan with phone camera to pair instantly!",
+                            color = Color.Black,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = "Auto-configures wireless APK upload and Spotify install.",
+                            color = Color(0xFF636366),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
                 Spacer(Modifier.height(8.dp))
                 Body("Portal name is non-editable here. To change the name, send a rename broadcast (#rename:<id>:<name>) or use the Fleet tab on the Web interface.")
             }
@@ -1920,7 +2011,7 @@ class SettingsActivity : ComponentActivity() {
                         val id = a.slides[0].id
                         runOnUiThread {
                             if (Albums.list(prefs).contains(url)) {
-                                title = a.title ?: ""
+                                title = a.title
                                 cachedCount = a.slides.size
                                 loader.load(id, PREVIEW_W, PREVIEW_H, zoomFill, onBitmap)
                             }
