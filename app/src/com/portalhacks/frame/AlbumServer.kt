@@ -3,6 +3,7 @@ package com.portalhacks.frame
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Bitmap
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -270,6 +271,33 @@ class AlbumServer(
                         .put("media", mediaObj)
                         .put("spotifyInstalled", CompanionAppInstaller.isSpotifyInstalled(context))
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", status.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                // Currently playing media art stream
+                method == "GET" && (rawPath == "/api/media/art" || rawPath == "/media/art") -> {
+                    val art = MediaMonitor.currentState.art
+                    if (art != null) {
+                        val baos = ByteArrayOutputStream()
+                        art.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+                        val bytes = baos.toByteArray()
+                        sendResponse(socket, 200, "OK", "image/jpeg", bytes)
+                    } else {
+                        sendResponse(socket, 404, "Not Found", "text/plain", "No art available".toByteArray())
+                    }
+                }
+
+                // Dedicated Now Playing status endpoint
+                method == "GET" && (rawPath == "/api/media/status" || rawPath == "/media/status") -> {
+                    val mediaState = MediaMonitor.currentState
+                    val mediaObj = JSONObject()
+                        .put("isPlaying", mediaState.isPlaying)
+                        .put("title", mediaState.title)
+                        .put("artist", mediaState.artist)
+                        .put("album", mediaState.album)
+                        .put("source", mediaState.source)
+                        .put("hasArt", mediaState.art != null)
+                        .put("artUrl", if (mediaState.art != null) "/api/media/art" else "")
+                    sendResponse(socket, 200, "OK", "application/json; charset=utf-8", mediaObj.toString().toByteArray(Charsets.UTF_8))
                 }
 
                 // Remote Spotify / Companion App Installation
@@ -759,6 +787,79 @@ class AlbumServer(
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       z-index: 5; text-align: center; padding: 24px;
     }
+
+    /* Apple Dynamic Island Now Playing Overlay */
+    #now-playing-pill {
+      position: absolute; top: 26px; left: 50%;
+      transform: translateX(-50%) scale(0.92);
+      background: rgba(22, 22, 26, 0.76);
+      backdrop-filter: blur(28px) saturate(190%);
+      -webkit-backdrop-filter: blur(28px) saturate(190%);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 36px;
+      padding: 6px 18px 6px 8px;
+      display: none; align-items: center; gap: 12px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0,0,0,0.3);
+      z-index: 25; opacity: 0;
+      transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    }
+    #now-playing-pill.visible {
+      display: flex; opacity: 1; transform: translateX(-50%) scale(1);
+    }
+    .np-art {
+      width: 44px; height: 44px; border-radius: 50%; object-fit: cover;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+      animation: spinVinyl 16s linear infinite;
+    }
+    @keyframes spinVinyl {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .np-info {
+      display: flex; flex-direction: column; max-width: 200px;
+    }
+    .np-title {
+      font-size: 14px; font-weight: 700; color: #FFFFFF;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .np-artist-row {
+      display: flex; align-items: center; gap: 5px; margin-top: 2px;
+    }
+    .np-source-badge {
+      background: #1DB954; color: #000000; font-size: 9px; font-weight: 800;
+      padding: 1px 5px; border-radius: 5px; text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .np-artist {
+      font-size: 11.5px; color: #A1A1A6;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 140px;
+    }
+    .np-eq {
+      display: flex; align-items: flex-end; gap: 2.5px; height: 16px; margin: 0 2px;
+    }
+    .np-eq-bar {
+      width: 3px; background: #1DB954; border-radius: 2px;
+      animation: bounce 1.1s ease-in-out infinite alternate;
+    }
+    .np-eq-bar:nth-child(1) { height: 50%; animation-delay: 0.1s; }
+    .np-eq-bar:nth-child(2) { height: 95%; animation-delay: 0.3s; }
+    .np-eq-bar:nth-child(3) { height: 40%; animation-delay: 0.2s; }
+    @keyframes bounce {
+      0% { height: 25%; }
+      100% { height: 100%; }
+    }
+    .np-controls {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .np-btn {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1); border: none; color: #FFFFFF;
+      font-size: 13px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: background 0.15s, transform 0.1s;
+    }
+    .np-btn:hover { background: rgba(255, 255, 255, 0.22); }
+    .np-btn:active { transform: scale(0.92); }
     #empty-state h1 { font-size: 28px; margin-bottom: 12px; font-weight: 600; }
     #empty-state p { font-size: 16px; opacity: 0.7; max-width: 440px; line-height: 1.5; }
     #empty-state a {
@@ -772,6 +873,23 @@ class AlbumServer(
   <div id="stage">
     <div id="layer-a" class="slide-layer active"></div>
     <div id="layer-b" class="slide-layer incoming"></div>
+
+    <div id="now-playing-pill">
+      <img id="np-art" class="np-art" src="" alt="art">
+      <div class="np-info">
+        <span id="np-title" class="np-title"></span>
+        <div class="np-artist-row">
+          <span id="np-source" class="np-source-badge">SPOTIFY</span>
+          <span id="np-artist" class="np-artist"></span>
+        </div>
+      </div>
+      <div class="np-eq"><div class="np-eq-bar"></div><div class="np-eq-bar"></div><div class="np-eq-bar"></div></div>
+      <div class="np-controls">
+        <button class="np-btn" onclick="controlMedia('prev')">⏮</button>
+        <button id="np-play-btn" class="np-btn" onclick="controlMedia('play_pause')">⏸</button>
+        <button class="np-btn" onclick="controlMedia('next')">⏭</button>
+      </div>
+    </div>
 
     <div id="memory-badge">
       <span id="badge-icon">✨</span>
@@ -1047,9 +1165,66 @@ class AlbumServer(
       });
     })();
 
+    // Now Playing Media Controller and Live Polling
+    async function controlMedia(action) {
+      try {
+        await fetch('/api/media/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action })
+        });
+        setTimeout(pollNowPlaying, 300);
+      } catch (e) {
+        console.error("Media control failed", e);
+      }
+    }
+
+    async function pollNowPlaying() {
+      try {
+        const res = await fetch('/api/media/status');
+        if (res.ok) {
+          const data = await res.json();
+          const pill = document.getElementById('now-playing-pill');
+          if (data && data.isPlaying && data.track) {
+            document.getElementById('np-title').textContent = data.track || "Playing";
+            document.getElementById('np-artist').textContent = data.artist || "";
+            const sourceEl = document.getElementById('np-source');
+            const sourceName = (data.source || "Spotify").toUpperCase();
+            sourceEl.textContent = sourceName;
+            if (sourceName.indexOf('AIRPLAY') >= 0) {
+              sourceEl.style.background = '#007AFF';
+              sourceEl.style.color = '#FFFFFF';
+            } else {
+              sourceEl.style.background = '#1DB954';
+              sourceEl.style.color = '#000000';
+            }
+            const artEl = document.getElementById('np-art');
+            if (data.artUrl) {
+              const newSrc = data.artUrl + (data.artUrl.indexOf('?') >= 0 ? '&' : '?') + 't=' + encodeURIComponent(data.track);
+              if (artEl.dataset.track !== data.track) {
+                artEl.src = newSrc;
+                artEl.dataset.track = data.track;
+              }
+              artEl.style.display = 'block';
+            } else {
+              artEl.style.display = 'none';
+            }
+            document.getElementById('np-play-btn').textContent = data.isPlaying ? '⏸' : '▶';
+            pill.classList.add('visible');
+          } else {
+            pill.classList.remove('visible');
+          }
+        }
+      } catch (e) {
+        // Silently ignore temporary fetch errors
+      }
+    }
+    setInterval(pollNowPlaying, 3000);
+    pollNowPlaying();
+
     // Tap anywhere to advance slide
     document.body.addEventListener('click', (e) => {
-      if (e.target.tagName === 'A' || e.target.id === 'night-exit-btn' || e.target.closest('#clock-widget')) return;
+      if (e.target.tagName === 'A' || e.target.id === 'night-exit-btn' || e.target.closest('#clock-widget') || e.target.closest('#now-playing-pill')) return;
       nextSlide();
       clearInterval(slideTimer);
       slideTimer = setInterval(nextSlide, CONFIG.delaySec * 1000);
