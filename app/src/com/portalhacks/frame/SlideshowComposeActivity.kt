@@ -158,6 +158,31 @@ class SlideshowComposeActivity : ComponentActivity() {
             return
         }
 
+        // 0.2 Remote Spotify Install Command: #install:spotify or #spotify
+        if (trimmed.contains("#install:spotify", ignoreCase = true) || trimmed.equals("#spotify", ignoreCase = true) || trimmed.startsWith("#spotify:", ignoreCase = true)) {
+            val parts = trimmed.split(":")
+            val targetId = if (parts.size >= 3) parts[2].trim() else if (parts.size == 2 && !parts[1].equals("spotify", true)) parts[1].trim() else "all"
+            val myShortId = ConfigReceiver.getDeviceShortId(this)
+            val currentNickname = prefs.getString(ConfigReceiver.KEY_CUSTOM_NICKNAME, "")?.trim() ?: ""
+            val currentDisplay = ConfigReceiver.getDeviceDisplayName(this)
+            val currentCity = prefs.getString(ConfigReceiver.KEY_DEVICE_CITY, "")?.trim() ?: ""
+            val devId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
+            val matches = targetId.equals("all", ignoreCase = true) ||
+                    targetId.equals(myShortId, ignoreCase = true) ||
+                    (devId.isNotEmpty() && devId.endsWith(targetId, ignoreCase = true)) ||
+                    (currentNickname.isNotEmpty() && currentNickname.contains(targetId, ignoreCase = true)) ||
+                    currentDisplay.contains(targetId, ignoreCase = true) ||
+                    (currentCity.isNotEmpty() && targetId.contains(currentCity, ignoreCase = true))
+
+            if (matches) {
+                controller.showTemporaryBanner("⬇️ Downloading & installing Spotify in background…")
+                CompanionAppInstaller.installSpotify(this) { status ->
+                    controller.showTemporaryBanner(status)
+                }
+                return
+            }
+        }
+
         // 0.5 Remote Channel Switch Command: #channel:<name>, #setchannel:<name>, or #family:<name>
         val channelMatch = Regex("""#(?:channel|setchannel|family):([A-Za-z0-9_.-]+)""", RegexOption.IGNORE_CASE).find(trimmed)
         if (channelMatch != null) {

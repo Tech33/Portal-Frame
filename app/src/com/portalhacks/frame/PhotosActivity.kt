@@ -639,7 +639,7 @@ class PhotosActivity : Activity() {
         val displayName = ConfigReceiver.getDeviceDisplayName(this)
         val encodedName = java.net.URLEncoder.encode(displayName, "UTF-8")
         val hostParam = if (localIp != null) "&host=${localIp}:8080" else ""
-        val cloudUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.21"
+        val cloudUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.22"
 
         overrideBrightness()
 

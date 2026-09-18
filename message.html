@@ -621,14 +621,24 @@
       cursor: pointer;
     }
     .status-toast {
-      margin-top: 14px;
-      padding: 12px 14px;
-      border-radius: 14px;
-      font-size: 13px;
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 90%;
+      width: 440px;
+      padding: 14px 18px;
+      border-radius: 16px;
+      font-size: 14px;
       font-weight: 600;
       text-align: center;
       line-height: 1.4;
+      z-index: 99999;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       display: none;
+      transition: all 0.25s ease;
     }
     .status-toast.success {
       display: block;
@@ -1533,10 +1543,9 @@
             <button class="portal-act-btn tap-scale" onclick="sendTargetedNote('${d.name}')">
               💌 Send Note
             </button>
-            ${d.host ? `
             <button class="portal-act-btn tap-scale" style="border-color:#1DB954; color:#1DB954; font-weight:600;" onclick="installSpotifyDirectly('${d.id}')" title="1-Tap background download and auto-install of Spotify on Portal">
               ⚡ 1-Tap Spotify
-            </button>` : ''}
+            </button>
             <button class="portal-act-btn tap-scale" style="border-color:#30D158; color:#30D158; font-weight:600;" onclick="triggerPortalApkUpload('${d.id}')" title="Wirelessly upload and install Spotify, SmartTube or any APK">
               📤 Upload APK
             </button>
@@ -1567,23 +1576,42 @@
 
     async function installSpotifyDirectly(deviceId) {
       const d = fleetDevices.find(x => x.id === deviceId || x.shortId === deviceId);
-      if (!d || !d.host) {
-        showToast('Please set or pair Portal IP first', 'error');
-        return;
+      const targetName = d ? d.name : 'Portal';
+      const targetId = d ? (d.shortId || d.id) : 'all';
+
+      showToast(`⚡ Sending Spotify install command to ${targetName}...`, 'info');
+
+      let sent = false;
+      // 1. Direct local HTTP if host is configured
+      if (d && d.host) {
+        try {
+          const resp = await fetch(`http://${d.host}/api/apps/spotify/install`, { method: 'POST', mode: 'cors' });
+          if (resp.ok) {
+            sent = true;
+            showToast(`✓ Spotify download & install started on ${targetName}!`, 'success');
+          }
+        } catch (_) {
+          // May be blocked by browser HTTPS Mixed Content or cross-network
+        }
       }
-      if (!confirm(`Download and install Spotify directly onto ${d.name}?\n\nThis will stream spotify.apk from GitHub directly onto the Portal in the background and auto-install it.`)) {
-        return;
-      }
-      showToast(`⚡ Initiating background Spotify install on ${d.name}...`, 'info');
+
+      // 2. Family Cloud Broadcast (works over HTTPS, zero mixed content, works globally)
       try {
-        const resp = await fetch(`http://${d.host}/api/apps/spotify/install`, { method: 'POST', mode: 'cors' });
-        if (resp.ok) {
-          showToast(`✓ Spotify download & auto-install started on ${d.name}!`, 'success');
-        } else {
-          showToast(`Install request failed (${resp.status})`, 'error');
+        const cmd = `#install:spotify:${targetId}`;
+        const aesKey = await getAesKey(currentActiveChannel);
+        const hex = await encryptData(cmd, aesKey);
+        if (hex) {
+          const resp = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(currentActiveChannel)}/${hex}`, {
+            method: 'POST',
+            headers: { 'Content-Length': '0' }
+          });
+          if (resp.ok) {
+            sent = true;
+            showToast(`✓ Spotify install command broadcast to ${targetName}! Check Portal screen in ~10s.`, 'success');
+          }
         }
       } catch (e) {
-        showToast(`Could not connect to http://${d.host}: ` + e.message, 'error');
+        if (!sent) showToast('Failed to send install command: ' + e.message, 'error');
       }
     }
 
@@ -1968,10 +1996,17 @@
       showToast(`Media command sent: ${action}`, 'info');
     }
 
-    function showToast(msg, type) {
+    let toastTimer = null;
+    function showToast(msg, type = 'info') {
       const toast = document.getElementById('status-toast');
+      if (!toast) return;
+      if (toastTimer) clearTimeout(toastTimer);
       toast.className = `status-toast ${type}`;
       toast.innerText = msg;
+      toast.style.display = 'block';
+      toastTimer = setTimeout(() => {
+        toast.style.display = 'none';
+      }, 5000);
     }
 
     // Run initial fleet check if on Portal
