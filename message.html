@@ -1068,14 +1068,28 @@
     let fleetDevices = [];
     try {
       const saved = localStorage.getItem('portal_fleet_devices');
-      if (saved && !saved.includes('London') && !saved.includes('San Francisco')) {
+      if (saved) {
         fleetDevices = JSON.parse(saved);
+        // Automatically merge any missing default portals (e.g. Delhi-1, Delhi-2)
+        // so users updating from older 3-device rosters immediately see Delhi Portals
+        let updated = false;
+        DEFAULT_FLEET.forEach(def => {
+          const exists = fleetDevices.some(d => d.id === def.id || d.shortId === def.shortId || (d.city === def.city && d.name === def.name));
+          if (!exists) {
+            fleetDevices.push({ ...def });
+            updated = true;
+          }
+        });
+        if (updated || saved.includes('London') || saved.includes('San Francisco')) {
+          fleetDevices = fleetDevices.filter(d => !d.city || (!d.city.includes('London') && !d.city.includes('San Francisco')));
+          localStorage.setItem('portal_fleet_devices', JSON.stringify(fleetDevices));
+        }
       } else {
-        fleetDevices = DEFAULT_FLEET;
-        localStorage.setItem('portal_fleet_devices', JSON.stringify(DEFAULT_FLEET));
+        fleetDevices = JSON.parse(JSON.stringify(DEFAULT_FLEET));
+        localStorage.setItem('portal_fleet_devices', JSON.stringify(fleetDevices));
       }
     } catch (_) {
-      fleetDevices = DEFAULT_FLEET;
+      fleetDevices = JSON.parse(JSON.stringify(DEFAULT_FLEET));
     }
 
     // Initialize UI with channel
