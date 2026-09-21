@@ -103,6 +103,8 @@ class SlideshowController(
     private lateinit var nowPlayingNextBtn: ImageView
     private lateinit var nowPlayingVolumeSeek: SeekBar
     private lateinit var nowPlayingVolumeText: TextView
+    private lateinit var nowPlayingVolIcon: ImageView
+    private var preMuteVolume: Int = 50
     private lateinit var nowPlayingHeaderRow: LinearLayout
     private lateinit var nowPlayingMetaBox: LinearLayout
     private lateinit var nowPlayingControlsRow: LinearLayout
@@ -627,23 +629,25 @@ class SlideshowController(
 
         slideshowExitBtn = TextView(context).apply {
             text = "✕ Exit"
-            setTextColor(0xCCFFFFFF.toInt())
-            typeface = Ui.medium(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            background = Ui.roundRect(0x33000000.toInt(), Ui.dp(context, 18f)).apply {
-                setStroke(Ui.dp(context, 0.8f), 0x26FFFFFF)
+            setTextColor(Color.WHITE)
+            typeface = Ui.bold(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
+            background = Ui.roundRect(0x99121418.toInt(), Ui.dp(context, 23f)).apply {
+                setStroke(Ui.dp(context, 1.2f), 0x4DFFFFFF)
             }
-            alpha = 0.55f
-            val padH = Ui.dp(context, 12f)
-            val padV = Ui.dp(context, 7f)
+            alpha = 0.85f
+            val padH = Ui.dp(context, 18f)
+            val padV = Ui.dp(context, 11f)
             setPadding(padH, padV, padH, padV)
+            minimumHeight = Ui.dp(context, 46f)
+            elevation = Ui.dp(context, 6f).toFloat()
             clipToOutline = true
             isClickable = true
             isFocusable = true
             setOnTouchListener { v, event ->
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> v.alpha = 1.0f
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.55f
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.85f
                 }
                 false
             }
@@ -671,19 +675,21 @@ class SlideshowController(
         haButton = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Ui.roundRect(0x33000000.toInt(), Ui.dp(context, 18f)).apply {
-                setStroke(Ui.dp(context, 0.8f), 0x26FFFFFF)
+            background = Ui.roundRect(0x99121418.toInt(), Ui.dp(context, 23f)).apply {
+                setStroke(Ui.dp(context, 1.2f), 0x4DFFFFFF)
             }
-            alpha = 0.55f
-            val padH = Ui.dp(context, 12f)
-            val padV = Ui.dp(context, 7f)
+            alpha = 0.85f
+            val padH = Ui.dp(context, 18f)
+            val padV = Ui.dp(context, 11f)
             setPadding(padH, padV, padH, padV)
+            minimumHeight = Ui.dp(context, 46f)
+            elevation = Ui.dp(context, 6f).toFloat()
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                leftMargin = Ui.dp(context, 8f)
-                marginStart = Ui.dp(context, 8f)
+                leftMargin = Ui.dp(context, 10f)
+                marginStart = Ui.dp(context, 10f)
             }
             layoutParams = lp
             clipToOutline = true
@@ -693,18 +699,18 @@ class SlideshowController(
 
             val icon = ImageView(context).apply {
                 setImageResource(R.drawable.ic_home_assistant)
-                setColorFilter(0xCCFFFFFF.toInt())
-                val s = Ui.dp(context, 15f)
+                setColorFilter(0xFF0A84FF.toInt())
+                val s = Ui.dp(context, 20f)
                 layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                    rightMargin = Ui.dp(context, 5f)
+                    rightMargin = Ui.dp(context, 7f)
                 }
             }
 
             val label = TextView(context).apply {
                 text = "Home"
-                setTextColor(0xCCFFFFFF.toInt())
-                typeface = Ui.medium(context)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTextColor(Color.WHITE)
+                typeface = Ui.bold(context)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             }
 
             addView(icon)
@@ -713,7 +719,7 @@ class SlideshowController(
             setOnTouchListener { v, event ->
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> v.alpha = 1.0f
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.55f
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.85f
                 }
                 false
             }
@@ -725,13 +731,15 @@ class SlideshowController(
         spotifyShortcutButton = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Ui.roundRect(0x33000000.toInt(), Ui.dp(context, 18f)).apply {
-                setStroke(Ui.dp(context, 0.8f), 0x26FFFFFF)
+            background = Ui.roundRect(0x99121418.toInt(), Ui.dp(context, 23f)).apply {
+                setStroke(Ui.dp(context, 1.2f), 0x4DFFFFFF)
             }
-            alpha = 0.55f
-            val padH = Ui.dp(context, 12f)
-            val padV = Ui.dp(context, 7f)
+            alpha = 0.85f
+            val padH = Ui.dp(context, 18f)
+            val padV = Ui.dp(context, 11f)
             setPadding(padH, padV, padH, padV)
+            minimumHeight = Ui.dp(context, 46f)
+            elevation = Ui.dp(context, 6f).toFloat()
             clipToOutline = true
             isClickable = true
             isFocusable = true
@@ -739,17 +747,17 @@ class SlideshowController(
 
             val icon = ImageView(context).apply {
                 setImageResource(R.drawable.ic_spotify)
-                val s = Ui.dp(context, 16f)
+                val s = Ui.dp(context, 22f)
                 layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                    rightMargin = Ui.dp(context, 6f)
+                    rightMargin = Ui.dp(context, 8f)
                 }
             }
 
             val label = TextView(context).apply {
                 text = "Spotify"
-                setTextColor(0xCCFFFFFF.toInt())
-                typeface = Ui.medium(context)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTextColor(Color.WHITE)
+                typeface = Ui.bold(context)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             }
 
             addView(icon)
@@ -758,7 +766,7 @@ class SlideshowController(
             setOnTouchListener { v, event ->
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> v.alpha = 1.0f
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.55f
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.85f
                 }
                 false
             }
@@ -909,25 +917,17 @@ class SlideshowController(
             }
         }
 
-        nowPlayingTitle = TextView(context).apply {
+        nowPlayingTitle = ContinuousMarqueeTextView(context).apply {
             setTextColor(Color.WHITE)
             typeface = Ui.bold(context)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            setSingleLine(true)
-            ellipsize = TextUtils.TruncateAt.MARQUEE
-            marqueeRepeatLimit = -1
-            isSelected = true
             text = "Now Playing"
         }
 
-        nowPlayingArtist = TextView(context).apply {
+        nowPlayingArtist = ContinuousMarqueeTextView(context).apply {
             setTextColor(0xB3FFFFFF.toInt())
             typeface = Ui.medium(context)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
-            setSingleLine(true)
-            ellipsize = TextUtils.TruncateAt.MARQUEE
-            marqueeRepeatLimit = -1
-            isSelected = true
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -935,6 +935,7 @@ class SlideshowController(
                 topMargin = Ui.dp(context, 2f)
             }
             layoutParams = lp
+            text = "Audio Playback"
         }
 
         nowPlayingDeviceBadge = TextView(context).apply {
@@ -1023,12 +1024,31 @@ class SlideshowController(
 
         val volIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_volume_up)
-            setColorFilter(0x8AFFFFFF.toInt())
+            setColorFilter(0xB3FFFFFF.toInt())
             val vs = Ui.dp(context, 18f)
             layoutParams = LinearLayout.LayoutParams(vs, vs).apply {
                 rightMargin = Ui.dp(context, 6f)
             }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                val cur = nowPlayingVolumeSeek.progress
+                if (cur > 0) {
+                    preMuteVolume = cur
+                    nowPlayingVolumeSeek.progress = 0
+                    nowPlayingVolumeText.text = "0%"
+                    setImageResource(R.drawable.ic_volume_off)
+                    MediaMonitor.setVolume(0, context)
+                } else {
+                    val target = if (preMuteVolume > 0) preMuteVolume else 50
+                    nowPlayingVolumeSeek.progress = target
+                    nowPlayingVolumeText.text = "$target%"
+                    setImageResource(R.drawable.ic_volume_up)
+                    MediaMonitor.setVolume(target, context)
+                }
+            }
         }
+        nowPlayingVolIcon = volIcon
 
         nowPlayingVolumeSeek = SeekBar(context).apply {
             max = 100
@@ -1178,6 +1198,12 @@ class SlideshowController(
         (nowPlayingControlsRow.parent as? ViewGroup)?.removeView(nowPlayingControlsRow)
         (nowPlayingVolumeRow.parent as? ViewGroup)?.removeView(nowPlayingVolumeRow)
         nowPlayingCard.removeAllViews()
+
+        val contentAlpha = (0.45f + 0.55f * (opacityPercent / 100f)).coerceIn(0.4f, 1.0f)
+        nowPlayingVolumeRow.alpha = contentAlpha
+        val volBgAlpha = (alpha * 0.35f).toInt().coerceIn(0x06, 0x55)
+        nowPlayingVolumeRow.background = Ui.roundRect((volBgAlpha shl 24) or 0xFFFFFF, Ui.dp(context, 12f))
+        nowPlayingVolumeRow.setPadding(Ui.dp(context, 8f), Ui.dp(context, 4f), Ui.dp(context, 8f), Ui.dp(context, 4f))
 
         val lp = (nowPlayingCard.layoutParams as? FrameLayout.LayoutParams) ?: FrameLayout.LayoutParams(
             Ui.dp(context, 260f),
@@ -1343,6 +1369,9 @@ class SlideshowController(
                 val vol = if (state.volume >= 0) state.volume else MediaMonitor.getStreamVolumePercent(context)
                 nowPlayingVolumeSeek.progress = vol
                 nowPlayingVolumeText.text = "$vol%"
+                if (::nowPlayingVolIcon.isInitialized) {
+                    nowPlayingVolIcon.setImageResource(if (vol > 0) R.drawable.ic_volume_up else R.drawable.ic_volume_off)
+                }
             }
 
             if (state.isPlaying) {
@@ -1360,7 +1389,8 @@ class SlideshowController(
                 }
             } else {
                 handler.removeCallbacks(nowPlayingHideRunnable)
-                handler.postDelayed(nowPlayingHideRunnable, 15000L)
+                val hideDelay = if (isSonos) 2500L else 12000L
+                handler.postDelayed(nowPlayingHideRunnable, hideDelay)
             }
         }
     }
@@ -3247,10 +3277,8 @@ class SlideshowController(
         }
     }
 
-    fun playChimeSound(styleOverride: String? = null) {
-        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-        val style = styleOverride ?: prefs.getString(ConfigReceiver.KEY_CHIME_STYLE, ConfigReceiver.DEFAULT_CHIME_STYLE) ?: ConfigReceiver.DEFAULT_CHIME_STYLE
-        synthesizeAndPlayChime(style)
+    fun playChimeSound() {
+        synthesizeAndPlayChime()
     }
 
     // ---------------------------------------------------------------- weather
@@ -3339,7 +3367,7 @@ class SlideshowController(
 
     /**
      * Compact, Apple-style 3-bar dancing audio equalizer wave.
-     * Renders smoothly on hardware canvas with minimal CPU usage.
+     * Renders dynamically strictly when music is playing; freezes flat when paused/stopped.
      */
     private class WaveformEqualizerView(c: Context) : View(c) {
         private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -3390,15 +3418,102 @@ class SlideshowController(
                 val factor = if (isPlaying) {
                     0.25f + 0.75f * (0.5f + 0.5f * kotlin.math.sin(phase * 2.0 * Math.PI).toFloat())
                 } else {
-                    0.3f
+                    0.20f
                 }
-                val barH = (h * factor).coerceIn(barW, h)
+                val barH = if (isPlaying) (h * factor).coerceIn(barW, h) else barW
                 val left = startX + i * (barW + gap)
                 val top = h - barH
                 val right = left + barW
                 val bottom = h
+                barPaint.alpha = if (isPlaying) 255 else 115
                 canvas.drawRoundRect(left, top, right, bottom, corner, corner, barPaint)
             }
+        }
+    }
+
+    /**
+     * Seamless, infinite looping marquee text ticker modeled after the Spotify mobile and desktop player.
+     * When text exceeds view width, it continuously translates leftwards without stopping or pausing,
+     * seamlessly repeating with an edge gap. Never freezes on window focus loss.
+     */
+    private class ContinuousMarqueeTextView @JvmOverloads constructor(
+        c: Context,
+        attrs: android.util.AttributeSet? = null,
+        defStyleAttr: Int = 0
+    ) : TextView(c, attrs, defStyleAttr) {
+
+        private var textWidth = 0f
+        private var xOffset = 0f
+        private var animator: ValueAnimator? = null
+        private val gap = Ui.dp(context, 44f).toFloat()
+
+        init {
+            setSingleLine(true)
+            ellipsize = null
+        }
+
+        override fun isFocused(): Boolean = true
+
+        override fun onTextChanged(text: CharSequence?, start: Int, lengthBefore: Int, lengthAfter: Int) {
+            super.onTextChanged(text, start, lengthBefore, lengthAfter)
+            restartMarquee()
+        }
+
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            restartMarquee()
+        }
+
+        private fun restartMarquee() {
+            animator?.cancel()
+            val textStr = text?.toString() ?: ""
+            if (textStr.isEmpty() || width <= 0) return
+            textWidth = paint.measureText(textStr)
+            val availableW = (width - paddingLeft - paddingRight).toFloat()
+            if (textWidth <= availableW) {
+                xOffset = 0f
+                invalidate()
+                return
+            }
+
+            val totalDistance = textWidth + gap
+            val speedPxPerSec = Ui.dp(context, 34f).toFloat()
+            val durationMs = ((totalDistance / speedPxPerSec) * 1000L).toLong().coerceIn(3500L, 25000L)
+            animator = ValueAnimator.ofFloat(0f, totalDistance).apply {
+                duration = durationMs
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    xOffset = it.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val textStr = text?.toString() ?: ""
+            if (textStr.isEmpty()) return
+            val availableW = (width - paddingLeft - paddingRight).toFloat()
+            val fm = paint.fontMetrics
+            val baseline = (height - fm.descent - fm.ascent) / 2f
+
+            if (textWidth <= availableW) {
+                canvas.drawText(textStr, paddingLeft.toFloat(), baseline, paint)
+            } else {
+                canvas.save()
+                canvas.clipRect(paddingLeft.toFloat(), 0f, (width - paddingRight).toFloat(), height.toFloat())
+                val x1 = paddingLeft - xOffset
+                canvas.drawText(textStr, x1, baseline, paint)
+                val x2 = x1 + textWidth + gap
+                canvas.drawText(textStr, x2, baseline, paint)
+                canvas.restore()
+            }
+        }
+
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow()
+            animator?.cancel()
         }
     }
 
@@ -3697,67 +3812,20 @@ class SlideshowController(
         private const val SLIDES_DIR = "slides"
 
         @JvmStatic
-        fun synthesizeAndPlayChime(style: String) {
+        fun synthesizeAndPlayChime() {
             kotlin.concurrent.thread(name = "ChimePlayer") {
                 val sampleRate = 44100
-                val duration = when (style) {
-                    "zen_bowl" -> 2.8
-                    "two_tone" -> 2.2
-                    "crystal_arpeggio" -> 2.6
-                    else -> 1.5
-                }
+                val duration = 1.5
                 val numSamples = (duration * sampleRate).toInt()
                 val buffer = ShortArray(numSamples)
 
                 for (i in 0 until numSamples) {
                     val t = i.toDouble() / sampleRate
-                    val value = when (style) {
-                        "zen_bowl" -> {
-                            // Tibetan Singing Bowl / Temple Bell: 432 Hz fundamental, bronze overtones, gentle shimmer
-                            val attack = (1.0 - Math.exp(-t / 0.025)).coerceIn(0.0, 1.0)
-                            val shimmer = 1.0 + 0.12 * Math.cos(2.0 * Math.PI * 1.5 * t)
-                            val s1 = 0.65 * Math.sin(2.0 * Math.PI * 432.0 * t) * Math.exp(-1.4 * t) * shimmer
-                            val s2 = 0.22 * Math.sin(2.0 * Math.PI * 1192.3 * t) * Math.exp(-3.0 * t)
-                            val s3 = 0.08 * Math.sin(2.0 * Math.PI * 2332.8 * t) * Math.exp(-5.5 * t)
-                            (s1 + s2 + s3) * attack
-                        }
-                        "two_tone" -> {
-                            // Gentle Two-Tone Marimba: G4 (392 Hz) -> C5 (523.25 Hz)
-                            var v = 0.0
-                            if (t < 1.8) {
-                                val t1 = t
-                                val a1 = (1.0 - Math.exp(-t1 / 0.012)).coerceIn(0.0, 1.0)
-                                v += (0.7 * Math.sin(2.0 * Math.PI * 392.0 * t1) + 0.18 * Math.sin(2.0 * Math.PI * 1176.0 * t1)) * Math.exp(-3.2 * t1) * a1
-                            }
-                            if (t >= 0.35) {
-                                val t2 = t - 0.35
-                                val a2 = (1.0 - Math.exp(-t2 / 0.012)).coerceIn(0.0, 1.0)
-                                v += (0.75 * Math.sin(2.0 * Math.PI * 523.25 * t2) + 0.16 * Math.sin(2.0 * Math.PI * 1569.75 * t2)) * Math.exp(-2.2 * t2) * a2
-                            }
-                            v
-                        }
-                        "crystal_arpeggio" -> {
-                            // Crystal Bell Arpeggio: C5 (523.25 Hz) -> E5 (659.25 Hz) -> G5 (783.99 Hz)
-                            var v = 0.0
-                            val notes = listOf(0.0 to 523.25, 0.16 to 659.25, 0.32 to 783.99)
-                            for ((startT, freq) in notes) {
-                                if (t >= startT) {
-                                    val tn = t - startT
-                                    val a = (1.0 - Math.exp(-tn / 0.015)).coerceIn(0.0, 1.0)
-                                    v += (0.6 * Math.sin(2.0 * Math.PI * freq * tn) + 0.22 * Math.sin(2.0 * Math.PI * freq * 2.0 * tn)) * Math.exp(-2.5 * tn) * a
-                                }
-                            }
-                            v * 0.65
-                        }
-                        else -> {
-                            // Classic 3-tone Bell with smoothed attack
-                            val attack = (1.0 - Math.exp(-t / 0.01)).coerceIn(0.0, 1.0)
-                            val decay = Math.exp(-3.0 * t)
-                            (0.6 * Math.sin(2.0 * Math.PI * 880.0 * t) +
-                             0.25 * Math.sin(2.0 * Math.PI * 1320.0 * t) +
-                             0.15 * Math.sin(2.0 * Math.PI * 1760.0 * t)) * decay * attack
-                        }
-                    }
+                    val attack = (1.0 - Math.exp(-t / 0.01)).coerceIn(0.0, 1.0)
+                    val decay = Math.exp(-3.0 * t)
+                    val value = (0.6 * Math.sin(2.0 * Math.PI * 880.0 * t) +
+                                 0.25 * Math.sin(2.0 * Math.PI * 1320.0 * t) +
+                                 0.15 * Math.sin(2.0 * Math.PI * 1760.0 * t)) * decay * attack
                     buffer[i] = (value.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
                 }
 

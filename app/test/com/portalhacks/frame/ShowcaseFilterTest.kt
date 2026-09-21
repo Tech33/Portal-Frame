@@ -247,8 +247,7 @@ class ShowcaseFilterTest {
     }
 
     @Test
-    fun testChimeStyleAndBlurDefaults() {
-        assertEquals("zen_bowl", ConfigReceiver.DEFAULT_CHIME_STYLE)
+    fun testNowPlayingBlurDefaults() {
         assertEquals(24, ConfigReceiver.DEFAULT_NOW_PLAYING_BLUR)
     }
 }

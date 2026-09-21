@@ -278,21 +278,26 @@ class PortalMediaNotificationListener : NotificationListenerService() {
             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
 
+        var pendingArtUrl: String? = null
         if (art == null && metadata != null) {
             val artUriStr = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI)
                 ?: metadata.getString(MediaMetadata.METADATA_KEY_ART_URI)
                 ?: metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI)
             if (!artUriStr.isNullOrBlank()) {
-                try {
-                    val uri = android.net.Uri.parse(artUriStr)
-                    contentResolver.openInputStream(uri)?.use { stream ->
-                        art = android.graphics.BitmapFactory.decodeStream(stream)
-                    }
-                } catch (_: Exception) {}
+                if (artUriStr.startsWith("http://", ignoreCase = true) || artUriStr.startsWith("https://", ignoreCase = true)) {
+                    pendingArtUrl = artUriStr
+                } else {
+                    try {
+                        val uri = android.net.Uri.parse(artUriStr)
+                        contentResolver.openInputStream(uri)?.use { stream ->
+                            art = android.graphics.BitmapFactory.decodeStream(stream)
+                        }
+                    } catch (_: Exception) {}
+                }
             }
         }
 
-        // Notification extras fallback for web / YouTube streaming
+        // Notification extras fallback for web / YouTube streaming / Spotify large icon
         if (notif != null) {
             val extras = notif.extras
             if (title.isEmpty() && extras != null) {
@@ -303,10 +308,10 @@ class PortalMediaNotificationListener : NotificationListenerService() {
             }
             if (art == null && extras != null) {
                 art = extras.getParcelable<Bitmap>(Notification.EXTRA_LARGE_ICON)
-                if (art == null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                    art = notif.getLargeIcon()?.loadDrawable(this)?.let { d ->
-                        if (d is android.graphics.drawable.BitmapDrawable) d.bitmap else null
-                    }
+            }
+            if (art == null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                art = notif.getLargeIcon()?.loadDrawable(this)?.let { d ->
+                    if (d is android.graphics.drawable.BitmapDrawable) d.bitmap else null
                 }
             }
         }
@@ -342,6 +347,46 @@ class PortalMediaNotificationListener : NotificationListenerService() {
                 deviceName = "Portal Living Room",
                 volume = vol
             )
+
+            if (art == null && pendingArtUrl != null) {
+                fetchWebArtAsync(pendingArtUrl, title, artist, effectivePkg, sourceName, isPlaying)
+            }
+        }
+    }
+
+    private fun fetchWebArtAsync(
+        urlStr: String,
+        title: String,
+        artist: String,
+        pkgName: String,
+        source: String,
+        isPlaying: Boolean
+    ) {
+        kotlin.concurrent.thread(name = "MediaArtFetch") {
+            try {
+                val url = java.net.URL(urlStr)
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.instanceFollowRedirects = true
+                conn.setRequestProperty("User-Agent", "PortalFrame/1.0")
+                conn.connectTimeout = 3500
+                conn.readTimeout = 4500
+                if (conn.responseCode in 200..299) {
+                    val bmp = android.graphics.BitmapFactory.decodeStream(conn.inputStream)
+                    if (bmp != null && MediaMonitor.currentState.title == title) {
+                        MediaMonitor.update(
+                            isPlaying = isPlaying,
+                            title = title,
+                            artist = artist,
+                            album = MediaMonitor.currentState.album,
+                            art = bmp,
+                            source = source,
+                            packageName = pkgName,
+                            deviceName = MediaMonitor.currentState.deviceName,
+                            volume = MediaMonitor.currentState.volume
+                        )
+                    }
+                }
+            } catch (_: Exception) {}
         }
     }
 }

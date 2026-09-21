@@ -161,8 +161,6 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_SHOWCASE_LOCATION = "showcase_location" // string: filter location/city query or date string
         const val DEFAULT_SHOWCASE_LOCATION = ""
         const val KEY_SHOWCASE_DATE = "showcase_date" // string: target date e.g. "2024-06-14"
-        const val KEY_CHIME_STYLE = "chime_style" // string: "zen_bowl", "two_tone", "crystal_arpeggio", "classic"
-        const val DEFAULT_CHIME_STYLE = "zen_bowl"
         const val KEY_NOW_PLAYING_BLUR = "now_playing_blur" // int: 0..40
         const val DEFAULT_NOW_PLAYING_BLUR = 24
         // Clock widget transform (set by long-press-drag/pinch on the screensaver). dx/dy are the

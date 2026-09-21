@@ -12,6 +12,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 import java.net.NetworkInterface
 import java.util.Collections
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -62,6 +63,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -412,6 +414,366 @@ class SettingsActivity : ComponentActivity() {
 
     // ----------------------------------------------------------------- UI
 
+    enum class SettingsSection(val title: String) {
+        ROOT("Settings"),
+        PLAYBACK("Slideshow Playback"),
+        SUB_BACKGROUND_BLUR("Background Fill Blur"),
+        SUB_SHOWCASE("Photo Showcase & Filter"),
+        PHOTO_ALBUMS("Photo Albums & Sources"),
+        DISPLAY_NIGHT("Display & Night Mode"),
+        CLOCK_CHIME("Clock, Weather & Chime"),
+        MEDIA_STREAMING("Media & Audio Streaming"),
+        HOME_ASSISTANT("Home Assistant & Web Remote"),
+        SYSTEM_UPDATE("Software Update & System"),
+        UNINSTALL("Revert & Uninstall Frame"),
+    }
+
+    @Composable
+    private fun IosTopBar(
+        title: String,
+        backText: String = "Settings",
+        onBack: (() -> Unit)? = null,
+        onDone: (() -> Unit)? = null,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            if (onBack != null) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onBack() }
+                        .padding(vertical = 6.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "‹ ",
+                        color = PortalColors.Blue,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Light,
+                    )
+                    Text(
+                        backText,
+                        color = PortalColors.Blue,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            } else {
+                Spacer(Modifier.width(1.dp))
+            }
+
+            Text(
+                text = title,
+                color = PortalColors.Text,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            if (onDone != null) {
+                Text(
+                    "Done",
+                    color = PortalColors.Blue,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onDone() }
+                        .padding(vertical = 6.dp, horizontal = 8.dp),
+                )
+            } else {
+                Spacer(Modifier.width(1.dp))
+            }
+        }
+    }
+
+    @Composable
+    private fun IosMenuRow(
+        title: String,
+        subtitle: String? = null,
+        iconRes: Int = 0,
+        iconBg: Color = Color.Gray,
+        badge: String? = null,
+        onClick: () -> Unit,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { onClick() }
+                .padding(horizontal = 4.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RowIcon(iconRes, iconBg)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = PortalColors.Text,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                if (!subtitle.isNullOrEmpty()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        color = PortalColors.TextMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 17.sp,
+                    )
+                }
+            }
+            if (!badge.isNullOrEmpty()) {
+                Text(
+                    text = badge,
+                    color = PortalColors.TextMuted,
+                    fontSize = 13.5.sp,
+                    modifier = Modifier.padding(end = 6.dp)
+                )
+            }
+            Text(
+                text = "›",
+                color = Color(0xFF636366),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
+
+    @Composable
+    private fun IosGroupHeader(title: String) {
+        Text(
+            text = title.uppercase(Locale.getDefault()),
+            color = PortalColors.TextMuted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+            modifier = Modifier.padding(start = 12.dp, top = 20.dp, bottom = 4.dp)
+        )
+    }
+
+    @Composable
+    private fun PhotoFillBlurSubView() {
+        var blurVal by rememberPrefInt(ConfigReceiver.KEY_BLUR_RADIUS, ConfigReceiver.DEFAULT_BLUR_RADIUS)
+        var sliderVal by remember(blurVal) {
+            mutableStateOf(blurVal.toFloat())
+        }
+        Card("Fill Blur Radius") {
+            Body("Adjusts Gaussian blur intensity for the ambient background when portrait or non-matching aspect ratio photos are displayed.")
+            Spacer(Modifier.height(16.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF1C1C1E))
+                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFF5856D6).copy(alpha = (sliderVal / 10f).coerceIn(0.2f, 0.8f)),
+                                    Color(0xFF007AFF).copy(alpha = 0.15f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+                Box(
+                    modifier = Modifier
+                        .width(90.dp)
+                        .height(120.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF2C2C2E))
+                        .border(1.5.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Photo", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Blur Radius Level:", color = PortalColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Radius ${sliderVal.toInt()}" + when (sliderVal.toInt()) {
+                        1 -> " (Subtle)"
+                        3 -> " (Default)"
+                        8 -> " (Dreamy Soft)"
+                        else -> ""
+                    },
+                    color = PortalColors.Blue,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Slider(
+                value = sliderVal,
+                onValueChange = { sliderVal = it },
+                valueRange = 1f..8f,
+                steps = 6,
+                onValueChangeFinished = {
+                    val finalVal = sliderVal.toInt().coerceIn(1, 8)
+                    blurVal = finalVal
+                    prefs.edit().putInt(ConfigReceiver.KEY_BLUR_RADIUS, finalVal).apply()
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = PortalColors.Blue,
+                    activeTrackColor = PortalColors.Blue,
+                    inactiveTrackColor = PortalColors.Text.copy(alpha = 0.18f),
+                ),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("1 (Subtle)", color = PortalColors.TextMuted, fontSize = 12.sp)
+                Text("3 (Default)", color = PortalColors.Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("8 (Dreamy Soft)", color = PortalColors.TextMuted, fontSize = 12.sp)
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                SecondaryBtn("Reset to Default (3)") {
+                    sliderVal = 3f
+                    blurVal = 3
+                    prefs.edit().putInt(ConfigReceiver.KEY_BLUR_RADIUS, 3).apply()
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun PhotoShowcaseSubView() {
+        val currentMode = prefs.getString(ConfigReceiver.KEY_SHOWCASE_MODE, ConfigReceiver.DEFAULT_SHOWCASE_MODE) ?: ConfigReceiver.DEFAULT_SHOWCASE_MODE
+        val currentDate = prefs.getString(ConfigReceiver.KEY_SHOWCASE_DATE, "") ?: ""
+        val currentLoc = prefs.getString(ConfigReceiver.KEY_SHOWCASE_LOCATION, "") ?: ""
+
+        var selectedMode by remember { mutableStateOf(currentMode) }
+        var dateText by remember { mutableStateOf(currentDate) }
+        var locText by remember { mutableStateOf(currentLoc) }
+
+        Card("Focus Slideshow Content") {
+            Body("Focus the slideshow on specific dates, trips, or locations:")
+            Spacer(Modifier.height(14.dp))
+
+            val modes = listOf(
+                "all" to ("All Album Photos" to "Display all photos from selected albums in normal rotation"),
+                "recent_trip" to ("Recent Trip / Event (Auto-Cluster)" to "Highlight auto-clustered recent trips and events"),
+                "last_7_days" to ("Photos from Last 7 Days" to "Showing photos taken within the last 7 days"),
+                "last_30_days" to ("Photos from Last 30 Days" to "Showing photos taken within the last 30 days"),
+                "date_range" to ("Specific Date or Anniversary" to "Showcase photos captured on an exact date across years"),
+                "location" to ("Location / Tag Search" to "Filter photos matching a specific city or keyword"),
+            )
+
+            modes.forEachIndexed { i, (modeId, info) ->
+                if (i > 0) Divider()
+                val isSelected = selectedMode == modeId
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            selectedMode = modeId
+                            prefs.edit()
+                                .putString(ConfigReceiver.KEY_SHOWCASE_MODE, modeId)
+                                .putString(ConfigReceiver.KEY_SHOWCASE_DATE, dateText.trim())
+                                .putString(ConfigReceiver.KEY_SHOWCASE_LOCATION, locText.trim())
+                                .apply()
+                        }
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            info.first,
+                            color = if (isSelected) PortalColors.Blue else PortalColors.Text,
+                            fontSize = 16.sp,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(info.second, color = PortalColors.TextMuted, fontSize = 12.sp)
+                    }
+                    if (isSelected) {
+                        Text("✓", color = PortalColors.Blue, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (selectedMode == "date_range") {
+                Spacer(Modifier.height(16.dp))
+                Divider()
+                Spacer(Modifier.height(16.dp))
+                Text("Target Date (YYYY-MM-DD or MM-DD):", color = PortalColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = dateText,
+                    onValueChange = {
+                        dateText = it
+                        prefs.edit().putString(ConfigReceiver.KEY_SHOWCASE_DATE, it.trim()).apply()
+                    },
+                    placeholder = { Text("e.g. 2024-06-14 or 07-04", color = Color.Gray, fontSize = 14.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val todayCal = java.util.Calendar.getInstance()
+                    val todayStr = String.format(Locale.US, "%04d-%02d-%02d", todayCal.get(java.util.Calendar.YEAR), todayCal.get(java.util.Calendar.MONTH) + 1, todayCal.get(java.util.Calendar.DAY_OF_MONTH))
+                    val oneYearAgoStr = String.format(Locale.US, "%04d-%02d-%02d", todayCal.get(java.util.Calendar.YEAR) - 1, todayCal.get(java.util.Calendar.MONTH) + 1, todayCal.get(java.util.Calendar.DAY_OF_MONTH))
+                    val fiveYearsAgoStr = String.format(Locale.US, "%04d-%02d-%02d", todayCal.get(java.util.Calendar.YEAR) - 5, todayCal.get(java.util.Calendar.MONTH) + 1, todayCal.get(java.util.Calendar.DAY_OF_MONTH))
+
+                    listOf("Today" to todayStr, "1 Year Ago" to oneYearAgoStr, "5 Years Ago" to fiveYearsAgoStr).forEach { (lbl, dateVal) ->
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x220A84FF))
+                                .clickable {
+                                    dateText = dateVal
+                                    prefs.edit().putString(ConfigReceiver.KEY_SHOWCASE_DATE, dateVal).apply()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text(lbl, color = PortalColors.Blue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+
+            if (selectedMode == "location") {
+                Spacer(Modifier.height(16.dp))
+                Divider()
+                Spacer(Modifier.height(16.dp))
+                Text("Location / Keyword Search:", color = PortalColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = locText,
+                    onValueChange = {
+                        locText = it
+                        prefs.edit().putString(ConfigReceiver.KEY_SHOWCASE_LOCATION, it.trim()).apply()
+                    },
+                    placeholder = { Text("e.g. Hawaii, Paris, Beach", color = Color.Gray, fontSize = 14.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+
     @Composable
     private fun SettingsScreen(fontScaleState: MutableState<Float>) {
         val ctx = LocalContext.current
@@ -475,9 +837,24 @@ class SettingsActivity : ComponentActivity() {
 
         // Card groups balanced for Meta Portal wide landscape screen:
         // Left Column: Live Preview -> Screensaver Status & Protected Mode -> Albums -> Custom Announcement
-        val sourceCards: @Composable () -> Unit = {
-            LivePreviewCard()
+        val navStack = remember { mutableStateListOf<SettingsSection>() }
+        val currentSection = navStack.lastOrNull() ?: SettingsSection.ROOT
 
+        BackHandler(enabled = navStack.isNotEmpty()) {
+            navStack.removeAt(navStack.size - 1)
+        }
+
+        val navigateTo: (SettingsSection) -> Unit = { section ->
+            navStack.add(section)
+        }
+
+        val navigateBack: () -> Unit = {
+            if (navStack.isNotEmpty()) {
+                navStack.removeAt(navStack.size - 1)
+            }
+        }
+
+        val cardScreensaverStatus: @Composable () -> Unit = {
             Card("Screensaver status & Protected Mode") {
                 val active = isScreensaverActive
                 val protectedMode = Screensaver.canWrite(ctx)
@@ -538,7 +915,9 @@ class SettingsActivity : ComponentActivity() {
                     )
                 }
             }
+        }
 
+        val cardPhotoAlbums: @Composable () -> Unit = {
             Card(if (hasAlbum) "Photo albums" else "No albums yet") {
                 if (hasAlbum) {
                     if (albumRefreshStatus.isNotEmpty()) {
@@ -608,7 +987,9 @@ class SettingsActivity : ComponentActivity() {
                 // One add-album screen — scan a QR or paste a link there.
                 PrimaryBtn("＋ Add album with Phone (QR Code)") { gotoPhotos("scan") }
             }
+        }
 
+        val cardAnnouncement: @Composable () -> Unit = {
             Card("Custom Announcement Banner") {
                 val curMsg = customMessageState.value?.trim() ?: ""
                 if (curMsg.isNotEmpty()) {
@@ -651,8 +1032,7 @@ class SettingsActivity : ComponentActivity() {
             }
         }
 
-        // Right Column: Software Update (top) -> Playback -> Display & Accessibility -> Clock & Weather -> Night Mode -> Chime -> MQTT & HA -> Revert/Uninstall
-        val settingsCards: @Composable () -> Unit = {
+        val cardPortalIdentity: @Composable () -> Unit = {
             Card("Portal Identity") {
                 val displayName = ConfigReceiver.getDeviceDisplayName(ctx)
                 val shortId = ConfigReceiver.getDeviceShortId(ctx)
@@ -786,7 +1166,9 @@ class SettingsActivity : ComponentActivity() {
                 Spacer(Modifier.height(8.dp))
                 Body("Portal name is non-editable here. To change the name, send a rename broadcast (#rename:<id>:<name>) or use the Fleet tab on the Web interface.")
             }
+        }
 
+        val cardSoftwareUpdate: @Composable () -> Unit = {
             Card("Software update & system") {
                 Body("Installed: $installedVersion")
                 Spacer(Modifier.height(8.dp))
@@ -851,7 +1233,9 @@ class SettingsActivity : ComponentActivity() {
                     iconBg = Color(0xFF007AFF),
                 )
             }
+        }
 
+        val cardPlayback: @Composable () -> Unit = {
             Card("Slideshow playback") {
                 DurationSliderRow(iconRes = R.drawable.ic_duration, iconBg = Color(0xFF5856D6))
                 Divider()
@@ -885,42 +1269,47 @@ class SettingsActivity : ComponentActivity() {
                     iconRes = R.drawable.ic_memories,
                     iconBg = Color(0xFF34C759),
                 )
-                Divider()
-                PhotoFillBlurSliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF5856D6))
-                Divider()
+            }
 
+            IosGroupHeader("Advanced Framing & Filters")
+            Card("") {
+                val blurVal = prefs.getInt(ConfigReceiver.KEY_BLUR_RADIUS, ConfigReceiver.DEFAULT_BLUR_RADIUS)
+                IosMenuRow(
+                    title = "Background Fill Blur",
+                    subtitle = "Soft frosted blurred background for letterboxed photos",
+                    badge = "Radius $blurVal",
+                    iconRes = R.drawable.ic_ambient,
+                    iconBg = Color(0xFF5856D6),
+                ) {
+                    navigateTo(SettingsSection.SUB_BACKGROUND_BLUR)
+                }
+                Divider()
                 val showcaseMode = rememberPrefString(ConfigReceiver.KEY_SHOWCASE_MODE, ConfigReceiver.DEFAULT_SHOWCASE_MODE)
                 val showcaseDate = rememberPrefString(ConfigReceiver.KEY_SHOWCASE_DATE, "")
                 val showcaseLoc = rememberPrefString(ConfigReceiver.KEY_SHOWCASE_LOCATION, "")
                 val modeVal = showcaseMode.value ?: ConfigReceiver.DEFAULT_SHOWCASE_MODE
                 val displayLabel = when (modeVal) {
                     "all" -> "All Photos"
-                    "recent_trip" -> "Recent Trip / Event"
+                    "recent_trip" -> "Recent Trip"
                     "last_7_days" -> "Last 7 Days"
                     "last_30_days" -> "Last 30 Days"
                     "date_range" -> if (!showcaseDate.value.isNullOrEmpty()) "Date: ${showcaseDate.value}" else "Specific Date"
                     "location" -> if (!showcaseLoc.value.isNullOrEmpty()) "Location: ${showcaseLoc.value}" else "Location / Tag"
                     else -> "All Photos"
                 }
-                val displaySubtitle = when (modeVal) {
-                    "date_range" -> "Showcasing photos taken on ${showcaseDate.value ?: "selected date"}"
-                    "location" -> "Filtering photos by location tag '${showcaseLoc.value ?: ""}'"
-                    "recent_trip" -> "Highlighting auto-clustered recent trips and events"
-                    "last_7_days" -> "Showing photos taken within the last 7 days"
-                    "last_30_days" -> "Showing photos taken within the last 30 days"
-                    else -> "Displaying all photos from selected albums in normal rotation"
-                }
-                CycleRow(
-                    label = "Photo Showcase & Filter",
-                    value = displayLabel,
+                IosMenuRow(
+                    title = "Photo Showcase & Filter",
+                    subtitle = "Filter by Anniversary, Recent Trip, or Date",
+                    badge = displayLabel,
                     iconRes = R.drawable.ic_captions,
                     iconBg = Color(0xFF007AFF),
-                    subtitle = displaySubtitle,
                 ) {
-                    showShowcaseDialog = true
+                    navigateTo(SettingsSection.SUB_SHOWCASE)
                 }
             }
+        }
 
+        val cardDisplayAccessibility: @Composable () -> Unit = {
             Card("Display & accessibility") {
                 TextSizeSelectorRow(fontScaleState)
                 Divider()
@@ -942,7 +1331,73 @@ class SettingsActivity : ComponentActivity() {
                     iconBg = PortalColors.Red,
                 )
             }
+        }
 
+        val cardNightMode: @Composable () -> Unit = {
+            Card("Night mode (Clock only)") {
+                ToggleRow(
+                    label = "Only clock in low light",
+                    key = ConfigReceiver.KEY_CLOCK_LOW_LIGHT,
+                    def = ConfigReceiver.DEFAULT_CLOCK_LOW_LIGHT,
+                    iconRes = R.drawable.ic_low_light,
+                    iconBg = Color(0xFF1D2E44),
+                )
+                Divider()
+                ToggleRow(
+                    label = "Clock on room empty (Presence)",
+                    key = ConfigReceiver.KEY_PRESENCE_ENABLED,
+                    def = ConfigReceiver.DEFAULT_PRESENCE_ENABLED,
+                    subtitle = "Automatically drops to clock when no motion or person is detected in the room, resuming photos when someone enters.",
+                    iconRes = R.drawable.ic_motion,
+                    iconBg = Color(0xFF34C759),
+                )
+                Divider()
+                ToggleRow(
+                    label = "Scheduled full-screen night clock",
+                    key = ConfigReceiver.KEY_NIGHT_CLOCK,
+                    def = ConfigReceiver.DEFAULT_NIGHT_CLOCK,
+                    subtitle = "Show a full-screen clock with AM/PM, an Exit button, and status line instead of photos.",
+                    iconRes = R.drawable.ic_night_clock,
+                    iconBg = Color(0xFF5856D6),
+                    onClickOverride = { checked ->
+                        if (checked) {
+                            showNightClockDialog = true
+                        } else {
+                            prefs.edit().putBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, false).apply()
+                        }
+                    }
+                )
+                
+                val showNightOptions = rememberPrefBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, ConfigReceiver.DEFAULT_NIGHT_CLOCK)
+                if (showNightOptions.value) {
+                    Spacer(Modifier.height(8.dp))
+                    Column(Modifier.padding(start = 32.dp)) {
+                        NightClockStyleSelectorRow()
+                        Divider()
+                        TimeSliderRow(
+                            "Starts at",
+                            ConfigReceiver.KEY_NIGHT_CLOCK_START_MIN,
+                            ConfigReceiver.DEFAULT_NIGHT_CLOCK_START_MIN,
+                            iconRes = R.drawable.ic_duration,
+                            iconBg = Color(0xFF8E8E93),
+                        )
+                        Divider()
+                        TimeSliderRow(
+                            "Ends at",
+                            ConfigReceiver.KEY_NIGHT_CLOCK_END_MIN,
+                            ConfigReceiver.DEFAULT_NIGHT_CLOCK_END_MIN,
+                            iconRes = R.drawable.ic_duration,
+                            iconBg = Color(0xFF8E8E93),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Divider()
+                ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true, iconRes = R.drawable.ic_night_warmth, iconBg = Color(0xFFFF9500))
+            }
+        }
+
+        val cardClockOverlay: @Composable () -> Unit = {
             Card("Clock & overlay options") {
                 ToggleRow(
                     "Clock & weather", ConfigReceiver.KEY_CLOCK, true,
@@ -1006,69 +1461,59 @@ class SettingsActivity : ComponentActivity() {
                     prefs.edit().putBoolean(ConfigReceiver.KEY_WEATHER_FAHRENHEIT, !tempFahrenheitState.value).apply()
                 }
             }
+        }
 
-            Card("Night mode (Clock only)") {
+        val cardHourlyChime: @Composable () -> Unit = {
+            Card("Hourly chime") {
                 ToggleRow(
-                    label = "Only clock in low light",
-                    key = ConfigReceiver.KEY_CLOCK_LOW_LIGHT,
-                    def = ConfigReceiver.DEFAULT_CLOCK_LOW_LIGHT,
-                    iconRes = R.drawable.ic_low_light,
-                    iconBg = Color(0xFF1D2E44),
-                )
-                Divider()
-                ToggleRow(
-                    label = "Clock on room empty (Presence)",
-                    key = ConfigReceiver.KEY_PRESENCE_ENABLED,
-                    def = ConfigReceiver.DEFAULT_PRESENCE_ENABLED,
-                    subtitle = "Automatically drops to clock when no motion or person is detected in the room, resuming photos when someone enters.",
-                    iconRes = R.drawable.ic_motion,
-                    iconBg = Color(0xFF34C759),
-                )
-                Divider()
-                ToggleRow(
-                    label = "Scheduled full-screen night clock",
-                    key = ConfigReceiver.KEY_NIGHT_CLOCK,
-                    def = ConfigReceiver.DEFAULT_NIGHT_CLOCK,
-                    subtitle = "Show a full-screen clock with AM/PM, an Exit button, and status line instead of photos.",
-                    iconRes = R.drawable.ic_night_clock,
-                    iconBg = Color(0xFF5856D6),
-                    onClickOverride = { checked ->
-                        if (checked) {
-                            showNightClockDialog = true
-                        } else {
-                            prefs.edit().putBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, false).apply()
-                        }
-                    }
+                    label = "Hourly chime",
+                    key = ConfigReceiver.KEY_CHIME,
+                    def = ConfigReceiver.DEFAULT_CHIME,
+                    subtitle = "Plays a soothing tone on the hour.",
+                    iconRes = R.drawable.ic_clock_format,
+                    iconBg = Color(0xFFFF9500),
                 )
                 
-                val showNightOptions = rememberPrefBoolean(ConfigReceiver.KEY_NIGHT_CLOCK, ConfigReceiver.DEFAULT_NIGHT_CLOCK)
-                if (showNightOptions.value) {
+                val showChimeOptions = rememberPrefBoolean(ConfigReceiver.KEY_CHIME, ConfigReceiver.DEFAULT_CHIME)
+                if (showChimeOptions.value) {
                     Spacer(Modifier.height(8.dp))
                     Column(Modifier.padding(start = 32.dp)) {
-                        NightClockStyleSelectorRow()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Chime Sound", color = PortalColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Classic Soothing Bell (880Hz Harmonics)", color = PortalColors.Text.copy(alpha = 0.65f), fontSize = 12.sp)
+                            }
+                            SecondaryBtn("▶️ Test Chime") {
+                                SlideshowController.synthesizeAndPlayChime()
+                            }
+                        }
                         Divider()
                         TimeSliderRow(
-                            "Starts at",
-                            ConfigReceiver.KEY_NIGHT_CLOCK_START_MIN,
-                            ConfigReceiver.DEFAULT_NIGHT_CLOCK_START_MIN,
+                            "Chime starts",
+                            ConfigReceiver.KEY_CHIME_START_MIN,
+                            ConfigReceiver.DEFAULT_CHIME_START_MIN,
                             iconRes = R.drawable.ic_duration,
                             iconBg = Color(0xFF8E8E93),
                         )
                         Divider()
                         TimeSliderRow(
-                            "Ends at",
-                            ConfigReceiver.KEY_NIGHT_CLOCK_END_MIN,
-                            ConfigReceiver.DEFAULT_NIGHT_CLOCK_END_MIN,
+                            "Chime ends",
+                            ConfigReceiver.KEY_CHIME_END_MIN,
+                            ConfigReceiver.DEFAULT_CHIME_END_MIN,
                             iconRes = R.drawable.ic_duration,
                             iconBg = Color(0xFF8E8E93),
                         )
                     }
                     Spacer(Modifier.height(8.dp))
                 }
-                Divider()
-                ToggleRow("Night warmth", ConfigReceiver.KEY_NIGHT, true, iconRes = R.drawable.ic_night_warmth, iconBg = Color(0xFFFF9500))
             }
+        }
 
+        val cardMediaAudio: @Composable () -> Unit = {
             Card("Media & Audio Streaming") {
                 Body(
                     "Stream music from your iPhone, iPad, Mac, or Spotify using standalone companion apps (AirReceiver, AirScreen, Spotify Connect). Frame automatically displays the floating Now Playing mini-player over your photo slideshow.",
@@ -1256,76 +1701,9 @@ class SettingsActivity : ComponentActivity() {
                     }
                 }
             }
+        }
 
-            Card("Hourly chime") {
-                ToggleRow(
-                    label = "Hourly chime",
-                    key = ConfigReceiver.KEY_CHIME,
-                    def = ConfigReceiver.DEFAULT_CHIME,
-                    subtitle = "Plays a soothing tone on the hour.",
-                    iconRes = R.drawable.ic_clock_format,
-                    iconBg = Color(0xFFFF9500),
-                )
-                
-                val showChimeOptions = rememberPrefBoolean(ConfigReceiver.KEY_CHIME, ConfigReceiver.DEFAULT_CHIME)
-                if (showChimeOptions.value) {
-                    Spacer(Modifier.height(8.dp))
-                    Column(Modifier.padding(start = 32.dp)) {
-                        val chimeStyle = rememberPrefString(ConfigReceiver.KEY_CHIME_STYLE, ConfigReceiver.DEFAULT_CHIME_STYLE)
-                        val styleVal = chimeStyle.value ?: ConfigReceiver.DEFAULT_CHIME_STYLE
-                        val (styleLabel, styleDesc) = when (styleVal) {
-                            "zen_bowl" -> "Zen Singing Bowl (432 Hz)" to "Tibetan bronze singing bowl with warm acoustic shimmer and peaceful resonance."
-                            "two_tone" -> "Gentle Marimba (Two-Tone)" to "Warm wooden mallet G4 → C5 acoustic interval, soft and non-intrusive."
-                            "crystal_arpeggio" -> "Crystal Bell Arpeggio" to "3-tone ascending celestial harmonic chimes."
-                            else -> "Classic Bell" to "Traditional 3-tone smoothed desk bell."
-                        }
-                        CycleRow(
-                            label = "Chime Sound",
-                            value = styleLabel,
-                            iconRes = R.drawable.ic_clock,
-                            iconBg = Color(0xFFFF9500),
-                            subtitle = styleDesc,
-                        ) {
-                            val next = when (styleVal) {
-                                "zen_bowl" -> "two_tone"
-                                "two_tone" -> "crystal_arpeggio"
-                                "crystal_arpeggio" -> "classic"
-                                else -> "zen_bowl"
-                            }
-                            chimeStyle.value = next
-                            prefs.edit().putString(ConfigReceiver.KEY_CHIME_STYLE, next).apply()
-                            SlideshowController.synthesizeAndPlayChime(next)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            SecondaryBtn("▶️ Test Chime Sound") {
-                                SlideshowController.synthesizeAndPlayChime(chimeStyle.value ?: ConfigReceiver.DEFAULT_CHIME_STYLE)
-                            }
-                        }
-                        Divider()
-                        TimeSliderRow(
-                            "Chime starts",
-                            ConfigReceiver.KEY_CHIME_START_MIN,
-                            ConfigReceiver.DEFAULT_CHIME_START_MIN,
-                            iconRes = R.drawable.ic_duration,
-                            iconBg = Color(0xFF8E8E93),
-                        )
-                        Divider()
-                        TimeSliderRow(
-                            "Chime ends",
-                            ConfigReceiver.KEY_CHIME_END_MIN,
-                            ConfigReceiver.DEFAULT_CHIME_END_MIN,
-                            iconRes = R.drawable.ic_duration,
-                            iconBg = Color(0xFF8E8E93),
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-            }
-
+        val cardHomeAssistant: @Composable () -> Unit = {
             Card("Home Assistant & MQTT Integration") {
                 ToggleRow(
                     label = "Native Home Assistant MQTT",
@@ -1356,7 +1734,6 @@ class SettingsActivity : ComponentActivity() {
                         if (user.isNotEmpty()) Body("User: $user")
                         Spacer(Modifier.height(8.dp))
                         SecondaryBtn("Configure MQTT Connection") {
-                            // Show MQTT dialog or open quick field
                             showMqttConfigDialog = true
                         }
                     }
@@ -1415,7 +1792,9 @@ class SettingsActivity : ComponentActivity() {
                     }
                 }
             }
+        }
 
+        val cardRevertUninstall: @Composable () -> Unit = {
             Card("Revert & Uninstall") {
                 Body(
                     "Removes the Frame app and lets you return your Portal to its stock state.",
@@ -1436,6 +1815,94 @@ class SettingsActivity : ComponentActivity() {
             }
         }
 
+        val rootCards: @Composable () -> Unit = {
+            LivePreviewCard()
+
+            IosGroupHeader("Photos & Slideshow")
+            Card("") {
+                IosMenuRow(
+                    title = "Slideshow Playback",
+                    subtitle = "Timing, transitions, shuffle & fill blur",
+                    iconRes = R.drawable.ic_transition,
+                    iconBg = Color(0xFF5856D6),
+                ) {
+                    navigateTo(SettingsSection.PLAYBACK)
+                }
+                Divider()
+                IosMenuRow(
+                    title = "Photo Albums & Sources",
+                    subtitle = if (hasAlbum) "${albums.size} active album" + (if (albums.size == 1) "" else "s") + " • Cloud sync" else "Add Google Photos or iCloud",
+                    iconRes = R.drawable.ic_pairs,
+                    iconBg = Color(0xFF007AFF),
+                ) {
+                    navigateTo(SettingsSection.PHOTO_ALBUMS)
+                }
+            }
+
+            IosGroupHeader("Display & Clock")
+            Card("") {
+                IosMenuRow(
+                    title = "Display & Night Mode",
+                    subtitle = "Universal text scale, face framing & night clock",
+                    iconRes = R.drawable.ic_face,
+                    iconBg = Color(0xFFFF9500),
+                ) {
+                    navigateTo(SettingsSection.DISPLAY_NIGHT)
+                }
+                Divider()
+                IosMenuRow(
+                    title = "Clock, Weather & Hourly Chime",
+                    subtitle = "12h/24h format, chime bell & battery status",
+                    iconRes = R.drawable.ic_clock,
+                    iconBg = Color(0xFFFF2D55),
+                ) {
+                    navigateTo(SettingsSection.CLOCK_CHIME)
+                }
+            }
+
+            IosGroupHeader("Media & Smart Home")
+            Card("") {
+                IosMenuRow(
+                    title = "Media & Audio Streaming",
+                    subtitle = "Now Playing mini-player, Spotify & Sonos",
+                    iconRes = R.drawable.ic_music,
+                    iconBg = Color(0xFF34C759),
+                ) {
+                    navigateTo(SettingsSection.MEDIA_STREAMING)
+                }
+                Divider()
+                IosMenuRow(
+                    title = "Home Assistant & Web Remote",
+                    subtitle = "Lovelace dashboard, MQTT & phone pairing",
+                    iconRes = R.drawable.ic_motion,
+                    iconBg = Color(0xFF0A84FF),
+                ) {
+                    navigateTo(SettingsSection.HOME_ASSISTANT)
+                }
+            }
+
+            IosGroupHeader("System")
+            Card("") {
+                IosMenuRow(
+                    title = "Software Update & System",
+                    subtitle = "$installedVersion • Protected Mode",
+                    iconRes = R.drawable.ic_reset,
+                    iconBg = Color(0xFF8E8E93),
+                ) {
+                    navigateTo(SettingsSection.SYSTEM_UPDATE)
+                }
+                Divider()
+                IosMenuRow(
+                    title = "Revert & Uninstall Frame",
+                    subtitle = "Remove Frame and restore stock launcher",
+                    iconRes = R.drawable.ic_close,
+                    iconBg = Color(0xFFFF3B30),
+                ) {
+                    navigateTo(SettingsSection.UNINSTALL)
+                }
+            }
+        }
+
         BoxWithConstraints(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
@@ -1447,35 +1914,97 @@ class SettingsActivity : ComponentActivity() {
             ),
             contentAlignment = Alignment.TopCenter,
         ) {
-            // Two columns only when there's room (Portal Go/+ landscape); one column
-            // on the original Portal's portrait screen and the small Portal Mini.
-            val twoCol = maxWidth >= 880.dp
-            val sidePad = if (maxWidth < 560.dp) 24.dp else 40.dp
+            val scrollState = rememberScrollState()
+            LaunchedEffect(currentSection) {
+                scrollState.scrollTo(0)
+            }
+
             Column(
-                Modifier.widthIn(max = if (twoCol) 1100.dp else 620.dp).fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = sidePad, vertical = 72.dp),
+                Modifier
+                    .widthIn(max = 760.dp)
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 24.dp, vertical = 28.dp),
             ) {
-                Text(
-                    if (hasAlbum) "Your photos" else "Show your photos",
-                    color = PortalColors.Text, fontSize = 30.sp, fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.height(8.dp))
-
-                if (twoCol) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                        Column(Modifier.weight(1f)) { sourceCards() }
-                        Spacer(Modifier.width(24.dp))
-                        Column(Modifier.weight(1f)) { settingsCards() }
+                when (currentSection) {
+                    SettingsSection.ROOT -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text(
+                                    "Settings",
+                                    color = PortalColors.Text,
+                                    fontSize = 32.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    "Meta Portal Go • Frame Configuration",
+                                    color = PortalColors.TextMuted,
+                                    fontSize = 13.sp,
+                                )
+                            }
+                            Button(
+                                onClick = { startScreensaverNow() },
+                                colors = ButtonDefaults.buttonColors(containerColor = PortalColors.Blue),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text("▶ Play", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        rootCards()
                     }
-                } else {
-                    sourceCards()
-                    settingsCards()
+                    SettingsSection.PLAYBACK -> {
+                        IosTopBar("Slideshow Playback", backText = "Settings", onBack = navigateBack, onDone = { finish() })
+                        cardPlayback()
+                    }
+                    SettingsSection.SUB_BACKGROUND_BLUR -> {
+                        IosTopBar("Background Fill Blur", backText = "Playback", onBack = navigateBack, onDone = { finish() })
+                        PhotoFillBlurSubView()
+                    }
+                    SettingsSection.SUB_SHOWCASE -> {
+                        IosTopBar("Photo Showcase & Filter", backText = "Playback", onBack = navigateBack, onDone = { finish() })
+                        PhotoShowcaseSubView()
+                    }
+                    SettingsSection.PHOTO_ALBUMS -> {
+                        IosTopBar("Photo Albums & Sources", backText = "Settings", onBack = navigateBack, onDone = { finish() })
+                        cardPhotoAlbums()
+                        cardAnnouncement()
+                    }
+                    SettingsSection.DISPLAY_NIGHT -> {
+                        IosTopBar("Display & Night Mode", backText = "Settings", onBack = navigateBack, onDone = { finish() })
+                        cardDisplayAccessibility()
+                        cardNightMode()
+                    }
+                    SettingsSection.CLOCK_CHIME -> {
+                        IosTopBar("Clock, Weather & Chime", backText = "Settings", onBack = navigateBack, onDone = { finish() })
+                        cardClockOverlay()
+                        cardHourlyChime()
+                    }
+                    SettingsSection.MEDIA_STREAMING -> {
+                        IosTopBar("Media & Audio Streaming", backText = "Settings", onBack = navigateBack, onDone = { finish() })
+                        cardMediaAudio()
+                    }
+                    SettingsSection.HOME_ASSISTANT -> {
+                        IosTopBar("Home Assistant & Web Remote", backText = "Settings", onBack = navigateBack, onDone = { finish() })
+                        cardPortalIdentity()
+                        cardHomeAssistant()
+                    }
+                    SettingsSection.SYSTEM_UPDATE -> {
+                        IosTopBar("Software Update & System", backText = "Settings", onBack = navigateBack, onDone = { finish() })
+                        cardScreensaverStatus()
+                        cardSoftwareUpdate()
+                    }
+                    SettingsSection.UNINSTALL -> {
+                        IosTopBar("Revert & Uninstall Frame", backText = "Settings", onBack = navigateBack, onDone = { finish() })
+                        cardRevertUninstall()
+                    }
                 }
-
-                // Trailing breathing room at the end of the scroll (no pinned bar:
-                // leaving the screen is the Portal system top bar's back button).
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(40.dp))
             }
         }
 
@@ -2079,11 +2608,13 @@ class SettingsActivity : ComponentActivity() {
                 .border(1.dp, PortalColors.Hairline, RoundedCornerShape(22.dp))
                 .padding(horizontal = 24.dp, vertical = 20.dp),
         ) {
-            Text(
-                title.uppercase(), color = PortalColors.TextMuted, fontSize = 12.sp,
-                fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp,
-            )
-            Spacer(Modifier.height(12.dp))
+            if (title.isNotEmpty()) {
+                Text(
+                    title.uppercase(), color = PortalColors.TextMuted, fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+            }
             content()
         }
     }

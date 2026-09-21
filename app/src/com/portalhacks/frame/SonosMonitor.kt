@@ -224,7 +224,10 @@ object SonosMonitor {
                     speaker.artist = extractTag(decodedMeta, "dc:creator").ifEmpty { extractTag(decodedMeta, "r:albumArtist") }
                     speaker.album = extractTag(decodedMeta, "upnp:album")
 
-                    val artPath = extractTag(decodedMeta, "upnp:albumArtURI")
+                    val rawArtPath = extractTag(decodedMeta, "upnp:albumArtURI").ifEmpty {
+                        extractTag(decodedMeta, "r:albumArtURI")
+                    }
+                    val artPath = unescapeXml(rawArtPath).replace("&amp;", "&")
                     if (artPath.isNotEmpty()) {
                         val fullArtUrl = if (artPath.startsWith("http")) artPath else "http://${speaker.ip}:$SONOS_PORT$artPath"
                         if (fullArtUrl != speaker.artUrl || speaker.artBitmap == null) {
@@ -264,19 +267,9 @@ object SonosMonitor {
                 volume = foundPlayingSpeaker.volume
             )
         } else if (MediaMonitor.currentState.source == "Sonos") {
-            // All Sonos speakers stopped / paused
-            if (MediaMonitor.currentState.isPlaying) {
-                MediaMonitor.update(
-                    isPlaying = false,
-                    title = MediaMonitor.currentState.title,
-                    artist = MediaMonitor.currentState.artist,
-                    album = MediaMonitor.currentState.album,
-                    art = MediaMonitor.currentState.art,
-                    source = "Sonos",
-                    deviceName = MediaMonitor.currentState.deviceName,
-                    volume = MediaMonitor.currentState.volume
-                )
-            }
+            // All Sonos speakers stopped / paused -> clear immediately so ghost widget is dismissed
+            activeSpeakerIp = null
+            MediaMonitor.clear()
         }
     }
 
@@ -370,9 +363,11 @@ object SonosMonitor {
         return try {
             val url = URL(urlStr)
             val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 3000
-            conn.readTimeout = 4000
-            if (conn.responseCode == 200) {
+            conn.instanceFollowRedirects = true
+            conn.setRequestProperty("User-Agent", "PortalFrame/1.0")
+            conn.connectTimeout = 3500
+            conn.readTimeout = 4500
+            if (conn.responseCode in 200..299) {
                 BitmapFactory.decodeStream(conn.inputStream)
             } else null
         } catch (_: Exception) {
