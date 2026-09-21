@@ -49,6 +49,66 @@ class PortalMediaNotificationListener : NotificationListenerService() {
         sessionsListener?.let { sessionManager?.removeOnActiveSessionsChangedListener(it) }
     }
 
+    private fun isIgnoredPackage(pkg: String?): Boolean {
+        if (pkg.isNullOrEmpty()) return true
+        val lower = pkg.lowercase(java.util.Locale.US)
+        if (lower.contains("spotify")) return false
+        if (lower.contains("youtube") || lower.contains("smarttube")) return false
+        if (lower.contains("music") || lower.contains("waxrain") || lower.contains("airscreen")) return false
+        return lower.startsWith("android") ||
+            lower.startsWith("com.android") ||
+            lower.startsWith("com.facebook.aloha") ||
+            lower.startsWith("com.facebook.katana") ||
+            lower.startsWith("com.facebook.orca") ||
+            lower.startsWith("com.facebook.wearable") ||
+            lower.startsWith("com.oculus") ||
+            lower.startsWith("com.google.android.gms") ||
+            lower.contains("telecom") ||
+            lower.contains("dialer") ||
+            lower.contains("contact")
+    }
+
+    private fun isMediaPackage(pkg: String?): Boolean {
+        if (pkg.isNullOrEmpty()) return false
+        val lower = pkg.lowercase(java.util.Locale.US)
+        return lower.contains("spotify") ||
+            lower.contains("youtube") ||
+            lower.contains("smarttube") ||
+            lower.contains("music") ||
+            lower.contains("waxrain") ||
+            lower.contains("airscreen") ||
+            lower.contains("pandora") ||
+            lower.contains("deezer") ||
+            lower.contains("tidal") ||
+            lower.contains("soundcloud") ||
+            lower.contains("audio") ||
+            lower.contains("radio")
+    }
+
+    private fun isIgnoredNotification(pkg: String, notif: Notification): Boolean {
+        if (isIgnoredPackage(pkg)) return true
+        val category = notif.category
+        if (category == Notification.CATEGORY_SERVICE ||
+            category == Notification.CATEGORY_SYSTEM ||
+            category == Notification.CATEGORY_STATUS ||
+            category == Notification.CATEGORY_ALARM ||
+            category == Notification.CATEGORY_CALL ||
+            category == Notification.CATEGORY_EVENT ||
+            category == Notification.CATEGORY_EMAIL ||
+            category == Notification.CATEGORY_MESSAGE
+        ) {
+            val hasSession = notif.extras?.getParcelable<MediaSession.Token>(Notification.EXTRA_MEDIA_SESSION) != null
+            if (!hasSession || !isMediaPackage(pkg)) {
+                return true
+            }
+        }
+        val title = notif.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.lowercase(java.util.Locale.US) ?: ""
+        if (title.contains("contact") || title.contains("syncing") || (title.contains("service") && !isMediaPackage(pkg))) {
+            return true
+        }
+        return false
+    }
+
     private fun setupSessionManagerListener() {
         try {
             val sm = getSystemService(android.content.Context.MEDIA_SESSION_SERVICE) as? android.media.session.MediaSessionManager ?: return
@@ -56,9 +116,12 @@ class PortalMediaNotificationListener : NotificationListenerService() {
             val comp = android.content.ComponentName(this, PortalMediaNotificationListener::class.java)
             val listener = android.media.session.MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
                 if (!controllers.isNullOrEmpty()) {
-                    val active = controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
-                        ?: controllers.first()
-                    bindController(active, active.packageName)
+                    val mediaControllers = controllers.filter { !isIgnoredPackage(it.packageName) }
+                    val active = mediaControllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+                        ?: mediaControllers.firstOrNull()
+                    if (active != null) {
+                        bindController(active, active.packageName)
+                    }
                 }
             }
             sessionsListener = listener
@@ -73,10 +136,13 @@ class PortalMediaNotificationListener : NotificationListenerService() {
             val comp = android.content.ComponentName(this, PortalMediaNotificationListener::class.java)
             val controllers = sessionManager?.getActiveSessions(comp)
             if (!controllers.isNullOrEmpty()) {
-                val active = controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
-                    ?: controllers.first()
-                bindController(active, active.packageName)
-                return
+                val mediaControllers = controllers.filter { !isIgnoredPackage(it.packageName) }
+                val active = mediaControllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+                    ?: mediaControllers.firstOrNull { isMediaPackage(it.packageName) }
+                if (active != null) {
+                    bindController(active, active.packageName)
+                    return
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error scanning getActiveSessions", e)
@@ -85,11 +151,15 @@ class PortalMediaNotificationListener : NotificationListenerService() {
         try {
             val activeNotifs = activeNotifications ?: return
             for (sbn in activeNotifs) {
+                val pkg = sbn.packageName ?: continue
+                if (isIgnoredPackage(pkg)) continue
                 val notif = sbn.notification ?: continue
+                if (isIgnoredNotification(pkg, notif)) continue
+
                 val token = notif.extras?.getParcelable<MediaSession.Token>(Notification.EXTRA_MEDIA_SESSION)
                 if (token != null) {
                     val ctrl = MediaController(this, token)
-                    bindController(ctrl, sbn.packageName, notif)
+                    bindController(ctrl, pkg, notif)
                     return
                 }
             }
@@ -109,7 +179,12 @@ class PortalMediaNotificationListener : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn ?: return
+        val pkg = sbn.packageName ?: return
+        if (isIgnoredPackage(pkg)) return
+
         val notif = sbn.notification ?: return
+        if (isIgnoredNotification(pkg, notif)) return
+
         val extras = notif.extras ?: return
 
         val sessionToken = extras.getParcelable<MediaSession.Token>(Notification.EXTRA_MEDIA_SESSION)
@@ -121,56 +196,49 @@ class PortalMediaNotificationListener : NotificationListenerService() {
                     currentController = ctrl
                     ctrl.registerCallback(controllerCallback)
                 }
-                updateFromController(currentController, sbn.packageName, notif)
+                updateFromController(currentController, pkg, notif)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed creating media controller from session token", e)
             }
-        } else {
-            // Fallback for notifications with media category or from known audio/video apps
-            val category = notif.category
-            val pkg = sbn.packageName.lowercase()
-            val isMedia = category == Notification.CATEGORY_TRANSPORT ||
-                category == Notification.CATEGORY_SERVICE ||
-                pkg.contains("youtube") ||
-                pkg.contains("spotify") ||
-                pkg.contains("browser") ||
-                pkg.contains("chrome")
-
-            if (isMedia) {
-                val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
-                    ?: extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
-                    ?: ""
-                val artist = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
-                    ?: extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
-                    ?: ""
-                if (title.isNotEmpty()) {
-                    var art: Bitmap? = extras.getParcelable<Bitmap>(Notification.EXTRA_LARGE_ICON)
-                    if (art == null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                        art = notif.getLargeIcon()?.loadDrawable(this)?.let { d ->
-                            if (d is android.graphics.drawable.BitmapDrawable) d.bitmap else null
-                        }
+        } else if (isMediaPackage(pkg) && notif.category == Notification.CATEGORY_TRANSPORT) {
+            // Fallback only for verified media apps using CATEGORY_TRANSPORT
+            val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+                ?: extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
+                ?: ""
+            val artist = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                ?: extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+                ?: ""
+            if (title.isNotEmpty()) {
+                var art: Bitmap? = extras.getParcelable<Bitmap>(Notification.EXTRA_LARGE_ICON)
+                if (art == null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    art = notif.getLargeIcon()?.loadDrawable(this)?.let { d ->
+                        if (d is android.graphics.drawable.BitmapDrawable) d.bitmap else null
                     }
-                    val source = when {
-                        pkg.contains("spotify") -> "Spotify"
-                        pkg.contains("youtube") -> "YouTube"
-                        else -> "Media"
-                    }
-                    MediaMonitor.update(
-                        isPlaying = true,
-                        title = title,
-                        artist = artist,
-                        album = "",
-                        art = art,
-                        source = source
-                    )
                 }
+                val source = when {
+                    pkg.contains("spotify") -> "Spotify"
+                    pkg.contains("youtube") -> "YouTube"
+                    pkg.contains("waxrain") || pkg.contains("airscreen") -> "AirPlay"
+                    else -> "Media"
+                }
+                MediaMonitor.update(
+                    isPlaying = true,
+                    title = title,
+                    artist = artist,
+                    album = "",
+                    art = art,
+                    source = source
+                )
             }
         }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        val token = sbn?.notification?.extras?.getParcelable<MediaSession.Token>(Notification.EXTRA_MEDIA_SESSION)
-        if (token != null && currentController?.sessionToken == token) {
+        sbn ?: return
+        val token = sbn.notification?.extras?.getParcelable<MediaSession.Token>(Notification.EXTRA_MEDIA_SESSION)
+        val matchesCtrl = (token != null && currentController?.sessionToken == token) ||
+            (currentController?.packageName == sbn.packageName)
+        if (matchesCtrl) {
             currentController?.unregisterCallback(controllerCallback)
             currentController = null
             MediaMonitor.activeController = null
@@ -190,10 +258,17 @@ class PortalMediaNotificationListener : NotificationListenerService() {
 
     private fun updateFromController(ctrl: MediaController?, pkgName: String = "", notif: Notification? = null) {
         ctrl ?: return
+        val effectivePkg = (ctrl.packageName?.ifEmpty { pkgName } ?: pkgName).lowercase(java.util.Locale.US)
+        if (isIgnoredPackage(effectivePkg)) return
+
         val pbState = ctrl.playbackState
         val metadata = ctrl.metadata
 
-        val isPlaying = pbState?.state == PlaybackState.STATE_PLAYING || (pbState == null && notif != null)
+        val stateVal = pbState?.state
+        val isPlaying = stateVal == PlaybackState.STATE_PLAYING ||
+            stateVal == PlaybackState.STATE_BUFFERING ||
+            (pbState != null && pbState.playbackSpeed > 0f)
+
         var title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
             ?: ctrl.queueTitle?.toString() ?: ""
         var artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST)
@@ -236,21 +311,36 @@ class PortalMediaNotificationListener : NotificationListenerService() {
             }
         }
 
+        val lowerTitle = title.lowercase(java.util.Locale.US)
+        if (lowerTitle.contains("contact") || lowerTitle.contains("syncing") || (lowerTitle.contains("service") && !isMediaPackage(effectivePkg))) {
+            return
+        }
+
         val sourceName = when {
-            pkgName.contains("spotify") -> "Spotify"
-            pkgName.contains("youtube") || pkgName.contains("smarttube") -> "YouTube"
+            effectivePkg.contains("spotify") -> "Spotify"
+            effectivePkg.contains("youtube") || effectivePkg.contains("smarttube") -> "YouTube"
+            effectivePkg.contains("waxrain") || effectivePkg.contains("airscreen") || effectivePkg.contains("airplay") -> "AirPlay"
+            effectivePkg.contains("pandora") -> "Pandora"
+            effectivePkg.contains("tidal") -> "Tidal"
+            effectivePkg.contains("deezer") -> "Deezer"
+            effectivePkg.contains("apple") -> "Apple Music"
+            effectivePkg.contains("amazon") -> "Amazon Music"
             else -> "Media"
         }
 
         if (title.isNotEmpty() || isPlaying) {
             MediaMonitor.activeController = ctrl
+            val vol = MediaMonitor.getStreamVolumePercent(this)
             MediaMonitor.update(
                 isPlaying = isPlaying,
                 title = title,
                 artist = artist,
                 album = album,
                 art = art,
-                source = sourceName
+                source = sourceName,
+                packageName = effectivePkg,
+                deviceName = "Portal Living Room",
+                volume = vol
             )
         }
     }

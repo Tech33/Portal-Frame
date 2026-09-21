@@ -156,10 +156,15 @@ class ConfigReceiver : BroadcastReceiver() {
                                                 // photo over a blurred fill). Pairs always fill.
         const val KEY_BLUR_RADIUS = "blur_radius" // int: background fill blur radius (1..8)
         const val KEY_RECENT_FIRST = "recent_first" // boolean: sort slideshow newest photos first
-        const val KEY_SHOWCASE_MODE = "showcase_mode" // string: "all", "recent_trip", "last_7_days", "last_30_days", "location"
+        const val KEY_SHOWCASE_MODE = "showcase_mode" // string: "all", "recent_trip", "last_7_days", "last_30_days", "location", "date_range"
         const val DEFAULT_SHOWCASE_MODE = "recent_trip"
-        const val KEY_SHOWCASE_LOCATION = "showcase_location" // string: filter location/city query (e.g. "Paris")
+        const val KEY_SHOWCASE_LOCATION = "showcase_location" // string: filter location/city query or date string
         const val DEFAULT_SHOWCASE_LOCATION = ""
+        const val KEY_SHOWCASE_DATE = "showcase_date" // string: target date e.g. "2024-06-14"
+        const val KEY_CHIME_STYLE = "chime_style" // string: "zen_bowl", "two_tone", "crystal_arpeggio", "classic"
+        const val DEFAULT_CHIME_STYLE = "zen_bowl"
+        const val KEY_NOW_PLAYING_BLUR = "now_playing_blur" // int: 0..40
+        const val DEFAULT_NOW_PLAYING_BLUR = 24
         // Clock widget transform (set by long-press-drag/pinch on the screensaver). dx/dy are the
         // translation from the default bottom-left anchor as a fraction of screen W/H; scale is a
         // size multiplier. Floats.
@@ -186,6 +191,8 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_PRESENCE_TIMEOUT_MIN = "presence_timeout_min"
         const val KEY_AIRPLAY_ENABLED = "airplay_enabled"
         const val KEY_NOW_PLAYING_ENABLED = "now_playing_enabled"
+        const val KEY_NOW_PLAYING_STYLE = "now_playing_style" // "classic", "frosted", "compact"
+        const val KEY_NOW_PLAYING_OPACITY = "now_playing_opacity" // int: 2..100%
 
         // MQTT and Embedded Home Assistant keys
         const val KEY_MQTT_ENABLED = "mqtt_enabled"
@@ -200,6 +207,8 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_HA_URL = "ha_url"
         const val KEY_HA_IDLE_TIMEOUT_SEC = "ha_idle_timeout_sec"
         const val KEY_HA_BUTTON = "ha_button"
+        const val KEY_SPOTIFY_SHORTCUT = "spotify_shortcut_button"
+        const val KEY_PERSISTENT_EXIT_BUTTON = "persistent_exit_button"
 
         // Broadcast Intent Actions
         const val ACTION_SHOW_DASHBOARD = "com.portalhacks.frame.SHOW_DASHBOARD"
@@ -276,11 +285,15 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_HA_URL = ""
         const val DEFAULT_HA_IDLE_TIMEOUT_SEC = 60
         const val DEFAULT_HA_BUTTON = true
+        const val DEFAULT_SPOTIFY_SHORTCUT = true
 
         const val DEFAULT_PRESENCE_ENABLED = true
         const val DEFAULT_PRESENCE_TIMEOUT_MIN = 10
         const val DEFAULT_AIRPLAY_ENABLED = true
         const val DEFAULT_NOW_PLAYING_ENABLED = true
+        const val DEFAULT_NOW_PLAYING_STYLE = "classic"
+        const val DEFAULT_NOW_PLAYING_OPACITY = 72
+        const val DEFAULT_PERSISTENT_EXIT_BUTTON = true
 
         // ADB-settable boolean extras (extra name -> pref key) for quick testing
         private val BOOL_EXTRAS = arrayOf(
@@ -298,6 +311,7 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("mqtt_enabled", KEY_MQTT_ENABLED),
             arrayOf("ha_embedded", KEY_HA_EMBEDDED),
             arrayOf("ha_button", KEY_HA_BUTTON),
+            arrayOf("spotify_shortcut_button", KEY_SPOTIFY_SHORTCUT),
             arrayOf("presence_enabled", KEY_PRESENCE_ENABLED),
             arrayOf("airplay_enabled", KEY_AIRPLAY_ENABLED),
             arrayOf("now_playing_enabled", KEY_NOW_PLAYING_ENABLED),

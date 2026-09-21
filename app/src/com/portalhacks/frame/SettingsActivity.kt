@@ -420,7 +420,7 @@ class SettingsActivity : ComponentActivity() {
         var showUninstallConfirmDialog by remember { mutableStateOf(false) }
         var showMqttConfigDialog by remember { mutableStateOf(false) }
         var showHaUrlDialog by remember { mutableStateOf(false) }
-        var selectedReceiverGuide by remember { mutableStateOf<MediaReceivers.ReceiverItem?>(null) }
+        var showShowcaseDialog by remember { mutableStateOf(false) }
         var refreshingAlbums by remember { mutableStateOf(false) }
         var albumRefreshStatus by remember { mutableStateOf("") }
         var checkingUpdate by remember { mutableStateOf(false) }
@@ -749,7 +749,7 @@ class SettingsActivity : ComponentActivity() {
                     val aesKey = CryptoUtils.deriveAesKey(currentChannel)
                     val encodedName = java.net.URLEncoder.encode(displayName, "UTF-8")
                     val hostParam = if (localIp != null) "&host=${localIp}:8080" else ""
-                    val pairUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$currentChannel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.24"
+                    val pairUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$currentChannel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.25"
                     val qrBmp = remember(pairUrl) { generateQrBitmap(pairUrl, 360) }
 
                     Column(
@@ -885,6 +885,40 @@ class SettingsActivity : ComponentActivity() {
                     iconRes = R.drawable.ic_memories,
                     iconBg = Color(0xFF34C759),
                 )
+                Divider()
+                PhotoFillBlurSliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF5856D6))
+                Divider()
+
+                val showcaseMode = rememberPrefString(ConfigReceiver.KEY_SHOWCASE_MODE, ConfigReceiver.DEFAULT_SHOWCASE_MODE)
+                val showcaseDate = rememberPrefString(ConfigReceiver.KEY_SHOWCASE_DATE, "")
+                val showcaseLoc = rememberPrefString(ConfigReceiver.KEY_SHOWCASE_LOCATION, "")
+                val modeVal = showcaseMode.value ?: ConfigReceiver.DEFAULT_SHOWCASE_MODE
+                val displayLabel = when (modeVal) {
+                    "all" -> "All Photos"
+                    "recent_trip" -> "Recent Trip / Event"
+                    "last_7_days" -> "Last 7 Days"
+                    "last_30_days" -> "Last 30 Days"
+                    "date_range" -> if (!showcaseDate.value.isNullOrEmpty()) "Date: ${showcaseDate.value}" else "Specific Date"
+                    "location" -> if (!showcaseLoc.value.isNullOrEmpty()) "Location: ${showcaseLoc.value}" else "Location / Tag"
+                    else -> "All Photos"
+                }
+                val displaySubtitle = when (modeVal) {
+                    "date_range" -> "Showcasing photos taken on ${showcaseDate.value ?: "selected date"}"
+                    "location" -> "Filtering photos by location tag '${showcaseLoc.value ?: ""}'"
+                    "recent_trip" -> "Highlighting auto-clustered recent trips and events"
+                    "last_7_days" -> "Showing photos taken within the last 7 days"
+                    "last_30_days" -> "Showing photos taken within the last 30 days"
+                    else -> "Displaying all photos from selected albums in normal rotation"
+                }
+                CycleRow(
+                    label = "Photo Showcase & Filter",
+                    value = displayLabel,
+                    iconRes = R.drawable.ic_captions,
+                    iconBg = Color(0xFF007AFF),
+                    subtitle = displaySubtitle,
+                ) {
+                    showShowcaseDialog = true
+                }
             }
 
             Card("Display & accessibility") {
@@ -915,6 +949,15 @@ class SettingsActivity : ComponentActivity() {
                     subtitle = "Long-press the clock on the screensaver to move or resize it.",
                     iconRes = R.drawable.ic_clock,
                     iconBg = Color(0xFF007AFF),
+                )
+                Divider()
+                ToggleRow(
+                    "Persistent ✕ Exit button",
+                    ConfigReceiver.KEY_PERSISTENT_EXIT_BUTTON,
+                    ConfigReceiver.DEFAULT_PERSISTENT_EXIT_BUTTON,
+                    subtitle = "Subtle, translucent button to exit without pausing. When off, Exit appears upon tapping to pause.",
+                    iconRes = R.drawable.ic_close,
+                    iconBg = Color(0xFF8E8E93),
                 )
                 Divider()
                 
@@ -1045,6 +1088,53 @@ class SettingsActivity : ComponentActivity() {
                     iconRes = R.drawable.ic_music,
                     iconBg = Color(0xFF34C759),
                 )
+                val nowPlayingEnabled = rememberPrefBoolean(ConfigReceiver.KEY_NOW_PLAYING_ENABLED, ConfigReceiver.DEFAULT_NOW_PLAYING_ENABLED)
+                if (nowPlayingEnabled.value) {
+                    val currentStyle = rememberPrefString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
+                    val styleVal = currentStyle.value ?: ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE
+                    val styleLabel = when (styleVal) {
+                        "frosted" -> "Frosted Glass"
+                        "compact" -> "Compact Docked"
+                        else -> "Classic Matte"
+                    }
+                    val styleSub = when (styleVal) {
+                        "frosted" -> "Translucent acrylic with vibrant EQ wave and crisp borders."
+                        "compact" -> "Slim horizontal mini-dock leaving 80%+ of the photo visible."
+                        else -> "Signature Google Nest Hub matte card (#202124) with deep drop shadow."
+                    }
+                    Divider()
+                    CycleRow(
+                        label = "Widget Design Style",
+                        value = styleLabel,
+                        iconRes = R.drawable.ic_ambient,
+                        iconBg = Color(0xFF5856D6),
+                        subtitle = styleSub
+                    ) {
+                        val next = when (styleVal) {
+                            "classic" -> "frosted"
+                            "frosted" -> "compact"
+                            else -> "classic"
+                        }
+                        currentStyle.value = next
+                        prefs.edit().putString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, next).apply()
+                    }
+                    Divider()
+                    OpacitySliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF007AFF))
+                    Divider()
+                    BlurSliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF5856D6))
+                }
+                val isSpotifyInstalled = CompanionAppInstaller.isSpotifyInstalled(ctx)
+                if (isSpotifyInstalled) {
+                    Spacer(Modifier.height(10.dp))
+                    ToggleRow(
+                        label = "Spotify Shortcut Button",
+                        key = ConfigReceiver.KEY_SPOTIFY_SHORTCUT,
+                        def = ConfigReceiver.DEFAULT_SPOTIFY_SHORTCUT,
+                        subtitle = "Bottom-right floating shortcut to quickly open Spotify from the photo slideshow.",
+                        iconRes = R.drawable.ic_spotify,
+                        iconBg = Color(0xFF1DB954),
+                    )
+                }
                 Spacer(Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1098,77 +1188,72 @@ class SettingsActivity : ComponentActivity() {
                 Spacer(Modifier.height(10.dp))
                 Divider()
                 Spacer(Modifier.height(10.dp))
-                Body(
-                    "You can also sideload standalone media receivers via OpenPortal / Immortal to stream music from your phone in the background behind Frame's photo slideshow.",
-                )
-                Spacer(Modifier.height(14.dp))
-                for (receiver in MediaReceivers.ALL_RECEIVERS) {
-                    val installed = MediaReceivers.isInstalled(ctx, receiver)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0x12FFFFFF))
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    receiver.name,
-                                    color = PortalColors.Text,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(if (installed) Color(0x3334C759) else Color(0x228E8E93))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                                ) {
-                                    Text(
-                                        if (installed) "Installed ✓" else "Not detected",
-                                        color = if (installed) Color(0xFF34C759) else Color(0xFF8E8E93),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x12FFFFFF))
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                receiver.shortDesc,
-                                color = PortalColors.Text.copy(alpha = 0.65f),
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp,
+                                "Spotify Connect",
+                                color = PortalColors.Text,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
                             )
+                            Spacer(Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSpotifyInstalled) Color(0x3334C759) else Color(0x228E8E93))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    if (isSpotifyInstalled) "Installed ✓" else "Official Meta App",
+                                    color = if (isSpotifyInstalled) Color(0xFF34C759) else Color(0xFF8E8E93),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
                         }
-                        Spacer(Modifier.width(10.dp))
-                        if (installed) {
-                            SmallAction("Launch", true) {
-                                MediaReceivers.launch(ctx, receiver)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Official Meta Portal standalone app. Stream music wirelessly from your phone in the background behind photos.",
+                            color = PortalColors.Text.copy(alpha = 0.65f),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    if (isSpotifyInstalled) {
+                        SmallAction("Launch", true) {
+                            try {
+                                val launchIntent = ctx.packageManager.getLaunchIntentForPackage("com.spotify.music")
+                                    ?: ctx.packageManager.getLaunchIntentForPackage("com.spotify.tv.android")
+                                    ?: ctx.packageManager.getLaunchIntentForPackage("com.oculus.aloha.spotify")
+                                if (launchIntent != null) ctx.startActivity(launchIntent)
+                            } catch (e: Exception) {
+                                Toast.makeText(ctx, "Could not launch Spotify: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
-                        } else if (receiver.id == "spotify") {
-                            var installStatus by remember { mutableStateOf("") }
-                            Column(horizontalAlignment = Alignment.End) {
-                                SmallAction(if (installStatus.isEmpty()) "Install OTA" else "Installing…", installStatus.isEmpty()) {
-                                    CompanionAppInstaller.installSpotify(ctx) { st ->
-                                        installStatus = st
-                                        Toast.makeText(ctx, st, Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                                if (installStatus.isNotEmpty()) {
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(installStatus, color = Color(0xFF007AFF), fontSize = 10.sp)
+                        }
+                    } else {
+                        var installStatus by remember { mutableStateOf("") }
+                        Column(horizontalAlignment = Alignment.End) {
+                            SmallAction(if (installStatus.isEmpty()) "Install OTA" else "Installing…", installStatus.isEmpty()) {
+                                CompanionAppInstaller.installSpotify(ctx) { st ->
+                                    installStatus = st
+                                    Toast.makeText(ctx, st, Toast.LENGTH_SHORT).show()
                                 }
                             }
-                        } else {
-                            SmallAction("Setup", true) {
-                                selectedReceiverGuide = receiver
+                            if (installStatus.isNotEmpty()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(installStatus, color = Color(0xFF007AFF), fontSize = 10.sp)
                             }
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
                 }
             }
 
@@ -1177,7 +1262,7 @@ class SettingsActivity : ComponentActivity() {
                     label = "Hourly chime",
                     key = ConfigReceiver.KEY_CHIME,
                     def = ConfigReceiver.DEFAULT_CHIME,
-                    subtitle = "Plays a soft bell chime on the hour.",
+                    subtitle = "Plays a soothing tone on the hour.",
                     iconRes = R.drawable.ic_clock_format,
                     iconBg = Color(0xFFFF9500),
                 )
@@ -1186,6 +1271,41 @@ class SettingsActivity : ComponentActivity() {
                 if (showChimeOptions.value) {
                     Spacer(Modifier.height(8.dp))
                     Column(Modifier.padding(start = 32.dp)) {
+                        val chimeStyle = rememberPrefString(ConfigReceiver.KEY_CHIME_STYLE, ConfigReceiver.DEFAULT_CHIME_STYLE)
+                        val styleVal = chimeStyle.value ?: ConfigReceiver.DEFAULT_CHIME_STYLE
+                        val (styleLabel, styleDesc) = when (styleVal) {
+                            "zen_bowl" -> "Zen Singing Bowl (432 Hz)" to "Tibetan bronze singing bowl with warm acoustic shimmer and peaceful resonance."
+                            "two_tone" -> "Gentle Marimba (Two-Tone)" to "Warm wooden mallet G4 → C5 acoustic interval, soft and non-intrusive."
+                            "crystal_arpeggio" -> "Crystal Bell Arpeggio" to "3-tone ascending celestial harmonic chimes."
+                            else -> "Classic Bell" to "Traditional 3-tone smoothed desk bell."
+                        }
+                        CycleRow(
+                            label = "Chime Sound",
+                            value = styleLabel,
+                            iconRes = R.drawable.ic_clock,
+                            iconBg = Color(0xFFFF9500),
+                            subtitle = styleDesc,
+                        ) {
+                            val next = when (styleVal) {
+                                "zen_bowl" -> "two_tone"
+                                "two_tone" -> "crystal_arpeggio"
+                                "crystal_arpeggio" -> "classic"
+                                else -> "zen_bowl"
+                            }
+                            chimeStyle.value = next
+                            prefs.edit().putString(ConfigReceiver.KEY_CHIME_STYLE, next).apply()
+                            SlideshowController.synthesizeAndPlayChime(next)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            SecondaryBtn("▶️ Test Chime Sound") {
+                                SlideshowController.synthesizeAndPlayChime(chimeStyle.value ?: ConfigReceiver.DEFAULT_CHIME_STYLE)
+                            }
+                        }
+                        Divider()
                         TimeSliderRow(
                             "Chime starts",
                             ConfigReceiver.KEY_CHIME_START_MIN,
@@ -1416,143 +1536,144 @@ class SettingsActivity : ComponentActivity() {
             )
         }
 
-        selectedReceiverGuide?.let { receiver ->
-            ReceiverGuideDialog(
-                receiver = receiver,
-                onDismiss = { selectedReceiverGuide = null }
+        if (showShowcaseDialog) {
+            ShowcaseDialog(
+                onDismiss = { showShowcaseDialog = false }
             )
         }
     }
 
     @Composable
-    private fun ReceiverGuideDialog(
-        receiver: MediaReceivers.ReceiverItem,
-        onDismiss: () -> Unit
-    ) {
-        val ctx = LocalContext.current
-        val installed = MediaReceivers.isInstalled(ctx, receiver)
+    private fun ShowcaseDialog(onDismiss: () -> Unit) {
+        val currentMode = prefs.getString(ConfigReceiver.KEY_SHOWCASE_MODE, ConfigReceiver.DEFAULT_SHOWCASE_MODE) ?: ConfigReceiver.DEFAULT_SHOWCASE_MODE
+        val currentDate = prefs.getString(ConfigReceiver.KEY_SHOWCASE_DATE, "") ?: ""
+        val currentLoc = prefs.getString(ConfigReceiver.KEY_SHOWCASE_LOCATION, "") ?: ""
+
+        var selectedMode by remember { mutableStateOf(currentMode) }
+        var dateText by remember { mutableStateOf(currentDate) }
+        var locText by remember { mutableStateOf(currentLoc) }
+
         AlertDialog(
             onDismissRequest = onDismiss,
             title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        receiver.name,
-                        color = PortalColors.Text,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (installed) Color(0x3334C759) else Color(0x228E8E93))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            if (installed) "Installed ✓" else "Not Detected",
-                            color = if (installed) Color(0xFF34C759) else Color(0xFF8E8E93),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+                Text("Photo Showcase & Filter", color = PortalColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             },
             text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                ) {
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                     Text(
-                        "Protocol: ${receiver.protocol}",
-                        color = PortalColors.Blue,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        receiver.shortDesc,
-                        color = PortalColors.Text.copy(alpha = 0.8f),
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
+                        "Focus the slideshow on specific dates, trips, or locations:",
+                        color = PortalColors.TextMuted,
+                        fontSize = 14.sp
                     )
                     Spacer(Modifier.height(14.dp))
-                    Divider()
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        "Setup Instructions:",
-                        color = PortalColors.Text,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
+
+                    val modes = listOf(
+                        "all" to "All Album Photos",
+                        "recent_trip" to "Recent Trip / Event (Auto-Cluster)",
+                        "last_7_days" to "Photos from Last 7 Days",
+                        "last_30_days" to "Photos from Last 30 Days",
+                        "date_range" to "Specific Date or Anniversary",
+                        "location" to "Location / City Search",
                     )
-                    Spacer(Modifier.height(8.dp))
-                    receiver.setupSteps.forEachIndexed { idx, step ->
+
+                    for ((modeId, label) in modes) {
+                        val isSelected = selectedMode == modeId
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 3.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) Color(0x22007AFF) else Color.Transparent)
+                                .clickable { selectedMode = modeId }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "${idx + 1}.",
-                                color = PortalColors.Blue,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.width(20.dp)
+                                if (isSelected) "🔘" else "⚪",
+                                fontSize = 16.sp
                             )
+                            Spacer(Modifier.width(10.dp))
                             Text(
-                                step,
-                                color = PortalColors.Text.copy(alpha = 0.85f),
-                                fontSize = 13.sp,
-                                lineHeight = 17.sp
+                                label,
+                                color = if (isSelected) PortalColors.Blue else PortalColors.Text,
+                                fontSize = 14.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                             )
                         }
+                        Spacer(Modifier.height(4.dp))
                     }
-                    Spacer(Modifier.height(14.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF2C2C2E))
-                            .padding(10.dp)
-                    ) {
-                        Text(
-                            "💡 Tip: ${receiver.downloadTip}",
-                            color = PortalColors.Text.copy(alpha = 0.7f),
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp
+
+                    if (selectedMode == "date_range") {
+                        Spacer(Modifier.height(10.dp))
+                        Text("Target Date (YYYY-MM-DD or MM-DD):", color = PortalColors.TextMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(4.dp))
+                        androidx.compose.material3.OutlinedTextField(
+                            value = dateText,
+                            onValueChange = { dateText = it },
+                            placeholder = { Text("e.g. 2024-06-14 or 07-04", color = Color.Gray, fontSize = 14.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val todayCal = java.util.Calendar.getInstance()
+                            val todayStr = String.format("%04d-%02d-%02d", todayCal.get(java.util.Calendar.YEAR), todayCal.get(java.util.Calendar.MONTH) + 1, todayCal.get(java.util.Calendar.DAY_OF_MONTH))
+                            val oneYearAgoStr = String.format("%04d-%02d-%02d", todayCal.get(java.util.Calendar.YEAR) - 1, todayCal.get(java.util.Calendar.MONTH) + 1, todayCal.get(java.util.Calendar.DAY_OF_MONTH))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(PortalColors.Field)
+                                    .clickable { dateText = todayStr }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text("Today", color = PortalColors.Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(PortalColors.Field)
+                                    .clickable { dateText = oneYearAgoStr }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text("1 Year Ago", color = PortalColors.Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+
+                    if (selectedMode == "location") {
+                        Spacer(Modifier.height(10.dp))
+                        Text("Location / Tag Name:", color = PortalColors.TextMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(4.dp))
+                        androidx.compose.material3.OutlinedTextField(
+                            value = locText,
+                            onValueChange = { locText = it },
+                            placeholder = { Text("e.g. Hawaii, Paris, Beach", color = Color.Gray, fontSize = 14.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
             },
             confirmButton = {
-                if (installed) {
-                    Button(
-                        onClick = {
-                            MediaReceivers.launch(ctx, receiver)
-                            onDismiss()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = PortalColors.Blue),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Launch", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    TextButton(onClick = onDismiss) {
-                        Text("Done", color = PortalColors.Blue, fontWeight = FontWeight.Bold)
-                    }
+                SmallAction("Apply Filter", true) {
+                    prefs.edit()
+                        .putString(ConfigReceiver.KEY_SHOWCASE_MODE, selectedMode)
+                        .putString(ConfigReceiver.KEY_SHOWCASE_DATE, dateText.trim())
+                        .putString(ConfigReceiver.KEY_SHOWCASE_LOCATION, locText.trim())
+                        .apply()
+                    Toast.makeText(this@SettingsActivity, "Slideshow showcase updated!", Toast.LENGTH_SHORT).show()
+                    onDismiss()
                 }
             },
             dismissButton = {
-                if (installed) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Close", color = PortalColors.Text.copy(alpha = 0.7f))
-                    }
+                SmallAction("Cancel", true) {
+                    onDismiss()
                 }
-            }
+            },
+            containerColor = PortalColors.Surface,
+            shape = RoundedCornerShape(16.dp),
         )
     }
 
@@ -2672,6 +2793,174 @@ class SettingsActivity : ComponentActivity() {
      * is the preset INDEX (a plain linear ms slider can't span that range). The label updates live
      * while dragging; the pref is committed on release so we don't thrash prefs every tick.
      */
+    @Composable
+    private fun OpacitySliderRow(
+        iconRes: Int = 0,
+        iconBg: Color = Color.Gray,
+        onChanged: (() -> Unit)? = null
+    ) {
+        var opacityVal by rememberPrefInt(ConfigReceiver.KEY_NOW_PLAYING_OPACITY, ConfigReceiver.DEFAULT_NOW_PLAYING_OPACITY)
+        var sliderVal by remember(opacityVal) {
+            mutableStateOf(opacityVal.toFloat())
+        }
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                RowIcon(iconRes, iconBg)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Widget Transparency & Opacity", color = PortalColors.Text, fontSize = 18.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Controls how transparent or solid the media card appears over your photos.",
+                        color = PortalColors.Text.copy(alpha = 0.5f),
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        "${sliderVal.toInt()}%",
+                        color = PortalColors.Blue,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "${100 - sliderVal.toInt()}% trans.",
+                        color = PortalColors.TextMuted,
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+            Slider(
+                value = sliderVal,
+                onValueChange = { sliderVal = it },
+                valueRange = 2f..100f,
+                onValueChangeFinished = {
+                    val finalVal = sliderVal.toInt().coerceIn(2, 100)
+                    opacityVal = finalVal
+                    prefs.edit().putInt(ConfigReceiver.KEY_NOW_PLAYING_OPACITY, finalVal).apply()
+                    onChanged?.invoke()
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = PortalColors.Blue,
+                    activeTrackColor = PortalColors.Blue,
+                    inactiveTrackColor = PortalColors.Text.copy(alpha = 0.18f),
+                ),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("2% (Glass)", color = PortalColors.TextMuted, fontSize = 12.sp)
+                Text("72% (Smokey Ref)", color = PortalColors.Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("100% (Solid)", color = PortalColors.TextMuted, fontSize = 12.sp)
+            }
+        }
+    }
+
+    @Composable
+    private fun BlurSliderRow(
+        iconRes: Int = 0,
+        iconBg: Color = Color.Gray,
+        onChanged: (() -> Unit)? = null
+    ) {
+        var blurVal by rememberPrefInt(ConfigReceiver.KEY_NOW_PLAYING_BLUR, ConfigReceiver.DEFAULT_NOW_PLAYING_BLUR)
+        var sliderVal by remember(blurVal) {
+            mutableStateOf(blurVal.toFloat())
+        }
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                RowIcon(iconRes, iconBg)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Backdrop Glass Blur", color = PortalColors.Text, fontSize = 18.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Controls the frosted blur intensity of the background behind the widget.",
+                        color = PortalColors.Text.copy(alpha = 0.5f),
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+                Text(
+                    "${sliderVal.toInt()} px",
+                    color = PortalColors.Blue,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+            Slider(
+                value = sliderVal,
+                onValueChange = { sliderVal = it },
+                valueRange = 0f..40f,
+                onValueChangeFinished = {
+                    val finalVal = sliderVal.toInt().coerceIn(0, 40)
+                    blurVal = finalVal
+                    prefs.edit().putInt(ConfigReceiver.KEY_NOW_PLAYING_BLUR, finalVal).apply()
+                    onChanged?.invoke()
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = PortalColors.Blue,
+                    activeTrackColor = PortalColors.Blue,
+                    inactiveTrackColor = PortalColors.Text.copy(alpha = 0.18f),
+                ),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("0 px (Clear)", color = PortalColors.TextMuted, fontSize = 12.sp)
+                Text("24 px (Default Frosted)", color = PortalColors.Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("40 px (Heavy)", color = PortalColors.TextMuted, fontSize = 12.sp)
+            }
+        }
+    }
+
+    @Composable
+    private fun PhotoFillBlurSliderRow(
+        iconRes: Int = 0,
+        iconBg: Color = Color.Gray,
+    ) {
+        var blurVal by rememberPrefInt(ConfigReceiver.KEY_BLUR_RADIUS, ConfigReceiver.DEFAULT_BLUR_RADIUS)
+        var sliderVal by remember(blurVal) {
+            mutableStateOf(blurVal.toFloat())
+        }
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                RowIcon(iconRes, iconBg)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Background Fill Blur", color = PortalColors.Text, fontSize = 18.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Controls the blur radius on side/top margins when photos don't fill the screen.",
+                        color = PortalColors.Text.copy(alpha = 0.5f),
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+                Text(
+                    "Radius ${sliderVal.toInt()}",
+                    color = PortalColors.Blue,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+            Slider(
+                value = sliderVal,
+                onValueChange = { sliderVal = it },
+                valueRange = 1f..8f,
+                steps = 6,
+                onValueChangeFinished = {
+                    val finalVal = sliderVal.toInt().coerceIn(1, 8)
+                    blurVal = finalVal
+                    prefs.edit().putInt(ConfigReceiver.KEY_BLUR_RADIUS, finalVal).apply()
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = PortalColors.Blue,
+                    activeTrackColor = PortalColors.Blue,
+                    inactiveTrackColor = PortalColors.Text.copy(alpha = 0.18f),
+                ),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("1 (Subtle)", color = PortalColors.TextMuted, fontSize = 12.sp)
+                Text("3 (Default)", color = PortalColors.Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("8 (Dreamy Soft)", color = PortalColors.TextMuted, fontSize = 12.sp)
+            }
+        }
+    }
+
     @Composable
     private fun DurationSliderRow(
         iconRes: Int = 0,

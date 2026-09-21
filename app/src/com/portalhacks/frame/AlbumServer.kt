@@ -248,6 +248,8 @@ class AlbumServer(
                         .put("artist", mediaState.artist)
                         .put("album", mediaState.album)
                         .put("source", mediaState.source)
+                        .put("deviceName", mediaState.deviceName)
+                        .put("volume", if (mediaState.volume >= 0) mediaState.volume else MediaMonitor.getStreamVolumePercent(context))
                         .put("hasArt", mediaState.art != null)
 
                     val cachedCity = prefs.getString(ConfigReceiver.KEY_DEVICE_CITY, "") ?: ""
@@ -289,15 +291,40 @@ class AlbumServer(
                 // Dedicated Now Playing status endpoint
                 method == "GET" && (rawPath == "/api/media/status" || rawPath == "/media/status") -> {
                     val mediaState = MediaMonitor.currentState
+                    val vol = if (mediaState.volume >= 0) mediaState.volume else MediaMonitor.getStreamVolumePercent(context)
                     val mediaObj = JSONObject()
                         .put("isPlaying", mediaState.isPlaying)
                         .put("title", mediaState.title)
+                        .put("track", mediaState.title)
                         .put("artist", mediaState.artist)
                         .put("album", mediaState.album)
                         .put("source", mediaState.source)
+                        .put("deviceName", mediaState.deviceName)
+                        .put("volume", vol)
                         .put("hasArt", mediaState.art != null)
                         .put("artUrl", if (mediaState.art != null) "/api/media/art" else "")
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", mediaObj.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                // Volume control endpoint (GET query or POST body)
+                (method == "POST" || method == "GET") && (rawPath == "/api/media/volume" || rawPath == "/media/volume") -> {
+                    if (method == "POST") {
+                        val bodyStr = readBodyString(input, contentLength)
+                        val volStr = parseFormParam(bodyStr, "volume") ?: parseJsonField(bodyStr, "volume") ?: parseQueryParam(queryString, "volume")
+                        val vol = volStr?.toIntOrNull()
+                        if (vol != null) {
+                            MediaMonitor.setVolume(vol.coerceIn(0, 100), context)
+                        }
+                    } else if (queryString.isNotEmpty()) {
+                        val volStr = parseQueryParam(queryString, "volume")
+                        val vol = volStr?.toIntOrNull()
+                        if (vol != null) {
+                            MediaMonitor.setVolume(vol.coerceIn(0, 100), context)
+                        }
+                    }
+                    val currentVol = if (MediaMonitor.currentState.volume >= 0) MediaMonitor.currentState.volume else MediaMonitor.getStreamVolumePercent(context)
+                    val resp = JSONObject().put("status", "ok").put("volume", currentVol)
+                    sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
                 }
 
                 // Remote Spotify / Companion App Installation
@@ -392,14 +419,15 @@ class AlbumServer(
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
                 }
 
-                // Remote Media Control (Play/Pause, Next, Prev)
+                // Remote Media Control (Play/Pause, Next, Prev, Launch)
                 method == "POST" && (rawPath == "/api/media/control" || rawPath == "/media/control") -> {
                     val bodyStr = readBodyString(input, contentLength)
                     val action = parseFormParam(bodyStr, "action") ?: parseJsonField(bodyStr, "action") ?: "play_pause"
                     when (action.lowercase(java.util.Locale.US)) {
-                        "play", "pause", "play_pause" -> MediaMonitor.playPause()
-                        "next" -> MediaMonitor.next()
-                        "prev", "previous" -> MediaMonitor.prev()
+                        "play", "pause", "play_pause" -> MediaMonitor.playPause(context)
+                        "next" -> MediaMonitor.next(context)
+                        "prev", "previous" -> MediaMonitor.prev(context)
+                        "launch", "open" -> MediaMonitor.launchApp(context)
                     }
                     val resp = JSONObject().put("status", "ok").put("action", action)
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))

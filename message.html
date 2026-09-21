@@ -806,6 +806,10 @@
             <span class="showcase-chip-title">✈️ Recent Vacation</span>
             <span class="showcase-chip-desc">Latest trip photos</span>
           </button>
+          <button id="chip-specific_date" class="showcase-chip tap-scale" onclick="selectShowcase('specific_date')">
+            <span class="showcase-chip-title">📅 Specific Date</span>
+            <span class="showcase-chip-desc">Target day / trip</span>
+          </button>
           <button id="chip-month_year" class="showcase-chip tap-scale" onclick="selectShowcase('month_year')">
             <span class="showcase-chip-title">🗓️ Pick a Month</span>
             <span class="showcase-chip-desc">e.g. Sep 2024</span>
@@ -818,6 +822,14 @@
             <span class="showcase-chip-title">🔄 All Photos</span>
             <span class="showcase-chip-desc">Full shuffled album</span>
           </button>
+        </div>
+
+        <!-- Specific Date Selector -->
+        <div id="date-picker-container" class="picker-row hidden">
+          <div style="flex: 1;">
+            <label class="field-label" style="margin-bottom: 4px;">Target Date</label>
+            <input type="date" id="sc-specific-date" class="select-input" style="width: 100%; box-sizing: border-box; padding: 9px 12px; color: var(--text-color); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px;">
+          </div>
         </div>
 
         <!-- Month & Year Selector -->
@@ -1213,15 +1225,24 @@
     // --- Showcase Selection ---
     function selectShowcase(mode) {
       activeShowcase = mode;
-      ['recent_trip', 'month_year', 'last_30_days', 'all'].forEach(m => {
+      ['recent_trip', 'specific_date', 'month_year', 'last_30_days', 'all'].forEach(m => {
         const chip = document.getElementById('chip-' + m);
-        if (m === mode) {
-          chip.classList.add('active');
-        } else {
-          chip.classList.remove('active');
+        if (chip) {
+          if (m === mode) chip.classList.add('active');
+          else chip.classList.remove('active');
         }
       });
       document.getElementById('month-picker-container').classList.toggle('hidden', mode !== 'month_year');
+      const dateContainer = document.getElementById('date-picker-container');
+      if (dateContainer) {
+        dateContainer.classList.toggle('hidden', mode !== 'specific_date');
+        if (mode === 'specific_date') {
+          const dateInput = document.getElementById('sc-specific-date');
+          if (dateInput && !dateInput.value) {
+            dateInput.valueAsDate = new Date();
+          }
+        }
+      }
     }
 
     // --- Crypto Utils (Web Crypto API) ---
@@ -1336,6 +1357,14 @@
       if (activeShowcase === 'recent_trip') {
         tag = '#showcase:recent_trip';
         desc = 'Latest Vacation Photos';
+      } else if (activeShowcase === 'specific_date') {
+        const dateVal = document.getElementById('sc-specific-date').value;
+        if (!dateVal) {
+          showToast('Please select a target date first.', 'error');
+          return;
+        }
+        tag = `#showcase:${dateVal}`;
+        desc = `Photos from ${dateVal}`;
       } else if (activeShowcase === 'month_year') {
         const m = document.getElementById('sc-month').value;
         const y = document.getElementById('sc-year').value;

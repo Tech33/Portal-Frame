@@ -177,12 +177,49 @@ object ScreenControl {
             val enabledNow = isNotificationListenerEnabled(context)
             if (!enabledNow) {
                 PortalAccessibilityService.armNotificationAccessEnabler(context)
+            } else {
+                kickstartNotificationListener(context)
             }
             true
         } catch (e: Exception) {
             Log.w(TAG, "enableNotificationListener: failed to write secure settings; falling back to accessibility auto-enabler", e)
             PortalAccessibilityService.armNotificationAccessEnabler(context)
             false
+        }
+    }
+
+    /**
+     * Rebinds and toggles [PortalMediaNotificationListener] so Android system binds to it
+     * immediately without needing a full device reboot.
+     */
+    fun kickstartNotificationListener(context: Context) {
+        try {
+            val comp = android.content.ComponentName(context, PortalMediaNotificationListener::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                try {
+                    android.service.notification.NotificationListenerService.requestRebind(comp)
+                } catch (e: Exception) {
+                    Log.w(TAG, "requestRebind failed, falling back to component toggle", e)
+                }
+            }
+            val pm = context.packageManager
+            pm.setComponentEnabledSetting(
+                comp,
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            pm.setComponentEnabledSetting(
+                comp,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                try {
+                    android.service.notification.NotificationListenerService.requestRebind(comp)
+                } catch (_: Exception) {}
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed kickstarting notification listener", e)
         }
     }
 }

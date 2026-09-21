@@ -172,4 +172,83 @@ class ShowcaseFilterTest {
         assertEquals("recent_trip", ConfigReceiver.DEFAULT_SHOWCASE_MODE)
         assertTrue(ConfigReceiver.DEFAULT_RECENT_FIRST)
     }
+
+    @Test
+    fun testExactSingleDateParsing() {
+        val r1 = DateRangeParser.parse("2024-06-14")
+        org.junit.Assert.assertNotNull(r1)
+        assertTrue(r1!!.isSingleDate)
+        assertEquals("June 14, 2024", r1.label)
+
+        val r2 = DateRangeParser.parse("June 14, 2018")
+        org.junit.Assert.assertNotNull(r2)
+        assertTrue(r2!!.isSingleDate)
+        assertEquals("June 14, 2018", r2.label)
+
+        val r3 = DateRangeParser.parse("14 June 2024")
+        org.junit.Assert.assertNotNull(r3)
+        assertTrue(r3!!.isSingleDate)
+        assertEquals("June 14, 2024", r3.label)
+
+        val rAnniversary = DateRangeParser.parse("07-04")
+        org.junit.Assert.assertNotNull(rAnniversary)
+        assertTrue(rAnniversary!!.isRecurring)
+        assertEquals(7, rAnniversary.recurringMonth)
+        assertEquals(4, rAnniversary.recurringDay)
+        assertEquals("July 4 (Every Year)", rAnniversary.label)
+    }
+
+    @Test
+    fun testExactSingleDateShowcaseFiltering() {
+        // UTC milliseconds for 2024-06-14 12:00:00 UTC = 1718366400000L
+        // UTC milliseconds for 2024-06-15 12:00:00 UTC = 1718452800000L
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+            set(2024, java.util.Calendar.JUNE, 14, 15, 30, 0)
+        }
+        val sTarget = Slide(id = "june14", caption = "Birthday party", location = null, timeMs = cal.timeInMillis)
+
+        cal.set(2024, java.util.Calendar.JUNE, 15, 10, 0, 0)
+        val sNextDay = Slide(id = "june15", caption = "Next day brunch", location = null, timeMs = cal.timeInMillis)
+
+        val slides = listOf(sTarget, sNextDay)
+        val filtered = SlideshowController.filterForShowcase(
+            slides,
+            mode = "date_range",
+            locationQuery = "2024-06-14"
+        )
+
+        assertEquals(1, filtered.size)
+        assertEquals("june14", filtered[0].id)
+    }
+
+    @Test
+    fun testRecurringAnniversaryFiltering() {
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+        cal.set(2020, java.util.Calendar.JULY, 4, 12, 0, 0)
+        val s2020 = Slide(id = "y2020", caption = "4th July 2020", location = null, timeMs = cal.timeInMillis)
+
+        cal.set(2023, java.util.Calendar.JULY, 4, 18, 0, 0)
+        val s2023 = Slide(id = "y2023", caption = "4th July 2023", location = null, timeMs = cal.timeInMillis)
+
+        cal.set(2023, java.util.Calendar.JULY, 5, 12, 0, 0)
+        val sDiffDay = Slide(id = "diff", caption = "5th July", location = null, timeMs = cal.timeInMillis)
+
+        val slides = listOf(s2020, s2023, sDiffDay)
+        val filtered = SlideshowController.filterForShowcase(
+            slides,
+            mode = "date_range",
+            locationQuery = "07-04"
+        )
+
+        assertEquals(2, filtered.size)
+        assertTrue(filtered.contains(s2020))
+        assertTrue(filtered.contains(s2023))
+        assertFalse(filtered.contains(sDiffDay))
+    }
+
+    @Test
+    fun testChimeStyleAndBlurDefaults() {
+        assertEquals("zen_bowl", ConfigReceiver.DEFAULT_CHIME_STYLE)
+        assertEquals(24, ConfigReceiver.DEFAULT_NOW_PLAYING_BLUR)
+    }
 }

@@ -251,8 +251,8 @@ class SlideshowComposeActivity : ComponentActivity() {
         var targetMode: String? = null
         var targetLoc: String? = null
 
-        // 2. Check for explicit #showcase: tag (e.g. #showcase:portugal, #showcase:2024-09, #showcase:recent_trip, #showcase:all)
-        val hashMatch = Regex("""#(?:showcase:|location:)?([A-Za-z0-9_.-]+)""").find(trimmed)
+        // 2. Check for explicit #showcase: or #date: tag (e.g. #showcase:portugal, #date:2024-06-14, #showcase:2024-09, #showcase:all)
+        val hashMatch = Regex("""#(?:showcase:(?:date:)?|date:|showcase:|location:)?([A-Za-z0-9_.-]+)""").find(trimmed)
         if (hashMatch != null) {
             val fullTag = hashMatch.groupValues[0]
             val tag = hashMatch.groupValues[1].trim()
@@ -397,7 +397,7 @@ class SlideshowComposeActivity : ComponentActivity() {
                     effectiveMode == "date_range" || DateRangeParser.parse(effectiveLoc) != null -> {
                         val parsed = DateRangeParser.parse(effectiveLoc)
                         val label = parsed?.label ?: effectiveLoc
-                        "📍 $label Showcase (${updated.size} photos)"
+                        "🗓️ $label Showcase (${updated.size} photos)"
                     }
                     effectiveMode == "location" -> "📍 $effectiveLoc Showcase (${updated.size} photos)"
                     effectiveMode == "date_descending" -> "📍 Recent Photos Showcase (${updated.size} photos)"
@@ -410,7 +410,14 @@ class SlideshowComposeActivity : ComponentActivity() {
             }
         } else {
             // Revert showcase mode so subsequent cycles don't remain filtered out
-            editor.putString(ConfigReceiver.KEY_SHOWCASE_MODE, "all").apply()
+            editor.putString(ConfigReceiver.KEY_SHOWCASE_MODE, "all")
+                .putString(ConfigReceiver.KEY_SHOWCASE_LOCATION, "")
+                .apply()
+            val fallback = mergedSlides(p, albums)
+            if (fallback.isNotEmpty()) {
+                currentIds = idsOf(fallback)
+                controller.setItems(fallback)
+            }
             val effectiveLoc = location ?: p.getString(ConfigReceiver.KEY_SHOWCASE_LOCATION, "") ?: ""
             controller.showTemporaryBanner("⚠️ No photos found for '$effectiveLoc' in album")
         }
@@ -447,6 +454,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         // Ensure Protected Mode accessibility and media notification listener are enabled
         ScreenControl.enableAccessibility(this)
         ScreenControl.enableNotificationListener(this)
+        SonosMonitor.start(this)
 
         loader = ImageLoader(this)
         val root = FrameLayout(this).apply {
@@ -864,6 +872,7 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        SonosMonitor.stop()
         presenceDetector?.stop()
         presenceDetector = null
         try {
