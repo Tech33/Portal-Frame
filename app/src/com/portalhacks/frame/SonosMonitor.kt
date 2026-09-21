@@ -198,60 +198,95 @@ object SonosMonitor {
                 service = "AVTransport:1",
                 action = "GetTransportInfo",
                 bodyXml = "<InstanceID>0</InstanceID>"
-            ) ?: continue
+            )
+            if (stateXml == null) {
+                speaker.isPlaying = false
+                continue
+            }
 
             val transportState = extractTag(stateXml, "CurrentTransportState").uppercase()
-            val isPlaying = transportState == "PLAYING"
-            speaker.isPlaying = isPlaying
-
-            if (isPlaying) {
-                foundPlayingSpeaker = speaker
-
-                // Get Track Metadata
-                val posXml = sendSoap(
-                    ip = speaker.ip,
-                    endpoint = "/MediaRenderer/AVTransport/Control",
-                    service = "AVTransport:1",
-                    action = "GetPositionInfo",
-                    bodyXml = "<InstanceID>0</InstanceID>"
-                )
-
-                if (posXml != null) {
-                    val rawMeta = extractTag(posXml, "TrackMetaData")
-                    val decodedMeta = unescapeXml(rawMeta)
-
-                    speaker.title = extractTag(decodedMeta, "dc:title").ifEmpty { "Playing on Sonos" }
-                    speaker.artist = extractTag(decodedMeta, "dc:creator").ifEmpty { extractTag(decodedMeta, "r:albumArtist") }
-                    speaker.album = extractTag(decodedMeta, "upnp:album")
-
-                    val rawArtPath = extractTag(decodedMeta, "upnp:albumArtURI").ifEmpty {
-                        extractTag(decodedMeta, "r:albumArtURI")
-                    }
-                    val artPath = unescapeXml(rawArtPath).replace("&amp;", "&")
-                    if (artPath.isNotEmpty()) {
-                        val fullArtUrl = if (artPath.startsWith("http")) artPath else "http://${speaker.ip}:$SONOS_PORT$artPath"
-                        if (fullArtUrl != speaker.artUrl || speaker.artBitmap == null) {
-                            speaker.artUrl = fullArtUrl
-                            speaker.artBitmap = fetchBitmap(fullArtUrl)
-                        }
-                    }
-                }
-
-                // Get Volume
-                val volXml = sendSoap(
-                    ip = speaker.ip,
-                    endpoint = "/MediaRenderer/RenderingControl/Control",
-                    service = "RenderingControl:1",
-                    action = "GetVolume",
-                    bodyXml = "<InstanceID>0</InstanceID><Channel>Master</Channel>"
-                )
-                if (volXml != null) {
-                    val volStr = extractTag(volXml, "CurrentVolume")
-                    speaker.volume = volStr.toIntOrNull() ?: speaker.volume
-                }
-
-                break
+            if (transportState != "PLAYING") {
+                speaker.isPlaying = false
+                speaker.title = ""
+                speaker.artist = ""
+                speaker.album = ""
+                speaker.artBitmap = null
+                speaker.artUrl = ""
+                continue
             }
+
+            // Get Position & Track Metadata
+            val posXml = sendSoap(
+                ip = speaker.ip,
+                endpoint = "/MediaRenderer/AVTransport/Control",
+                service = "AVTransport:1",
+                action = "GetPositionInfo",
+                bodyXml = "<InstanceID>0</InstanceID>"
+            )
+
+            if (posXml == null) {
+                speaker.isPlaying = false
+                speaker.title = ""
+                speaker.artist = ""
+                speaker.album = ""
+                speaker.artBitmap = null
+                speaker.artUrl = ""
+                continue
+            }
+
+            // Check TrackURI for TV / line-in / auxiliary standby streams
+            val trackUri = extractTag(posXml, "TrackURI").ifEmpty { extractTag(posXml, "URI") }
+            val rawMeta = extractTag(posXml, "TrackMetaData")
+            val decodedMeta = unescapeXml(rawMeta)
+            val trackTitle = extractTag(decodedMeta, "dc:title").trim()
+
+            if (isTvOrAuxUri(trackUri) || isDummyTitle(trackTitle)) {
+                // Not actively playing music (e.g. TV idle/on, line-in, or no track info)
+                speaker.isPlaying = false
+                speaker.title = ""
+                speaker.artist = ""
+                speaker.album = ""
+                speaker.artBitmap = null
+                speaker.artUrl = ""
+                continue
+            }
+
+            // Valid music playback detected
+            speaker.isPlaying = true
+            speaker.title = trackTitle
+            speaker.artist = extractTag(decodedMeta, "dc:creator").ifEmpty { extractTag(decodedMeta, "r:albumArtist") }
+            speaker.album = extractTag(decodedMeta, "upnp:album")
+
+            val rawArtPath = extractTag(decodedMeta, "upnp:albumArtURI").ifEmpty {
+                extractTag(decodedMeta, "r:albumArtURI")
+            }
+            val artPath = unescapeXml(rawArtPath).replace("&amp;", "&")
+            if (artPath.isNotEmpty()) {
+                val fullArtUrl = if (artPath.startsWith("http")) artPath else "http://${speaker.ip}:$SONOS_PORT$artPath"
+                if (fullArtUrl != speaker.artUrl || speaker.artBitmap == null) {
+                    speaker.artUrl = fullArtUrl
+                    speaker.artBitmap = fetchBitmap(fullArtUrl)
+                }
+            } else {
+                speaker.artUrl = ""
+                speaker.artBitmap = null
+            }
+
+            // Get Volume
+            val volXml = sendSoap(
+                ip = speaker.ip,
+                endpoint = "/MediaRenderer/RenderingControl/Control",
+                service = "RenderingControl:1",
+                action = "GetVolume",
+                bodyXml = "<InstanceID>0</InstanceID><Channel>Master</Channel>"
+            )
+            if (volXml != null) {
+                val volStr = extractTag(volXml, "CurrentVolume")
+                speaker.volume = volStr.toIntOrNull() ?: speaker.volume
+            }
+
+            foundPlayingSpeaker = speaker
+            break
         }
 
         if (foundPlayingSpeaker != null) {
@@ -266,10 +301,13 @@ object SonosMonitor {
                 deviceName = "${foundPlayingSpeaker.roomName} Sonos",
                 volume = foundPlayingSpeaker.volume
             )
-        } else if (MediaMonitor.currentState.source == "Sonos") {
-            // All Sonos speakers stopped / paused -> clear immediately so ghost widget is dismissed
+        } else {
+            // No Sonos speaker is actively streaming music
+            val wasSonos = activeSpeakerIp != null || MediaMonitor.currentState.source.contains("Sonos", ignoreCase = true)
             activeSpeakerIp = null
-            MediaMonitor.clear()
+            if (wasSonos) {
+                MediaMonitor.clear()
+            }
         }
     }
 
@@ -373,6 +411,30 @@ object SonosMonitor {
         } catch (_: Exception) {
             null
         }
+    }
+
+    internal fun isTvOrAuxUri(uri: String): Boolean {
+        val lower = uri.lowercase()
+        return lower.contains("x-sonos-htastream") ||
+            lower.contains("x-sonos-vli") ||
+            lower.contains(":spdif") ||
+            lower.contains("x-rincon-stream") ||
+            lower.contains("x-rincon-audiodoc") ||
+            (lower.contains("x-sonos-http") && lower.contains("linein")) ||
+            lower.startsWith("netbios:")
+    }
+
+    internal fun isDummyTitle(title: String): Boolean {
+        val t = title.trim()
+        return t.isEmpty() ||
+            t.equals("TV", ignoreCase = true) ||
+            t.equals("Audio In", ignoreCase = true) ||
+            t.equals("Line-in", ignoreCase = true) ||
+            t.equals("Line In", ignoreCase = true) ||
+            t.equals("NOT_IMPLEMENTED", ignoreCase = true) ||
+            t.equals("Playing on Sonos", ignoreCase = true) ||
+            t.equals("Sonos", ignoreCase = true) ||
+            t.equals("Silence", ignoreCase = true)
     }
 
     private fun extractTag(xml: String, tag: String): String {

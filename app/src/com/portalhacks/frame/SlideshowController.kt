@@ -1322,6 +1322,20 @@ class SlideshowController(
                 return@post
             }
 
+            val isSonos = state.source.contains("Sonos", ignoreCase = true)
+            val isDummySonos = isSonos && (
+                !state.isPlaying ||
+                state.title.isBlank() ||
+                state.title.equals("Playing on Sonos", ignoreCase = true) ||
+                state.title.equals("Sonos", ignoreCase = true) ||
+                state.title.equals("TV", ignoreCase = true)
+            )
+            if (isDummySonos) {
+                handler.removeCallbacks(nowPlayingHideRunnable)
+                hideNowPlaying()
+                return@post
+            }
+
             val style = prefs.getString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
                 ?: ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE
             val opacity = prefs.getInt(ConfigReceiver.KEY_NOW_PLAYING_OPACITY, ConfigReceiver.DEFAULT_NOW_PLAYING_OPACITY).coerceIn(2, 100)
@@ -1331,7 +1345,6 @@ class SlideshowController(
             nowPlayingTitle.text = if (state.title.isNotEmpty()) state.title else "Playing Audio"
             nowPlayingArtist.text = if (state.artist.isNotEmpty()) state.artist else (if (state.source.isNotEmpty()) state.source else "Media")
 
-            val isSonos = state.source.contains("Sonos", ignoreCase = true)
             val isAirPlay = state.source.equals("AirPlay", ignoreCase = true)
             val accentColor = when {
                 isAirPlay -> 0xFF0A84FF.toInt()

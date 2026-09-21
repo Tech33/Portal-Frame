@@ -221,8 +221,13 @@ class PortalMediaNotificationListener : NotificationListenerService() {
                     pkg.contains("waxrain") || pkg.contains("airscreen") -> "AirPlay"
                     else -> "Media"
                 }
+                val actions = notif.actions
+                val hasPauseAction = actions?.any { it.title?.contains("Pause", ignoreCase = true) == true } == true
+                val hasPlayAction = actions?.any { it.title?.contains("Play", ignoreCase = true) == true } == true
+                val fallbackPlaying = if (hasPauseAction) true else if (hasPlayAction) false else true
+
                 MediaMonitor.update(
-                    isPlaying = true,
+                    isPlaying = fallbackPlaying,
                     title = title,
                     artist = artist,
                     album = "",

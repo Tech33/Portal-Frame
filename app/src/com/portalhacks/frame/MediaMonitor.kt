@@ -80,17 +80,34 @@ object MediaMonitor {
         deviceName: String = "",
         volume: Int = -1
     ) {
-        val safeTitle = title.trim().ifEmpty {
-            if (isPlaying) (if (source.isNotEmpty()) source else "Playing Media") else ""
+        val isSonos = source.contains("Sonos", ignoreCase = true)
+        val cleanTitle = title.trim()
+        val isDummySonos = isSonos && (
+            cleanTitle.isEmpty() ||
+            cleanTitle.equals("Playing on Sonos", ignoreCase = true) ||
+            cleanTitle.equals("Sonos", ignoreCase = true) ||
+            cleanTitle.equals("TV", ignoreCase = true) ||
+            cleanTitle.equals("Audio In", ignoreCase = true) ||
+            cleanTitle.equals("Line-in", ignoreCase = true) ||
+            cleanTitle.equals("NOT_IMPLEMENTED", ignoreCase = true)
+        )
+
+        val safeTitle = if (isDummySonos) {
+            ""
+        } else {
+            cleanTitle.ifEmpty {
+                if (isPlaying) (if (source.isNotEmpty()) source else "Playing Media") else ""
+            }
         }
+        val effectiveIsPlaying = if (isSonos && (safeTitle.isEmpty() || isDummySonos)) false else isPlaying
         val safeArtist = artist.trim().ifEmpty {
             if (safeTitle.isNotEmpty()) "Audio Playback" else ""
         }
         val effectiveDevice = deviceName.ifEmpty {
-            if (source.contains("Sonos", ignoreCase = true)) "Sonos Speaker" else "Portal Living Room"
+            if (isSonos) "Sonos Speaker" else "Portal Living Room"
         }
         val newState = State(
-            isPlaying = isPlaying,
+            isPlaying = effectiveIsPlaying,
             title = safeTitle,
             artist = safeArtist,
             album = album.trim(),
