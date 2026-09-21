@@ -168,9 +168,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git checkout main
-          git pull --ff-only origin main
+          git checkout -f main
+          git pull --rebase origin main || true
           cp /tmp/frame-version.json version.json
           git add version.json
-          git diff --staged --quiet || git commit -m "chore: update version.json for ${{ github.ref_name }}"
-          git push origin main
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update version.json for ${{ github.ref_name }}"
+            git push origin main || (git pull --rebase origin main && git push origin main) || true
+          else
+            echo "version.json is already up-to-date on main."
+          fi
