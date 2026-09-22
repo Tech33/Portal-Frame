@@ -1129,7 +1129,7 @@ class SettingsActivity : ComponentActivity() {
                     val aesKey = CryptoUtils.deriveAesKey(currentChannel)
                     val encodedName = java.net.URLEncoder.encode(displayName, "UTF-8")
                     val hostParam = if (localIp != null) "&host=${localIp}:8080" else ""
-                    val pairUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$currentChannel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.27"
+                    val pairUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$currentChannel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.28"
                     val qrBmp = remember(pairUrl) { generateQrBitmap(pairUrl, 360) }
 
                     Column(
@@ -1538,11 +1538,13 @@ class SettingsActivity : ComponentActivity() {
                     val currentStyle = rememberPrefString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
                     val styleVal = currentStyle.value ?: ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE
                     val styleLabel = when (styleVal) {
+                        "capsule" -> "Floating Capsule"
                         "frosted" -> "Frosted Glass"
                         "compact" -> "Compact Docked"
                         else -> "Classic Matte"
                     }
                     val styleSub = when (styleVal) {
+                        "capsule" -> "Slim expandable floating pill docked at bottom-right with pinch-to-zoom."
                         "frosted" -> "Translucent acrylic with vibrant EQ wave and crisp borders."
                         "compact" -> "Slim horizontal mini-dock leaving 80%+ of the photo visible."
                         else -> "Signature Google Nest Hub matte card (#202124) with deep drop shadow."
@@ -1556,9 +1558,10 @@ class SettingsActivity : ComponentActivity() {
                         subtitle = styleSub
                     ) {
                         val next = when (styleVal) {
+                            "capsule" -> "classic"
                             "classic" -> "frosted"
                             "frosted" -> "compact"
-                            else -> "classic"
+                            else -> "capsule"
                         }
                         currentStyle.value = next
                         prefs.edit().putString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, next).apply()

@@ -90,7 +90,23 @@ class SlideshowController(
     private val broadcastBanner: TextView
     private val dateLine: TextView
     private val clockEditHint: TextView // "drag/pinch/tap" hint shown while editing the clock
-    private lateinit var nowPlayingCard: LinearLayout
+    private lateinit var nowPlayingCard: PinchableMediaCard
+    private var mediaWidgetScale: Float = ConfigReceiver.DEFAULT_MEDIA_WIDGET_SCALE
+    private var isMediaExpanded: Boolean = false
+    private val collapseMediaRunnable = Runnable { collapseMediaCapsule() }
+    private val hideTopControlsRunnable = Runnable { fadeOutTopControls() }
+    private var lastMediaState: MediaMonitor.State? = null
+
+    // Capsule pill views
+    private lateinit var mediaPillRow: LinearLayout
+    private lateinit var pillArtImageView: ImageView
+    private lateinit var pillTitleView: ContinuousMarqueeTextView
+    private lateinit var pillArtistView: ContinuousMarqueeTextView
+    private lateinit var pillEqView: WaveformEqualizerView
+    private lateinit var pillPlayBtn: ImageView
+    private lateinit var mediaExpandedCard: LinearLayout
+    private lateinit var collapseBtn: TextView
+
     private lateinit var nowPlayingArt: ImageView
     private lateinit var nowPlayingTitle: TextView
     private lateinit var nowPlayingArtist: TextView
@@ -811,13 +827,14 @@ class SlideshowController(
             ConfigReceiver.DEFAULT_PERSISTENT_EXIT_BUTTON
         )
         if (::slideshowExitBtn.isInitialized) {
-            slideshowExitBtn.visibility = if (showExit && !clockOnly) View.VISIBLE else View.GONE
+            slideshowExitBtn.visibility = if (!clockOnly) View.VISIBLE else View.GONE
         }
 
         if (::topControlsRow.isInitialized) {
-            val hasVisibleChild = (showExit && !clockOnly) || (::haButton.isInitialized && haButton.visibility == View.VISIBLE)
-            topControlsRow.visibility = if (hasVisibleChild) View.VISIBLE else View.GONE
-            if (hasVisibleChild) {
+            val shouldBeVisible = (showExit && !clockOnly) || (slideshowPaused && !clockOnly)
+            topControlsRow.visibility = if (shouldBeVisible) View.VISIBLE else View.GONE
+            if (shouldBeVisible) {
+                topControlsRow.alpha = 1f
                 topControlsRow.bringToFront()
             }
         }
@@ -828,21 +845,283 @@ class SlideshowController(
                 ConfigReceiver.KEY_SPOTIFY_SHORTCUT,
                 ConfigReceiver.DEFAULT_SPOTIFY_SHORTCUT
             )
-            val shouldShowSpotify = spotifyInstalled && spotifyPrefEnabled && !clockOnly
+            val isMediaActive = (lastMediaState?.isPlaying == true) ||
+                (::nowPlayingCard.isInitialized && nowPlayingCard.visibility == View.VISIBLE)
+            val shouldShowSpotify = spotifyInstalled && spotifyPrefEnabled && !clockOnly && !isMediaActive
             spotifyShortcutButton.visibility = if (shouldShowSpotify) View.VISIBLE else View.GONE
             if (shouldShowSpotify) {
+                spotifyShortcutButton.alpha = 0.7f
                 spotifyShortcutButton.bringToFront()
             }
         }
     }
 
+    fun revealTopControlsTemporarily(timeoutMs: Long = 5000L) {
+        if (!::topControlsRow.isInitialized || clockOnly) return
+        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val persistent = prefs.getBoolean(
+            ConfigReceiver.KEY_PERSISTENT_EXIT_BUTTON,
+            ConfigReceiver.DEFAULT_PERSISTENT_EXIT_BUTTON
+        )
+        if (persistent) {
+            topControlsRow.visibility = View.VISIBLE
+            topControlsRow.alpha = 1f
+            topControlsRow.bringToFront()
+            return
+        }
+        handler.removeCallbacks(hideTopControlsRunnable)
+        topControlsRow.visibility = View.VISIBLE
+        topControlsRow.animate().alpha(1f).setDuration(200).start()
+        topControlsRow.bringToFront()
+        if (timeoutMs > 0) {
+            handler.postDelayed(hideTopControlsRunnable, timeoutMs)
+        }
+    }
+
+    private fun fadeOutTopControls() {
+        if (!::topControlsRow.isInitialized || clockOnly) return
+        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val persistent = prefs.getBoolean(
+            ConfigReceiver.KEY_PERSISTENT_EXIT_BUTTON,
+            ConfigReceiver.DEFAULT_PERSISTENT_EXIT_BUTTON
+        )
+        if (persistent || slideshowPaused) return
+        topControlsRow.animate().alpha(0f).setDuration(300).withEndAction {
+            topControlsRow.visibility = View.GONE
+        }.start()
+    }
+
+    /**
+     * PinchableMediaCard intercepts 2-finger pinch gestures to scale the Media Widget
+     * directly in real-time without interfering with button taps (play/pause, seek, art).
+     */
+    private inner class PinchableMediaCard(c: Context) : LinearLayout(c) {
+        var onScaleRatioChanged: ((ratio: Float, baseScale: Float) -> Unit)? = null
+        var onScaleEnd: (() -> Unit)? = null
+        var onCardTapped: (() -> Unit)? = null
+        var getBaseScale: (() -> Float)? = null
+
+        private var pinchStartDist = 0f
+        private var pinchBaseScale = 1f
+        private var isPinching = false
+        private var downX = 0f
+        private var downY = 0f
+        private var downTime = 0L
+
+        private fun twoPointerDist(e: MotionEvent): Float {
+            if (e.pointerCount < 2) return 0f
+            return Math.hypot(
+                (e.getX(0) - e.getX(1)).toDouble(),
+                (e.getY(0) - e.getY(1)).toDouble()
+            ).toFloat()
+        }
+
+        override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    if (ev.pointerCount >= 2) {
+                        pinchStartDist = twoPointerDist(ev)
+                        pinchBaseScale = getBaseScale?.invoke() ?: scaleX
+                        isPinching = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_DOWN -> {
+                    downX = ev.x
+                    downY = ev.y
+                    downTime = ev.eventTime
+                    isPinching = false
+                }
+            }
+            return isPinching
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    if (event.pointerCount >= 2) {
+                        pinchStartDist = twoPointerDist(event)
+                        pinchBaseScale = getBaseScale?.invoke() ?: scaleX
+                        isPinching = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (isPinching && event.pointerCount >= 2 && pinchStartDist > 0f) {
+                        val d = twoPointerDist(event)
+                        if (d > 0f) {
+                            val ratio = d / pinchStartDist
+                            onScaleRatioChanged?.invoke(ratio, pinchBaseScale)
+                        }
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_POINTER_UP -> {
+                    if (isPinching) {
+                        isPinching = false
+                        onScaleEnd?.invoke()
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (isPinching) {
+                        isPinching = false
+                        onScaleEnd?.invoke()
+                        return true
+                    }
+                    val dx = Math.abs(event.x - downX)
+                    val dy = Math.abs(event.y - downY)
+                    val dt = event.eventTime - downTime
+                    if (dx < 16f && dy < 16f && dt < 450) {
+                        onCardTapped?.invoke()
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    if (isPinching) {
+                        isPinching = false
+                        onScaleEnd?.invoke()
+                    }
+                }
+            }
+            return true
+        }
+    }
+
     private fun initNowPlaying() {
-        nowPlayingCard = LinearLayout(context).apply {
+        nowPlayingCard = PinchableMediaCard(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             visibility = View.GONE
+            clipToOutline = false
+            clipChildren = false
+            isClickable = true
+            getBaseScale = { mediaWidgetScale }
+            onScaleRatioChanged = { ratio, baseScale ->
+                mediaWidgetScale = (baseScale * ratio).coerceIn(
+                    ConfigReceiver.MIN_MEDIA_WIDGET_SCALE,
+                    ConfigReceiver.MAX_MEDIA_WIDGET_SCALE
+                )
+                applyMediaWidgetScale()
+            }
+            onScaleEnd = {
+                persistMediaWidgetScale()
+            }
+            onCardTapped = {
+                if (!isMediaExpanded) {
+                    expandMediaCapsule()
+                } else {
+                    resetMediaCollapseTimer()
+                }
+            }
+        }
+
+        collapseBtn = TextView(context).apply {
+            setTextColor(0xD9FFFFFF.toInt())
+            typeface = Ui.bold(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            background = Ui.roundRect(0x2BFFFFFF, Ui.dp(context, 12f))
+            setPadding(Ui.dp(context, 9f), Ui.dp(context, 3f), Ui.dp(context, 9f), Ui.dp(context, 3f))
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = Ui.dp(context, 8f)
+                rightMargin = Ui.dp(context, 8f)
+            }
+            layoutParams = lp
+            text = "✕"
+            setOnClickListener { collapseMediaCapsule() }
+        }
+
+        mediaPillRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             clipToOutline = true
             isClickable = true
+            setOnClickListener {
+                expandMediaCapsule()
+            }
+        }
+
+        pillArtImageView = ImageView(context).apply {
+            val s = Ui.dp(context, 40f)
+            layoutParams = LinearLayout.LayoutParams(s, s).apply {
+                marginEnd = Ui.dp(context, 10f)
+                rightMargin = Ui.dp(context, 10f)
+            }
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageResource(R.drawable.ic_music)
+            background = Ui.roundRect(0x22FFFFFF, Ui.dp(context, 20f))
+            clipToOutline = true
+            setOnClickListener {
+                MediaMonitor.launchApp(context)
+            }
+        }
+
+        val pillMetaBox = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                Ui.dp(context, 140f),
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = Ui.dp(context, 8f)
+                rightMargin = Ui.dp(context, 8f)
+            }
+        }
+
+        pillTitleView = ContinuousMarqueeTextView(context).apply {
+            setTextColor(Color.WHITE)
+            typeface = Ui.bold(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            text = "Now Playing"
+        }
+
+        pillArtistView = ContinuousMarqueeTextView(context).apply {
+            setTextColor(0xB3FFFFFF.toInt())
+            typeface = Ui.medium(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+            text = "Audio Playback"
+        }
+
+        pillMetaBox.addView(pillTitleView)
+        pillMetaBox.addView(pillArtistView)
+
+        pillEqView = WaveformEqualizerView(context).apply {
+            val w = Ui.dp(context, 16f)
+            val h = Ui.dp(context, 14f)
+            layoutParams = LinearLayout.LayoutParams(w, h).apply {
+                marginEnd = Ui.dp(context, 10f)
+                rightMargin = Ui.dp(context, 10f)
+            }
+        }
+
+        pillPlayBtn = ImageView(context).apply {
+            setImageResource(R.drawable.ic_play)
+            setColorFilter(Color.BLACK)
+            val s = Ui.dp(context, 36f)
+            layoutParams = LinearLayout.LayoutParams(s, s)
+            val p = Ui.dp(context, 8f)
+            setPadding(p, p, p, p)
+            background = Ui.roundRect(Color.WHITE, Ui.dp(context, 18f))
+            clipToOutline = true
+            elevation = Ui.dp(context, 4f).toFloat()
+            setOnClickListener {
+                MediaMonitor.playPause(context)
+            }
+        }
+
+        mediaPillRow.addView(pillArtImageView)
+        mediaPillRow.addView(pillMetaBox)
+        mediaPillRow.addView(pillEqView)
+        mediaPillRow.addView(pillPlayBtn)
+
+        mediaExpandedCard = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            clipToOutline = true
+            visibility = View.GONE
         }
 
         // Header row: Badge + Equalizer + Spacer + "Open ↗" button
@@ -1101,9 +1380,14 @@ class SlideshowController(
         nowPlayingVolumeRow = volumeRow
 
         val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        mediaWidgetScale = prefs.getFloat(
+            ConfigReceiver.KEY_MEDIA_WIDGET_SCALE,
+            ConfigReceiver.DEFAULT_MEDIA_WIDGET_SCALE
+        ).coerceIn(ConfigReceiver.MIN_MEDIA_WIDGET_SCALE, ConfigReceiver.MAX_MEDIA_WIDGET_SCALE)
         val initialStyle = prefs.getString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
             ?: ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE
         applyNowPlayingStyle(initialStyle)
+        nowPlayingCard.post { applyMediaWidgetScale() }
 
         MediaMonitor.addListener(mediaListener)
     }
@@ -1180,6 +1464,54 @@ class SlideshowController(
         }
     }
 
+    private fun applyMediaWidgetScale() {
+        if (!::nowPlayingCard.isInitialized) return
+        if (nowPlayingCard.width == 0 || nowPlayingCard.height == 0) {
+            nowPlayingCard.post { applyMediaWidgetScale() }
+            return
+        }
+        nowPlayingCard.pivotX = nowPlayingCard.width.toFloat()
+        nowPlayingCard.pivotY = nowPlayingCard.height.toFloat()
+        nowPlayingCard.scaleX = mediaWidgetScale
+        nowPlayingCard.scaleY = mediaWidgetScale
+    }
+
+    private fun persistMediaWidgetScale() {
+        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        prefs.edit().putFloat(ConfigReceiver.KEY_MEDIA_WIDGET_SCALE, mediaWidgetScale).apply()
+    }
+
+    private fun collapseMediaCapsule() {
+        if (!isMediaExpanded) return
+        isMediaExpanded = false
+        handler.removeCallbacks(collapseMediaRunnable)
+        if (::mediaPillRow.isInitialized && ::mediaExpandedCard.isInitialized) {
+            android.transition.TransitionManager.beginDelayedTransition(nowPlayingCard)
+            mediaExpandedCard.visibility = View.GONE
+            mediaPillRow.visibility = View.VISIBLE
+            nowPlayingCard.post { applyMediaWidgetScale() }
+        }
+    }
+
+    private fun expandMediaCapsule() {
+        if (isMediaExpanded) return
+        isMediaExpanded = true
+        if (::mediaPillRow.isInitialized && ::mediaExpandedCard.isInitialized) {
+            android.transition.TransitionManager.beginDelayedTransition(nowPlayingCard)
+            mediaPillRow.visibility = View.GONE
+            mediaExpandedCard.visibility = View.VISIBLE
+            nowPlayingCard.post { applyMediaWidgetScale() }
+        }
+        resetMediaCollapseTimer()
+    }
+
+    private fun resetMediaCollapseTimer() {
+        handler.removeCallbacks(collapseMediaRunnable)
+        if (isMediaExpanded) {
+            handler.postDelayed(collapseMediaRunnable, 10000L)
+        }
+    }
+
     private fun applyNowPlayingStyle(style: String) {
         val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         val opacityPercent = prefs.getInt(ConfigReceiver.KEY_NOW_PLAYING_OPACITY, ConfigReceiver.DEFAULT_NOW_PLAYING_OPACITY).coerceIn(2, 100)
@@ -1197,6 +1529,8 @@ class SlideshowController(
         (nowPlayingMetaBox.parent as? ViewGroup)?.removeView(nowPlayingMetaBox)
         (nowPlayingControlsRow.parent as? ViewGroup)?.removeView(nowPlayingControlsRow)
         (nowPlayingVolumeRow.parent as? ViewGroup)?.removeView(nowPlayingVolumeRow)
+        if (::mediaPillRow.isInitialized) (mediaPillRow.parent as? ViewGroup)?.removeView(mediaPillRow)
+        if (::mediaExpandedCard.isInitialized) (mediaExpandedCard.parent as? ViewGroup)?.removeView(mediaExpandedCard)
         nowPlayingCard.removeAllViews()
 
         val contentAlpha = (0.45f + 0.55f * (opacityPercent / 100f)).coerceIn(0.4f, 1.0f)
@@ -1206,18 +1540,102 @@ class SlideshowController(
         nowPlayingVolumeRow.setPadding(Ui.dp(context, 8f), Ui.dp(context, 4f), Ui.dp(context, 8f), Ui.dp(context, 4f))
 
         val lp = (nowPlayingCard.layoutParams as? FrameLayout.LayoutParams) ?: FrameLayout.LayoutParams(
-            Ui.dp(context, 260f),
+            FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            topMargin = Ui.dp(context, 24f)
+            gravity = Gravity.BOTTOM or Gravity.END
+            bottomMargin = Ui.dp(context, 24f)
             marginEnd = Ui.dp(context, 24f)
             rightMargin = Ui.dp(context, 24f)
         }
+        lp.gravity = Gravity.BOTTOM or Gravity.END
+        lp.bottomMargin = Ui.dp(context, 24f)
+        lp.marginEnd = Ui.dp(context, 24f)
+        lp.rightMargin = Ui.dp(context, 24f)
 
         when (style) {
+            "capsule" -> {
+                lp.width = FrameLayout.LayoutParams.WRAP_CONTENT
+                nowPlayingCard.background = null
+                nowPlayingCard.elevation = 0f
+                nowPlayingCard.setPadding(0, 0, 0, 0)
+                nowPlayingCard.orientation = LinearLayout.VERTICAL
+
+                // Configure Pill Row
+                mediaPillRow.background = Ui.roundRect(cardColor, Ui.dp(context, 26f)).apply {
+                    setStroke(Ui.dp(context, 1.2f), 0x3DFFFFFF)
+                }
+                mediaPillRow.elevation = Ui.dp(context, 16f).toFloat()
+                val pillPadH = Ui.dp(context, 7f)
+                val pillPadV = Ui.dp(context, 6f)
+                mediaPillRow.setPadding(pillPadH, pillPadV, Ui.dp(context, 8f), pillPadV)
+
+                // Configure Expanded Card
+                mediaExpandedCard.layoutParams = LinearLayout.LayoutParams(
+                    Ui.dp(context, 290f),
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                mediaExpandedCard.background = Ui.roundRect(cardColor, Ui.dp(context, 20f)).apply {
+                    setStroke(Ui.dp(context, 1.2f), 0x3DFFFFFF)
+                }
+                mediaExpandedCard.elevation = Ui.dp(context, 20f).toFloat()
+                val expPad = Ui.dp(context, 12f)
+                mediaExpandedCard.setPadding(expPad, expPad, expPad, expPad)
+
+                setupControlsSize(isCompact = true)
+
+                val artS = Ui.dp(context, 64f)
+                nowPlayingArt.layoutParams = LinearLayout.LayoutParams(artS, artS).apply {
+                    rightMargin = Ui.dp(context, 10f)
+                    marginEnd = Ui.dp(context, 10f)
+                    bottomMargin = 0
+                }
+
+                (collapseBtn.parent as? ViewGroup)?.removeView(collapseBtn)
+                val openIdx = nowPlayingHeaderRow.indexOfChild(nowPlayingOpenBtn)
+                if (openIdx >= 0) {
+                    nowPlayingHeaderRow.addView(collapseBtn, openIdx)
+                } else {
+                    nowPlayingHeaderRow.addView(collapseBtn)
+                }
+                collapseBtn.visibility = View.VISIBLE
+
+                mediaExpandedCard.removeAllViews()
+                mediaExpandedCard.addView(nowPlayingHeaderRow)
+
+                val middleRow = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        bottomMargin = Ui.dp(context, 8f)
+                    }
+                }
+                val rightCol = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                middleRow.addView(nowPlayingArt)
+                rightCol.addView(nowPlayingMetaBox)
+                middleRow.addView(rightCol)
+
+                mediaExpandedCard.addView(middleRow)
+                mediaExpandedCard.addView(nowPlayingControlsRow)
+                mediaExpandedCard.addView(nowPlayingVolumeRow)
+
+                mediaPillRow.visibility = if (isMediaExpanded) View.GONE else View.VISIBLE
+                mediaExpandedCard.visibility = if (isMediaExpanded) View.VISIBLE else View.GONE
+
+                nowPlayingCard.addView(mediaPillRow)
+                nowPlayingCard.addView(mediaExpandedCard)
+            }
             "compact" -> {
                 lp.width = Ui.dp(context, 300f)
+                collapseBtn.visibility = View.GONE
+                (collapseBtn.parent as? ViewGroup)?.removeView(collapseBtn)
+
                 // Translucent acrylic with customizable opacity, letting photo colors bleed through
                 nowPlayingCard.background = Ui.roundRect(cardColor, Ui.dp(context, 18f)).apply {
                     setStroke(Ui.dp(context, 1f), 0x2EFFFFFF)
@@ -1232,6 +1650,7 @@ class SlideshowController(
                 val artS = Ui.dp(context, 64f)
                 nowPlayingArt.layoutParams = LinearLayout.LayoutParams(artS, artS).apply {
                     rightMargin = Ui.dp(context, 10f)
+                    marginEnd = Ui.dp(context, 10f)
                     bottomMargin = 0
                 }
 
@@ -1261,6 +1680,9 @@ class SlideshowController(
             }
             "frosted" -> {
                 lp.width = Ui.dp(context, 260f)
+                collapseBtn.visibility = View.GONE
+                (collapseBtn.parent as? ViewGroup)?.removeView(collapseBtn)
+
                 // Frosted glass with customizable translucency and crisp 1.5dp glass border
                 nowPlayingCard.background = Ui.roundRect(frostedColor, Ui.dp(context, 20f)).apply {
                     setStroke(Ui.dp(context, 1.5f), 0x44FFFFFF)
@@ -1286,6 +1708,9 @@ class SlideshowController(
             }
             else -> { // "classic"
                 lp.width = Ui.dp(context, 260f)
+                collapseBtn.visibility = View.GONE
+                (collapseBtn.parent as? ViewGroup)?.removeView(collapseBtn)
+
                 // Classic translucent smokey dark acrylic with customizable opacity
                 nowPlayingCard.background = Ui.roundRect(cardColor, Ui.dp(context, 20f)).apply {
                     setStroke(Ui.dp(context, 1f), 0x2EFFFFFF)
@@ -1311,9 +1736,11 @@ class SlideshowController(
             }
         }
         nowPlayingCard.layoutParams = lp
+        nowPlayingCard.post { applyMediaWidgetScale() }
     }
 
     private fun updateNowPlaying(state: MediaMonitor.State) {
+        lastMediaState = state
         handler.post {
             val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
             val enabled = prefs.getBoolean(ConfigReceiver.KEY_NOW_PLAYING_ENABLED, ConfigReceiver.DEFAULT_NOW_PLAYING_ENABLED)
@@ -1342,8 +1769,13 @@ class SlideshowController(
             if (style != currentAppliedNowPlayingStyle || opacity != currentAppliedNowPlayingOpacity) {
                 applyNowPlayingStyle(style)
             }
-            nowPlayingTitle.text = if (state.title.isNotEmpty()) state.title else "Playing Audio"
-            nowPlayingArtist.text = if (state.artist.isNotEmpty()) state.artist else (if (state.source.isNotEmpty()) state.source else "Media")
+            val displayTitle = if (state.title.isNotEmpty()) state.title else "Playing Audio"
+            val displayArtist = if (state.artist.isNotEmpty()) state.artist else (if (state.source.isNotEmpty()) state.source else "Media")
+
+            nowPlayingTitle.text = displayTitle
+            nowPlayingArtist.text = displayArtist
+            if (::pillTitleView.isInitialized) pillTitleView.text = displayTitle
+            if (::pillArtistView.isInitialized) pillArtistView.text = displayArtist
 
             val isAirPlay = state.source.equals("AirPlay", ignoreCase = true)
             val accentColor = when {
@@ -1361,6 +1793,7 @@ class SlideshowController(
             nowPlayingSourceBadge.background = Ui.roundRect(accentColor, Ui.dp(context, 5f))
             nowPlayingSourceBadge.setTextColor(if (isSonos || isAirPlay) Color.WHITE else Color.BLACK)
             nowPlayingEq.setBarColor(accentColor)
+            if (::pillEqView.isInitialized) pillEqView.setBarColor(accentColor)
             nowPlayingVolumeSeek.progressTintList = android.content.res.ColorStateList.valueOf(accentColor)
 
             val dev = when {
@@ -1372,11 +1805,15 @@ class SlideshowController(
 
             if (state.art != null) {
                 nowPlayingArt.setImageBitmap(state.art)
+                if (::pillArtImageView.isInitialized) pillArtImageView.setImageBitmap(state.art)
             } else {
                 nowPlayingArt.setImageResource(R.drawable.ic_music)
+                if (::pillArtImageView.isInitialized) pillArtImageView.setImageResource(R.drawable.ic_music)
             }
             nowPlayingPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
+            if (::pillPlayBtn.isInitialized) pillPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
             nowPlayingEq.setPlaying(state.isPlaying)
+            if (::pillEqView.isInitialized) pillEqView.setPlaying(state.isPlaying)
 
             if (!isUserTrackingVolume) {
                 val vol = if (state.volume >= 0) state.volume else MediaMonitor.getStreamVolumePercent(context)
@@ -1398,8 +1835,12 @@ class SlideshowController(
                         .translationX(0f)
                         .setDuration(400)
                         .setInterpolator(android.view.animation.DecelerateInterpolator(1.2f))
+                        .withEndAction {
+                            applyMediaWidgetScale()
+                        }
                         .start()
                 }
+                updateOverlayShortcuts()
             } else {
                 handler.removeCallbacks(nowPlayingHideRunnable)
                 val hideDelay = if (isSonos) 2500L else 12000L
@@ -1411,6 +1852,8 @@ class SlideshowController(
     private fun hideNowPlaying() {
         if (nowPlayingCard.visibility == View.VISIBLE) {
             nowPlayingEq.setPlaying(false)
+            if (::pillEqView.isInitialized) pillEqView.setPlaying(false)
+            collapseMediaCapsule()
             nowPlayingCard.animate()
                 .alpha(0f)
                 .translationX(Ui.dp(context, 50f).toFloat())
@@ -1418,6 +1861,7 @@ class SlideshowController(
                 .setInterpolator(android.view.animation.AccelerateInterpolator())
                 .withEndAction {
                     nowPlayingCard.visibility = View.GONE
+                    updateOverlayShortcuts()
                 }.start()
         }
     }
@@ -1541,6 +1985,7 @@ class SlideshowController(
             status.visibility = if (!clockOnly) View.VISIBLE else View.GONE
         }
         showPlayButtonOverlay()
+        revealTopControlsTemporarily(0L)
     }
 
     fun resumeSlideshow() {
@@ -1555,6 +2000,7 @@ class SlideshowController(
             scheduleAuto()
         }
         hidePlayButtonOverlay()
+        fadeOutTopControls()
     }
 
     private fun showActionMenu() {
@@ -2072,6 +2518,23 @@ class SlideshowController(
             private var datePinching = false  // track pinch on date layer
             private var datePinchStartDist = 0f
             private var datePinchBaseScale = 1f
+            private var mediaPinching = false
+            private var mediaPinchStartDist = 0f
+            private var mediaPinchBaseScale = 1f
+
+            private fun isNearMediaCard(x: Float, y: Float): Boolean {
+                if (!::nowPlayingCard.isInitialized || nowPlayingCard.visibility != View.VISIBLE) return false
+                val loc = IntArray(2)
+                nowPlayingCard.getLocationInWindow(loc)
+                val cardW = nowPlayingCard.width.toFloat() * nowPlayingCard.scaleX
+                val cardH = nowPlayingCard.height.toFloat() * nowPlayingCard.scaleY
+                val right = loc[0].toFloat() + nowPlayingCard.width.toFloat()
+                val left = right - cardW
+                val bottom = loc[1].toFloat() + nowPlayingCard.height.toFloat()
+                val top = bottom - cardH
+                val pad = Ui.dp(context, 30f).toFloat()
+                return x >= (left - pad) && x <= (right + pad) && y >= (top - pad) && y <= (bottom + pad)
+            }
 
             private fun cancelLong() {
                 pendingLong?.let {
@@ -2095,6 +2558,7 @@ class SlideshowController(
                         handled = false
                         moved = false
                         pinching = false
+                        mediaPinching = false
                         v.parent?.requestDisallowInterceptTouchEvent(true)
                         cancelLong()
                         if (!editingClock && !editingDate) {
@@ -2124,6 +2588,11 @@ class SlideshowController(
                             datePinching = true
                             datePinchStartDist = twoPointerDist(e)
                             datePinchBaseScale = dateScale
+                        } else if (isNearMediaCard(e.getX(0), e.getY(0)) || isNearMediaCard(e.getX(1), e.getY(1))) {
+                            cancelLong()
+                            mediaPinching = true
+                            mediaPinchStartDist = twoPointerDist(e)
+                            mediaPinchBaseScale = mediaWidgetScale
                         }
                         return true
                     }
@@ -2159,6 +2628,15 @@ class SlideshowController(
                                 lastX = e.x; lastY = e.y
                                 if (abs(e.x - downX) > TAP_SLOP || abs(e.y - downY) > TAP_SLOP) moved = true
                             }
+                        } else if (mediaPinching) {
+                            if (e.pointerCount >= 2 && mediaPinchStartDist > 0f) {
+                                val d = twoPointerDist(e)
+                                if (d > 0f) {
+                                    mediaWidgetScale = (mediaPinchBaseScale * d / mediaPinchStartDist)
+                                        .coerceIn(ConfigReceiver.MIN_MEDIA_WIDGET_SCALE, ConfigReceiver.MAX_MEDIA_WIDGET_SCALE)
+                                    applyMediaWidgetScale()
+                                }
+                            }
                         } else if (!handled) {
                             val dx = e.x - downX
                             val dy = e.y - downY
@@ -2186,11 +2664,21 @@ class SlideshowController(
                             val rem = if (e.actionIndex == 0) 1 else 0
                             if (e.pointerCount > rem) { lastX = e.getX(rem); lastY = e.getY(rem) }
                             moved = true
+                        } else if (mediaPinching) {
+                            persistMediaWidgetScale()
+                            mediaPinching = false
+                            val rem = if (e.actionIndex == 0) 1 else 0
+                            if (e.pointerCount > rem) { lastX = e.getX(rem); lastY = e.getY(rem) }
+                            moved = true
                         }
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
                         cancelLong()
+                        if (mediaPinching) {
+                            persistMediaWidgetScale()
+                            mediaPinching = false
+                        }
                         if (editingClock) {
                             val dt = e.eventTime - downTime
                             if (!moved && !pinching && abs(e.x - downX) < TAP_SLOP &&
@@ -2223,6 +2711,10 @@ class SlideshowController(
                                 if (clockOnly) {
                                     // In low-light clock mode, center tap does nothing
                                 } else {
+                                    if (isMediaExpanded) {
+                                        collapseMediaCapsule()
+                                    }
+                                    revealTopControlsTemporarily(5000L)
                                     val width = v.width
                                     val tapX = e.x
                                     if (tapX < width * 0.25f) {
@@ -2243,6 +2735,10 @@ class SlideshowController(
                     }
                     MotionEvent.ACTION_CANCEL -> {
                         cancelLong()
+                        if (mediaPinching) {
+                            persistMediaWidgetScale()
+                            mediaPinching = false
+                        }
                         if (editingClock) { pinching = false; if (clockOnly) persistClockOnlyTransform() else persistClockTransform() }
                         else if (editingDate) { datePinching = false; persistDateTransform() }
                         return true
