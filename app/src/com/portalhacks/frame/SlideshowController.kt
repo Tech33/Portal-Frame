@@ -1090,8 +1090,8 @@ class SlideshowController(
         pillMetaBox.addView(pillArtistView)
 
         pillEqView = WaveformEqualizerView(context).apply {
-            val w = Ui.dp(context, 16f)
-            val h = Ui.dp(context, 14f)
+            val w = Ui.dp(context, 18f)
+            val h = Ui.dp(context, 16f)
             layoutParams = LinearLayout.LayoutParams(w, h).apply {
                 marginEnd = Ui.dp(context, 10f)
                 rightMargin = Ui.dp(context, 10f)
@@ -1146,10 +1146,11 @@ class SlideshowController(
         }
 
         nowPlayingEq = WaveformEqualizerView(context).apply {
-            val w = Ui.dp(context, 16f)
-            val h = Ui.dp(context, 14f)
+            val w = Ui.dp(context, 18f)
+            val h = Ui.dp(context, 16f)
             layoutParams = LinearLayout.LayoutParams(w, h).apply {
                 leftMargin = Ui.dp(context, 8f)
+                marginStart = Ui.dp(context, 8f)
             }
         }
 
@@ -3875,20 +3876,19 @@ class SlideshowController(
     }
 
     /**
-     * Compact, Apple-style 3-bar dancing audio equalizer wave.
-     * Renders dynamically strictly when music is playing; freezes flat when paused/stopped.
+     * Compact, Apple/Spotify-style 4-bar dancing audio equalizer wave.
+     * Renders dynamically strictly when music is playing; completely hidden (GONE) when paused/stopped.
+     * Uses hardware VSYNC postInvalidateOnAnimation for silky 60fps animation without timer leaks.
      */
     private class WaveformEqualizerView(c: Context) : View(c) {
         private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF1DB954.toInt() // Spotify Green
+            color = 0xFF1DB954.toInt() // Spotify Green default
             style = Paint.Style.FILL
         }
         private var isPlaying = false
-        private val anim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1000
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = LinearInterpolator()
-            addUpdateListener { invalidate() }
+
+        init {
+            visibility = GONE
         }
 
         fun setBarColor(color: Int) {
@@ -3897,45 +3897,68 @@ class SlideshowController(
         }
 
         fun setPlaying(playing: Boolean) {
-            if (isPlaying == playing) return
+            val changed = isPlaying != playing
             isPlaying = playing
+            visibility = if (playing) VISIBLE else GONE
             if (playing) {
-                if (!anim.isStarted) anim.start()
-            } else {
-                anim.cancel()
+                postInvalidateOnAnimation()
+            } else if (changed) {
                 invalidate()
             }
         }
 
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            if (isPlaying) postInvalidateOnAnimation()
+        }
+
+        override fun onVisibilityChanged(changedView: View, vis: Int) {
+            super.onVisibilityChanged(changedView, vis)
+            if (vis == VISIBLE && isPlaying) postInvalidateOnAnimation()
+        }
+
+        override fun onWindowVisibilityChanged(vis: Int) {
+            super.onWindowVisibilityChanged(vis)
+            if (vis == VISIBLE && isPlaying) postInvalidateOnAnimation()
+        }
+
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
+            if (!isPlaying) return
             val w = width.toFloat()
             val h = height.toFloat()
-            if (w <= 0 || h <= 0) return
+            if (w <= 0f || h <= 0f) return
 
-            val barCount = 3
-            val barW = Ui.dp(context, 3f).toFloat()
-            val gap = Ui.dp(context, 2.5f).toFloat()
+            val barCount = 4
+            val barW = Ui.dp(context, 2.8f).toFloat()
+            val gap = Ui.dp(context, 2.0f).toFloat()
             val totalW = barCount * barW + (barCount - 1) * gap
             val startX = (w - totalW) / 2f
             val corner = barW / 2f
 
-            val time = if (isPlaying) (System.currentTimeMillis() % 1200) / 1200f else 0f
+            val now = android.os.SystemClock.uptimeMillis() / 1000.0
 
+            // 4 distinct rhythmic oscillators synthesizing an active audio equalizer
+            val factors = floatArrayOf(
+                0.28f + 0.72f * kotlin.math.abs(kotlin.math.sin(now * 3.4)).toFloat(),
+                0.22f + 0.78f * kotlin.math.abs(kotlin.math.sin(now * 5.2 + 0.9)).toFloat(),
+                0.32f + 0.68f * kotlin.math.abs(kotlin.math.sin(now * 4.1 + 1.8)).toFloat(),
+                0.20f + 0.80f * kotlin.math.abs(kotlin.math.sin(now * 6.5 + 2.7)).toFloat(),
+            )
+
+            barPaint.alpha = 255
             for (i in 0 until barCount) {
-                val phase = (time + i * 0.33f) % 1.0f
-                val factor = if (isPlaying) {
-                    0.25f + 0.75f * (0.5f + 0.5f * kotlin.math.sin(phase * 2.0 * Math.PI).toFloat())
-                } else {
-                    0.20f
-                }
-                val barH = if (isPlaying) (h * factor).coerceIn(barW, h) else barW
+                val factor = factors[i].coerceIn(0.2f, 1.0f)
+                val barH = (h * factor).coerceIn(barW, h)
                 val left = startX + i * (barW + gap)
                 val top = h - barH
                 val right = left + barW
                 val bottom = h
-                barPaint.alpha = if (isPlaying) 255 else 115
                 canvas.drawRoundRect(left, top, right, bottom, corner, corner, barPaint)
+            }
+
+            if (isPlaying && isShown) {
+                postInvalidateOnAnimation()
             }
         }
     }
