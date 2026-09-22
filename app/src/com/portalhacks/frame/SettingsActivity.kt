@@ -263,7 +263,7 @@ class SettingsActivity : ComponentActivity() {
             } else {
                 onStatus("Permission required: allow Frame to install unknown apps, then tap Install.")
             }
-            onFinished(true)
+            onFinished(launched)
             return
         }
 
@@ -291,7 +291,7 @@ class SettingsActivity : ComponentActivity() {
                         } else {
                             onStatus("Permission required: allow Frame to install unknown apps, then tap Install.")
                         }
-                        onFinished(true)
+                        onFinished(launched)
                     }
                     is UpdateInstaller.Result.Error -> {
                         onStatus(result.message)
@@ -787,6 +787,7 @@ class SettingsActivity : ComponentActivity() {
         var albumRefreshStatus by remember { mutableStateOf("") }
         var checkingUpdate by remember { mutableStateOf(false) }
         var downloadingUpdate by remember { mutableStateOf(false) }
+        var installingUpdate by remember { mutableStateOf(false) }
         var downloadProgressPct by remember { mutableStateOf(0) }
         var updateStatus by remember { mutableStateOf("") }
         var pendingUpdate by remember { mutableStateOf<UpdateChecker.UpdateManifest?>(null) }
@@ -809,10 +810,18 @@ class SettingsActivity : ComponentActivity() {
         var isScreensaverActive by remember { mutableStateOf(isOurScreensaver()) }
         LaunchedEffect(resumeTick.intValue) {
             isScreensaverActive = isOurScreensaver()
+            // If user returned to Settings after an update attempt, check if new version took effect
+            pendingUpdate?.let { manifest ->
+                if (UpdateChecker.currentVersionCode(this@SettingsActivity) >= manifest.versionCode) {
+                    pendingUpdate = null
+                    updateStatus = "Successfully updated to ${manifest.versionName}!"
+                }
+            }
+            installingUpdate = false
         }
 
         LaunchedEffect(resumeTick.intValue, autoCheckUpdates) {
-            if (!autoCheckUpdates || checkingUpdate || downloadingUpdate) {
+            if (!autoCheckUpdates || checkingUpdate || downloadingUpdate || installingUpdate) {
                 return@LaunchedEffect
             }
             val last = prefs.getLong(ConfigReceiver.KEY_LAST_UPDATE_CHECK_MS, 0L)
@@ -1186,7 +1195,7 @@ class SettingsActivity : ComponentActivity() {
                 Spacer(Modifier.height(12.dp))
                 SecondaryBtn(
                     if (checkingUpdate) "Checking…" else "Check for updates",
-                    enabled = !checkingUpdate && !downloadingUpdate,
+                    enabled = !checkingUpdate && !downloadingUpdate && !installingUpdate,
                 ) {
                     checkingUpdate = true
                     updateStatus = ""
@@ -1206,19 +1215,27 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(10.dp))
                     PrimaryBtn(
                         when {
+                            installingUpdate -> "Installing update… Please wait"
                             downloadingUpdate -> if (downloadProgressPct > 0) "Downloading… $downloadProgressPct%" else "Downloading…"
                             isApkReady -> "Install ${manifest.versionName} Now"
                             else -> "Download & Install ${manifest.versionName}"
                         },
-                        enabled = !downloadingUpdate,
+                        enabled = !downloadingUpdate && !installingUpdate,
                     ) {
-                        downloadingUpdate = true
+                        if (isApkReady) {
+                            installingUpdate = true
+                        } else {
+                            downloadingUpdate = true
+                        }
                         downloadAndInstallUpdate(
                             manifest = manifest,
                             onProgress = { pct, _, _ -> downloadProgressPct = pct },
                             onStatus = { updateStatus = it },
-                            onFinished = {
+                            onFinished = { success ->
                                 downloadingUpdate = false
+                                if (!success) {
+                                    installingUpdate = false
+                                }
                             },
                         )
                     }

@@ -14,6 +14,7 @@ class PortalAccessibilityService : AccessibilityService() {
         @Volatile var instance: PortalAccessibilityService? = null
         private const val TAG = "PortalAccessibility"
         @Volatile var autoInstallArmed = false
+        @Volatile var hasClickedInstall = false
         private var armedTimestamp = 0L
         private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -27,17 +28,40 @@ class PortalAccessibilityService : AccessibilityService() {
                 instance?.let { s ->
                     val root = s.rootInActiveWindow
                     if (root != null) {
-                        if (s.clickInstallButton(root)) {
-                            Log.i(TAG, "polling auto-install performed action")
+                        val pkg = root.packageName?.toString() ?: ""
+                        if (isTargetInstallerPackage(pkg)) {
+                            if (s.clickInstallButton(root)) {
+                                Log.i(TAG, "polling auto-install performed action on $pkg")
+                            }
                         }
                     }
                 }
-                mainHandler.postDelayed(this, 400L)
+                mainHandler.postDelayed(this, 500L)
             }
         }
 
         @Volatile var notificationAccessArmed = false
         private var notificationArmedTimestamp = 0L
+
+        fun isFramePackage(pkg: CharSequence?): Boolean {
+            val name = pkg?.toString()?.lowercase() ?: return false
+            return name == "com.portalhacks.frame" || name.contains("portalhacks")
+        }
+
+        fun isTargetInstallerPackage(pkg: CharSequence?): Boolean {
+            val name = pkg?.toString()?.lowercase() ?: return false
+            if (isFramePackage(name)) return false
+            return name.contains("packageinstaller") ||
+                   name.contains("installer") ||
+                   name == "com.android.settings" ||
+                   name == "com.google.android.settings"
+        }
+
+        fun isTargetSettingsPackage(pkg: CharSequence?): Boolean {
+            val name = pkg?.toString()?.lowercase() ?: return false
+            if (isFramePackage(name)) return false
+            return name.contains("settings")
+        }
 
         fun armNotificationAccessEnabler(context: Context) {
             if (ScreenControl.isNotificationListenerEnabled(context)) return
@@ -62,15 +86,17 @@ class PortalAccessibilityService : AccessibilityService() {
 
         fun armAutoInstall() {
             autoInstallArmed = true
+            hasClickedInstall = false
             armedTimestamp = System.currentTimeMillis()
             mainHandler.removeCallbacks(pollRunnable)
             pollRunnable.attempts = 0
-            mainHandler.post(pollRunnable)
+            mainHandler.postDelayed(pollRunnable, 500L)
             Log.i(TAG, "armed auto-install with window polling and event interception")
         }
 
         fun disarmAutoInstall() {
             autoInstallArmed = false
+            hasClickedInstall = false
             mainHandler.removeCallbacks(pollRunnable)
             Log.i(TAG, "disarmed auto-install")
         }
@@ -95,11 +121,15 @@ class PortalAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val root = rootInActiveWindow ?: event?.source ?: return
+        val pkg = (root.packageName ?: event?.packageName)?.toString() ?: ""
+
+        // NEVER interact with Frame's own UI through accessibility automation!
+        if (isFramePackage(pkg)) return
 
         if (notificationAccessArmed) {
             if (System.currentTimeMillis() - notificationArmedTimestamp > 30_000L) {
                 disarmNotificationAccess()
-            } else if (handleNotificationAccessWindow(root)) {
+            } else if (isTargetSettingsPackage(pkg) && handleNotificationAccessWindow(root)) {
                 return
             }
         }
@@ -109,10 +139,14 @@ class PortalAccessibilityService : AccessibilityService() {
             disarmAutoInstall()
             return
         }
-        clickInstallButton(root)
+        if (isTargetInstallerPackage(pkg)) {
+            clickInstallButton(root)
+        }
     }
 
     fun handleNotificationAccessWindow(node: AccessibilityNodeInfo): Boolean {
+        if (isFramePackage(node.packageName)) return false
+
         val text = node.text?.toString()?.trim()?.lowercase() ?: ""
         val desc = node.contentDescription?.toString()?.trim()?.lowercase() ?: ""
         val viewId = node.viewIdResourceName?.lowercase() ?: ""
@@ -121,13 +155,11 @@ class PortalAccessibilityService : AccessibilityService() {
         val isAllowDialogBtn = (text == "allow" || text == "ok" || text == "turn on" ||
                 desc == "allow" || desc == "ok" || desc == "turn on" ||
                 viewId.endsWith(":id/button1") || viewId.endsWith(":id/ok_button"))
-        if (isAllowDialogBtn && node.isClickable) {
-            if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                Log.i(TAG, "auto-enabled notification access: confirmed dialog [Allow]")
-                disarmNotificationAccess()
-                mainHandler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 300L)
-                return true
-            }
+        if (isAllowDialogBtn && performClick(node)) {
+            Log.i(TAG, "auto-enabled notification access: confirmed dialog [Allow]")
+            disarmNotificationAccess()
+            mainHandler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 300L)
+            return true
         }
 
         // 2. Check for "Frame" / "Frame Media Controller" row switch
@@ -174,7 +206,22 @@ class PortalAccessibilityService : AccessibilityService() {
         return null
     }
 
+    private fun performClick(node: AccessibilityNodeInfo): Boolean {
+        var cur: AccessibilityNodeInfo? = node
+        var depth = 0
+        while (cur != null && depth < 3) {
+            if (cur.isClickable && cur.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
+            }
+            cur = cur.parent
+            depth++
+        }
+        return false
+    }
+
     fun clickInstallButton(node: AccessibilityNodeInfo): Boolean {
+        if (isFramePackage(node.packageName)) return false
+
         val text = node.text?.toString()?.trim()?.lowercase() ?: ""
         val desc = node.contentDescription?.toString()?.trim()?.lowercase() ?: ""
         val viewId = node.viewIdResourceName?.lowercase() ?: ""
@@ -185,39 +232,37 @@ class PortalAccessibilityService : AccessibilityService() {
         if (isAllowSourceSwitch) {
             if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                 Log.i(TAG, "auto-install enabled unknown sources switch")
-                performGlobalAction(GLOBAL_ACTION_BACK)
+                mainHandler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 300L)
                 return true
             }
         }
 
-        // 2. Check for Install / Update button
-        val isInstallTarget = text == "install" || text == "update" ||
-                text.contains("install") || text.contains("update") ||
-                desc == "install" || desc == "update" ||
-                desc.contains("install") || desc.contains("update") ||
-                viewId.endsWith(":id/ok_button") ||
-                viewId.endsWith(":id/button1") ||
-                viewId.endsWith(":id/install_confirm_button") ||
-                viewId.endsWith(":id/package_installer_install_button")
+        // 2. Check for Done / Open button (installation complete)
+        val isDoneOrOpen = (
+            text == "open" || text == "done" ||
+            desc == "open" || desc == "done" ||
+            viewId.endsWith(":id/done_button") ||
+            viewId.endsWith(":id/launch_button")
+        )
+        if (isDoneOrOpen && performClick(node)) {
+            Log.i(TAG, "auto-install clicked completion button: text=$text, id=$viewId")
+            disarmAutoInstall()
+            return true
+        }
 
-        // 3. Check for Done / Open button
-        val isDoneOrOpen = text == "open" || text == "done" ||
-                desc == "open" || desc == "done" ||
-                viewId.endsWith(":id/done_button") ||
-                viewId.endsWith(":id/launch_button")
-
-        if (isInstallTarget || isDoneOrOpen) {
-            var target: AccessibilityNodeInfo? = node
-            while (target != null) {
-                if (target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                    Log.i(TAG, "auto-install clicked (isInstall=$isInstallTarget, isDoneOrOpen=$isDoneOrOpen, id=$viewId, text=$text)")
-                    if (isDoneOrOpen) {
-                        disarmAutoInstall()
-                    }
-                    return true
-                }
-                target = target.parent
-            }
+        // 3. Check for Install / Update button
+        val isInstallTarget = !hasClickedInstall && (
+            text == "install" || text == "update" || text == "install update" ||
+            desc == "install" || desc == "update" || desc == "install update" ||
+            viewId.endsWith(":id/ok_button") ||
+            viewId.endsWith(":id/button1") ||
+            viewId.endsWith(":id/install_confirm_button") ||
+            viewId.endsWith(":id/package_installer_install_button")
+        )
+        if (isInstallTarget && performClick(node)) {
+            Log.i(TAG, "auto-install clicked install/update button: text=$text, id=$viewId")
+            hasClickedInstall = true
+            return true
         }
 
         for (i in 0 until node.childCount) {
