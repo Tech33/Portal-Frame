@@ -102,7 +102,6 @@ class SlideshowController(
     private lateinit var pillArtImageView: ImageView
     private lateinit var pillTitleView: ContinuousMarqueeTextView
     private lateinit var pillArtistView: ContinuousMarqueeTextView
-    private lateinit var pillEqView: WaveformEqualizerView
     private lateinit var pillPlayBtn: ImageView
     private lateinit var mediaExpandedCard: LinearLayout
     private lateinit var collapseBtn: TextView
@@ -113,7 +112,6 @@ class SlideshowController(
     private lateinit var nowPlayingDeviceBadge: TextView
     private lateinit var nowPlayingSourceBadge: TextView
     private lateinit var nowPlayingOpenBtn: TextView
-    private lateinit var nowPlayingEq: WaveformEqualizerView
     private lateinit var nowPlayingPlayBtn: ImageView
     private lateinit var nowPlayingPrevBtn: ImageView
     private lateinit var nowPlayingNextBtn: ImageView
@@ -1067,8 +1065,8 @@ class SlideshowController(
                 Ui.dp(context, 140f),
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                marginEnd = Ui.dp(context, 8f)
-                rightMargin = Ui.dp(context, 8f)
+                marginEnd = Ui.dp(context, 10f)
+                rightMargin = Ui.dp(context, 10f)
             }
         }
 
@@ -1089,15 +1087,6 @@ class SlideshowController(
         pillMetaBox.addView(pillTitleView)
         pillMetaBox.addView(pillArtistView)
 
-        pillEqView = WaveformEqualizerView(context).apply {
-            val w = Ui.dp(context, 18f)
-            val h = Ui.dp(context, 16f)
-            layoutParams = LinearLayout.LayoutParams(w, h).apply {
-                marginEnd = Ui.dp(context, 10f)
-                rightMargin = Ui.dp(context, 10f)
-            }
-        }
-
         pillPlayBtn = ImageView(context).apply {
             setImageResource(R.drawable.ic_play)
             setColorFilter(Color.BLACK)
@@ -1115,7 +1104,6 @@ class SlideshowController(
 
         mediaPillRow.addView(pillArtImageView)
         mediaPillRow.addView(pillMetaBox)
-        mediaPillRow.addView(pillEqView)
         mediaPillRow.addView(pillPlayBtn)
 
         mediaExpandedCard = LinearLayout(context).apply {
@@ -1124,7 +1112,7 @@ class SlideshowController(
             visibility = View.GONE
         }
 
-        // Header row: Badge + Equalizer + Spacer + "Open ↗" button
+        // Header row: Badge + Spacer + "Open ↗" button
         val headerRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1145,15 +1133,6 @@ class SlideshowController(
             text = "SPOTIFY"
         }
 
-        nowPlayingEq = WaveformEqualizerView(context).apply {
-            val w = Ui.dp(context, 18f)
-            val h = Ui.dp(context, 16f)
-            layoutParams = LinearLayout.LayoutParams(w, h).apply {
-                leftMargin = Ui.dp(context, 8f)
-                marginStart = Ui.dp(context, 8f)
-            }
-        }
-
         val headerSpacer = View(context).apply {
             layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
         }
@@ -1169,7 +1148,6 @@ class SlideshowController(
         }
 
         headerRow.addView(nowPlayingSourceBadge)
-        headerRow.addView(nowPlayingEq)
         headerRow.addView(headerSpacer)
         headerRow.addView(nowPlayingOpenBtn)
 
@@ -1803,8 +1781,6 @@ class SlideshowController(
             }
             nowPlayingSourceBadge.background = Ui.roundRect(accentColor, Ui.dp(context, 5f))
             nowPlayingSourceBadge.setTextColor(if (isSonos || isAirPlay) Color.WHITE else Color.BLACK)
-            nowPlayingEq.setBarColor(accentColor)
-            if (::pillEqView.isInitialized) pillEqView.setBarColor(accentColor)
             nowPlayingVolumeSeek.progressTintList = android.content.res.ColorStateList.valueOf(accentColor)
 
             val dev = when {
@@ -1823,8 +1799,6 @@ class SlideshowController(
             }
             nowPlayingPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
             if (::pillPlayBtn.isInitialized) pillPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
-            nowPlayingEq.setPlaying(state.isPlaying)
-            if (::pillEqView.isInitialized) pillEqView.setPlaying(state.isPlaying)
 
             if (!isUserTrackingVolume) {
                 val vol = if (state.volume >= 0) state.volume else MediaMonitor.getStreamVolumePercent(context)
@@ -1862,8 +1836,6 @@ class SlideshowController(
 
     private fun hideNowPlaying() {
         if (nowPlayingCard.visibility == View.VISIBLE) {
-            nowPlayingEq.setPlaying(false)
-            if (::pillEqView.isInitialized) pillEqView.setPlaying(false)
             collapseMediaCapsule()
             nowPlayingCard.animate()
                 .alpha(0f)
@@ -3882,94 +3854,6 @@ class SlideshowController(
                 floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP,
             )
             canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
-        }
-    }
-
-    /**
-     * Compact, Apple/Spotify-style 4-bar dancing audio equalizer wave.
-     * Renders dynamically strictly when music is playing; completely hidden (GONE) when paused/stopped.
-     * Uses hardware VSYNC postInvalidateOnAnimation for silky 60fps animation without timer leaks.
-     */
-    private class WaveformEqualizerView(c: Context) : View(c) {
-        private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF1DB954.toInt() // Spotify Green default
-            style = Paint.Style.FILL
-        }
-        private var isPlaying = false
-
-        init {
-            visibility = GONE
-        }
-
-        fun setBarColor(color: Int) {
-            barPaint.color = color
-            invalidate()
-        }
-
-        fun setPlaying(playing: Boolean) {
-            val changed = isPlaying != playing
-            isPlaying = playing
-            visibility = if (playing) VISIBLE else GONE
-            if (playing) {
-                postInvalidateOnAnimation()
-            } else if (changed) {
-                invalidate()
-            }
-        }
-
-        override fun onAttachedToWindow() {
-            super.onAttachedToWindow()
-            if (isPlaying) postInvalidateOnAnimation()
-        }
-
-        override fun onVisibilityChanged(changedView: View, vis: Int) {
-            super.onVisibilityChanged(changedView, vis)
-            if (vis == VISIBLE && isPlaying) postInvalidateOnAnimation()
-        }
-
-        override fun onWindowVisibilityChanged(vis: Int) {
-            super.onWindowVisibilityChanged(vis)
-            if (vis == VISIBLE && isPlaying) postInvalidateOnAnimation()
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            if (!isPlaying) return
-            val w = width.toFloat()
-            val h = height.toFloat()
-            if (w <= 0f || h <= 0f) return
-
-            val barCount = 4
-            val barW = Ui.dp(context, 2.8f).toFloat()
-            val gap = Ui.dp(context, 2.0f).toFloat()
-            val totalW = barCount * barW + (barCount - 1) * gap
-            val startX = (w - totalW) / 2f
-            val corner = barW / 2f
-
-            val now = android.os.SystemClock.uptimeMillis() / 1000.0
-
-            // 4 distinct rhythmic oscillators synthesizing an active audio equalizer
-            val factors = floatArrayOf(
-                0.28f + 0.72f * kotlin.math.abs(kotlin.math.sin(now * 3.4)).toFloat(),
-                0.22f + 0.78f * kotlin.math.abs(kotlin.math.sin(now * 5.2 + 0.9)).toFloat(),
-                0.32f + 0.68f * kotlin.math.abs(kotlin.math.sin(now * 4.1 + 1.8)).toFloat(),
-                0.20f + 0.80f * kotlin.math.abs(kotlin.math.sin(now * 6.5 + 2.7)).toFloat(),
-            )
-
-            barPaint.alpha = 255
-            for (i in 0 until barCount) {
-                val factor = factors[i].coerceIn(0.2f, 1.0f)
-                val barH = (h * factor).coerceIn(barW, h)
-                val left = startX + i * (barW + gap)
-                val top = h - barH
-                val right = left + barW
-                val bottom = h
-                canvas.drawRoundRect(left, top, right, bottom, corner, corner, barPaint)
-            }
-
-            if (isPlaying && isShown) {
-                postInvalidateOnAnimation()
-            }
         }
     }
 
