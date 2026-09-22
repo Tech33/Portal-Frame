@@ -1771,7 +1771,17 @@ class SlideshowController(
                 applyNowPlayingStyle(style)
             }
             val displayTitle = if (state.title.isNotEmpty()) state.title else "Playing Audio"
-            val displayArtist = if (state.artist.isNotEmpty()) state.artist else (if (state.source.isNotEmpty()) state.source else "Media")
+            val rawArtist = state.artist.trim()
+            val rawAlbum = state.album.trim()
+            val displayArtist = when {
+                rawArtist.isNotEmpty() && rawAlbum.isNotEmpty() &&
+                    !rawAlbum.equals(state.title, ignoreCase = true) &&
+                    !rawAlbum.equals(rawArtist, ignoreCase = true) -> "$rawArtist • $rawAlbum"
+                rawArtist.isNotEmpty() -> rawArtist
+                rawAlbum.isNotEmpty() -> rawAlbum
+                state.source.isNotEmpty() -> state.source
+                else -> "Media"
+            }
 
             nowPlayingTitle.text = displayTitle
             nowPlayingArtist.text = displayArtist
@@ -3964,9 +3974,10 @@ class SlideshowController(
     }
 
     /**
-     * Seamless, infinite looping marquee text ticker modeled after the Spotify mobile and desktop player.
-     * When text exceeds view width, it continuously translates leftwards without stopping or pausing,
-     * seamlessly repeating with an edge gap. Never freezes on window focus loss.
+     * Seamless, infinite looping marquee text ticker modeled after the Spotify mobile player.
+     * When text exceeds view width, pauses briefly so the user can read the opening (1.5s),
+     * then continuously translates leftwards with sub-pixel precision on hardware VSYNC pulses.
+     * Eliminates text jitter by enabling subpixel anti-aliasing.
      */
     private class ContinuousMarqueeTextView @JvmOverloads constructor(
         c: Context,
@@ -3975,51 +3986,68 @@ class SlideshowController(
     ) : TextView(c, attrs, defStyleAttr) {
 
         private var textWidth = 0f
-        private var xOffset = 0f
-        private var animator: ValueAnimator? = null
-        private val gap = Ui.dp(context, 44f).toFloat()
+        private val gap = Ui.dp(context, 48f).toFloat()
+        private val speedPxPerMs = Ui.dp(context, 25f).toFloat() / 1000f // 25 dp/sec relaxed readable speed
+        private var animStartTime = 0L
+        private var isScrolling = false
 
         init {
             setSingleLine(true)
             ellipsize = null
+            paint.isAntiAlias = true
+            paint.isSubpixelText = true
+            paint.isLinearText = true
         }
 
         override fun isFocused(): Boolean = true
 
         override fun onTextChanged(text: CharSequence?, start: Int, lengthBefore: Int, lengthAfter: Int) {
             super.onTextChanged(text, start, lengthBefore, lengthAfter)
-            restartMarquee()
+            measureAndRestart()
         }
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
             super.onSizeChanged(w, h, oldw, oldh)
-            restartMarquee()
+            measureAndRestart()
         }
 
-        private fun restartMarquee() {
-            animator?.cancel()
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            if (isScrolling) {
+                animStartTime = android.os.SystemClock.uptimeMillis() + 1000L
+                postInvalidateOnAnimation()
+            }
+        }
+
+        override fun onVisibilityChanged(changedView: View, vis: Int) {
+            super.onVisibilityChanged(changedView, vis)
+            if (vis == VISIBLE && isScrolling) {
+                postInvalidateOnAnimation()
+            }
+        }
+
+        override fun onWindowVisibilityChanged(vis: Int) {
+            super.onWindowVisibilityChanged(vis)
+            if (vis == VISIBLE && isScrolling) {
+                postInvalidateOnAnimation()
+            }
+        }
+
+        private fun measureAndRestart() {
             val textStr = text?.toString() ?: ""
-            if (textStr.isEmpty() || width <= 0) return
+            if (textStr.isEmpty() || width <= 0) {
+                isScrolling = false
+                return
+            }
             textWidth = paint.measureText(textStr)
             val availableW = (width - paddingLeft - paddingRight).toFloat()
             if (textWidth <= availableW) {
-                xOffset = 0f
+                isScrolling = false
                 invalidate()
-                return
-            }
-
-            val totalDistance = textWidth + gap
-            val speedPxPerSec = Ui.dp(context, 34f).toFloat()
-            val durationMs = ((totalDistance / speedPxPerSec) * 1000L).toLong().coerceIn(3500L, 25000L)
-            animator = ValueAnimator.ofFloat(0f, totalDistance).apply {
-                duration = durationMs
-                repeatCount = ValueAnimator.INFINITE
-                interpolator = LinearInterpolator()
-                addUpdateListener {
-                    xOffset = it.animatedValue as Float
-                    invalidate()
-                }
-                start()
+            } else {
+                isScrolling = true
+                animStartTime = android.os.SystemClock.uptimeMillis() + 1500L // 1.5s initial pause like Spotify
+                postInvalidateOnAnimation()
             }
         }
 
@@ -4030,22 +4058,37 @@ class SlideshowController(
             val fm = paint.fontMetrics
             val baseline = (height - fm.descent - fm.ascent) / 2f
 
-            if (textWidth <= availableW) {
+            if (!isScrolling || textWidth <= availableW) {
                 canvas.drawText(textStr, paddingLeft.toFloat(), baseline, paint)
+                return
+            }
+
+            val now = android.os.SystemClock.uptimeMillis()
+            val elapsed = now - animStartTime
+            val totalDistance = textWidth + gap
+
+            val xOffset = if (elapsed < 0L) {
+                0f // Initial pause before marquee begins
             } else {
-                canvas.save()
-                canvas.clipRect(paddingLeft.toFloat(), 0f, (width - paddingRight).toFloat(), height.toFloat())
-                val x1 = paddingLeft - xOffset
-                canvas.drawText(textStr, x1, baseline, paint)
-                val x2 = x1 + textWidth + gap
-                canvas.drawText(textStr, x2, baseline, paint)
-                canvas.restore()
+                ((elapsed * speedPxPerMs) % totalDistance).toFloat()
+            }
+
+            canvas.save()
+            canvas.clipRect(paddingLeft.toFloat(), 0f, (width - paddingRight).toFloat(), height.toFloat())
+            val x1 = paddingLeft - xOffset
+            canvas.drawText(textStr, x1, baseline, paint)
+            val x2 = x1 + totalDistance
+            canvas.drawText(textStr, x2, baseline, paint)
+            canvas.restore()
+
+            if (isShown) {
+                postInvalidateOnAnimation()
             }
         }
 
         override fun onDetachedFromWindow() {
             super.onDetachedFromWindow()
-            animator?.cancel()
+            isScrolling = false
         }
     }
 
