@@ -750,7 +750,7 @@ class SlideshowController(
             background = Ui.roundRect(0x99121418.toInt(), Ui.dp(context, 23f)).apply {
                 setStroke(Ui.dp(context, 1.2f), 0x4DFFFFFF)
             }
-            alpha = 0.85f
+            alpha = 0.90f
             val padH = Ui.dp(context, 18f)
             val padV = Ui.dp(context, 11f)
             setPadding(padH, padV, padH, padV)
@@ -782,7 +782,7 @@ class SlideshowController(
             setOnTouchListener { v, event ->
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> v.alpha = 1.0f
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.85f
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.90f
                 }
                 false
             }
@@ -850,7 +850,7 @@ class SlideshowController(
             val shouldShowSpotify = spotifyInstalled && spotifyPrefEnabled && !clockOnly && !isMediaActive
             spotifyShortcutButton.visibility = if (shouldShowSpotify) View.VISIBLE else View.GONE
             if (shouldShowSpotify) {
-                spotifyShortcutButton.alpha = 0.7f
+                spotifyShortcutButton.alpha = 0.90f
                 spotifyShortcutButton.bringToFront()
             }
         }
