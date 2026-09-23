@@ -1552,37 +1552,6 @@ class SettingsActivity : ComponentActivity() {
                 )
                 val nowPlayingEnabled = rememberPrefBoolean(ConfigReceiver.KEY_NOW_PLAYING_ENABLED, ConfigReceiver.DEFAULT_NOW_PLAYING_ENABLED)
                 if (nowPlayingEnabled.value) {
-                    val currentStyle = rememberPrefString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
-                    val styleVal = currentStyle.value ?: ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE
-                    val styleLabel = when (styleVal) {
-                        "capsule" -> "Floating Capsule"
-                        "frosted" -> "Frosted Glass"
-                        "compact" -> "Compact Docked"
-                        else -> "Classic Matte"
-                    }
-                    val styleSub = when (styleVal) {
-                        "capsule" -> "Slim expandable floating pill docked at bottom-right with pinch-to-zoom."
-                        "frosted" -> "Translucent acrylic with vibrant EQ wave and crisp borders."
-                        "compact" -> "Slim horizontal mini-dock leaving 80%+ of the photo visible."
-                        else -> "Signature Google Nest Hub matte card (#202124) with deep drop shadow."
-                    }
-                    Divider()
-                    CycleRow(
-                        label = "Widget Design Style",
-                        value = styleLabel,
-                        iconRes = R.drawable.ic_ambient,
-                        iconBg = Color(0xFF5856D6),
-                        subtitle = styleSub
-                    ) {
-                        val next = when (styleVal) {
-                            "capsule" -> "classic"
-                            "classic" -> "frosted"
-                            "frosted" -> "compact"
-                            else -> "capsule"
-                        }
-                        currentStyle.value = next
-                        prefs.edit().putString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, next).apply()
-                    }
                     Divider()
                     OpacitySliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF007AFF))
                     Divider()
