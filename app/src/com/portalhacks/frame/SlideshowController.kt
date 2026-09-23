@@ -152,7 +152,7 @@ class SlideshowController(
     private var isGlassHeartLiked: Boolean = false
     private var isGlassVolumeDrawerOpen: Boolean = false
     private var isUserTrackingTimeline: Boolean = false
-    private lateinit var pauseMenuHaBtn: TextView
+    private lateinit var pauseHaIconBtn: ImageView
 
     private lateinit var topControlsRow: LinearLayout
     private lateinit var spotifyShortcutButton: LinearLayout
@@ -1022,6 +1022,12 @@ class SlideshowController(
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (isPinching) return true
+                    // When resting capsule is shown, do NOT intercept single-finger dragging:
+                    // Swipe-to-skip (Left for Next, Right for Previous) on resting pill takes priority!
+                    val isCapsuleResting = !isMediaExpanded && ::mediaPillRow.isInitialized && mediaPillRow.visibility == View.VISIBLE
+                    if (isCapsuleResting) {
+                        return false
+                    }
                     if (ev.pointerCount == 1) {
                         val dx = ev.rawX - initialRawX
                         val dy = ev.rawY - initialRawY
@@ -1056,6 +1062,10 @@ class SlideshowController(
                             onScaleRatioChanged?.invoke(ratio, pinchBaseScale)
                         }
                         return true
+                    }
+                    val isCapsuleResting = !isMediaExpanded && ::mediaPillRow.isInitialized && mediaPillRow.visibility == View.VISIBLE
+                    if (isCapsuleResting && !isPinching) {
+                        return false
                     }
                     if (isDragging || (!isPinching && event.pointerCount == 1)) {
                         val dx = event.rawX - initialRawX
@@ -1197,6 +1207,11 @@ class SlideshowController(
             }
         })
 
+        var pillDownX = 0f
+        var pillDownY = 0f
+        var pillDownTime = 0L
+        var pillSwiped = false
+
         mediaPillRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1213,6 +1228,39 @@ class SlideshowController(
                 if (rectPlay.contains(x, y) || rectArt.contains(x, y)) {
                     false
                 } else {
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            pillDownX = event.x
+                            pillDownY = event.y
+                            pillDownTime = event.eventTime
+                            pillSwiped = false
+                            parent?.requestDisallowInterceptTouchEvent(true)
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            val dx = event.x - pillDownX
+                            val dy = event.y - pillDownY
+                            if (!pillSwiped && Math.abs(dx) > Ui.dp(context, 26f) && Math.abs(dx) > Math.abs(dy) * 1.2f) {
+                                pillSwiped = true
+                                if (dx < 0) {
+                                    MediaMonitor.next(context)
+                                    animatePillNudge(-Ui.dp(context, 10f).toFloat())
+                                } else {
+                                    MediaMonitor.prev(context)
+                                    animatePillNudge(Ui.dp(context, 10f).toFloat())
+                                }
+                            }
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            if (!pillSwiped) {
+                                val dx = Math.abs(event.x - pillDownX)
+                                val dy = Math.abs(event.y - pillDownY)
+                                val dt = event.eventTime - pillDownTime
+                                if (dx < Ui.dp(context, 16f) && dy < Ui.dp(context, 16f) && dt < 450) {
+                                    expandMediaCapsule()
+                                }
+                            }
+                        }
+                    }
                     pillGestureDetector.onTouchEvent(event)
                     true
                 }
@@ -2747,29 +2795,6 @@ class SlideshowController(
             }
         }
 
-        pauseMenuHaBtn = TextView(context).apply {
-            text = "🏠 Home Assistant"
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 20f
-            typeface = Ui.medium(context)
-            gravity = Gravity.CENTER
-            val paddingH = Ui.dp(context, 28f)
-            val paddingV = Ui.dp(context, 16f)
-            setPadding(paddingH, paddingV, paddingH, paddingV)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xCC0A84FF.toInt())
-                cornerRadius = Ui.dp(context, 26f).toFloat()
-                setStroke(Ui.dp(context, 1.2f), 0xFFFFFFFF.toInt())
-            }
-            elevation = Ui.dp(context, 8f).toFloat()
-            isClickable = true
-            isFocusable = true
-            visibility = View.GONE
-            setOnClickListener {
-                onOpenHomeAssistant?.run()
-            }
-        }
-
         val lpExit = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -2780,17 +2805,44 @@ class SlideshowController(
         ).apply {
             leftMargin = Ui.dp(context, 14f)
         }
-        val lpHa = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-        ).apply {
-            leftMargin = Ui.dp(context, 14f)
-        }
 
         menuContainer.addView(exitBtn, lpExit)
         menuContainer.addView(settingsBtn, lpSettings)
-        menuContainer.addView(pauseMenuHaBtn, lpHa)
         playButtonOverlay.addView(menuContainer)
+
+        pauseHaIconBtn = ImageView(context).apply {
+            setImageResource(R.drawable.ic_home_assistant)
+            setColorFilter(0xFF0A84FF.toInt())
+            val s = Ui.dp(context, 52f)
+            layoutParams = FrameLayout.LayoutParams(s, s).apply {
+                gravity = Gravity.TOP or Gravity.END
+                topMargin = Ui.dp(context, 24f)
+                rightMargin = Ui.dp(context, 24f)
+                marginEnd = Ui.dp(context, 24f)
+            }
+            val p = Ui.dp(context, 12f)
+            setPadding(p, p, p, p)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x77000000)
+                setStroke(Ui.dp(context, 1.2f), 0x80FFFFFF.toInt())
+            }
+            elevation = Ui.dp(context, 8f).toFloat()
+            isClickable = true
+            isFocusable = true
+            visibility = View.GONE
+            setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> v.alpha = 0.65f
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 1.0f
+                }
+                false
+            }
+            setOnClickListener {
+                onOpenHomeAssistant?.run()
+            }
+        }
+        playButtonOverlay.addView(pauseHaIconBtn)
 
         // Left Navigation Arrow Button
         val leftArrowBtn = TextView(context).apply {
@@ -2927,8 +2979,8 @@ class SlideshowController(
         val haEnabled = prefs.getBoolean(ConfigReceiver.KEY_HA_EMBEDDED, ConfigReceiver.DEFAULT_HA_EMBEDDED)
         val showBtn = prefs.getBoolean(ConfigReceiver.KEY_HA_BUTTON, ConfigReceiver.DEFAULT_HA_BUTTON)
         val haUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, "")?.trim() ?: ""
-        if (::pauseMenuHaBtn.isInitialized) {
-            pauseMenuHaBtn.visibility = if (haEnabled && showBtn && haUrl.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
+        if (::pauseHaIconBtn.isInitialized) {
+            pauseHaIconBtn.visibility = if (haEnabled && showBtn && haUrl.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
         }
         playButtonOverlay.animate().cancel()
         playButtonOverlay.alpha = 0f
