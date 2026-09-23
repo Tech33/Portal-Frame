@@ -192,6 +192,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_NOW_PLAYING_STYLE = "now_playing_style" // "capsule", "classic", "frosted", "compact"
         const val KEY_NOW_PLAYING_OPACITY = "now_playing_opacity" // int: 2..100%
         const val KEY_MEDIA_WIDGET_SCALE = "media_widget_scale"
+        const val KEY_MEDIA_VISUALIZER = "media_visualizer"
 
         // MQTT and Embedded Home Assistant keys
         const val KEY_MQTT_ENABLED = "mqtt_enabled"
@@ -296,6 +297,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val MIN_MEDIA_WIDGET_SCALE = 0.6f
         const val MAX_MEDIA_WIDGET_SCALE = 1.6f
         const val DEFAULT_PERSISTENT_EXIT_BUTTON = false
+        const val DEFAULT_MEDIA_VISUALIZER = false
 
         // ADB-settable boolean extras (extra name -> pref key) for quick testing
         private val BOOL_EXTRAS = arrayOf(
@@ -317,6 +319,7 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("presence_enabled", KEY_PRESENCE_ENABLED),
             arrayOf("airplay_enabled", KEY_AIRPLAY_ENABLED),
             arrayOf("now_playing_enabled", KEY_NOW_PLAYING_ENABLED),
+            arrayOf("media_visualizer", KEY_MEDIA_VISUALIZER),
         )
 
         /** True for a recognised shared-album HTTPS link (Google Photos or iCloud). */
