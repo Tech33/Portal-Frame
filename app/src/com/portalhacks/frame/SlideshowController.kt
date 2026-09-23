@@ -2032,6 +2032,28 @@ class SlideshowController(
             clipToPadding = false
         }
 
+        val exitBtn = TextView(context).apply {
+            text = "✕ Exit"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 20f
+            typeface = Ui.medium(context)
+            gravity = Gravity.CENTER
+            val paddingH = Ui.dp(context, 34f)
+            val paddingV = Ui.dp(context, 16f)
+            setPadding(paddingH, paddingV, paddingH, paddingV)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xCCFF3B30.toInt())
+                cornerRadius = Ui.dp(context, 26f).toFloat()
+                setStroke(Ui.dp(context, 1.5f), 0xFFFFFFFF.toInt())
+            }
+            elevation = Ui.dp(context, 8f).toFloat()
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                onDismiss?.run()
+            }
+        }
+
         val settingsBtn = TextView(context).apply {
             text = "⚙ Settings"
             setTextColor(0xFFFFFFFF.toInt())
@@ -2054,11 +2076,18 @@ class SlideshowController(
             }
         }
 
-        val lpSettings = LinearLayout.LayoutParams(
+        val lpExit = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
         )
+        val lpSettings = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            leftMargin = Ui.dp(context, 14f)
+        }
 
+        menuContainer.addView(exitBtn, lpExit)
         menuContainer.addView(settingsBtn, lpSettings)
         playButtonOverlay.addView(menuContainer)
 
