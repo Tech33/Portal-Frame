@@ -29,11 +29,13 @@ import android.text.TextUtils
 import android.text.style.ImageSpan
 import android.util.Log
 import android.util.TypedValue
+import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -130,6 +132,75 @@ class SlideshowController(
     private lateinit var spotifyShortcutButton: LinearLayout
     private lateinit var actionMenuExit: TextView
     private val nowPlayingHideRunnable = Runnable { hideNowPlaying() }
+    private val autoResumeRunnable = Runnable {
+        Log.i(TAG, "Auto-resume safeguard triggered after 5min inactivity while paused")
+        resumeSlideshow()
+    }
+    private val mediaIdleDismissRunnable = Runnable {
+        if (lastMediaState?.isPlaying != true && ::nowPlayingCard.isInitialized && nowPlayingCard.visibility == View.VISIBLE) {
+            nowPlayingCard.animate().alpha(0f).setDuration(600).withEndAction {
+                nowPlayingCard.visibility = View.GONE
+                updateOverlayShortcuts()
+            }.start()
+        }
+    }
+    private var pixelShiftIndex = 0
+    private val pixelShiftOffsets = arrayOf(
+        Pair(0, 0),
+        Pair(2, -2),
+        Pair(-2, 2),
+        Pair(3, 1),
+        Pair(-1, -3),
+        Pair(2, 3),
+        Pair(-3, -1)
+    )
+    private val pixelShiftRunnable = object : Runnable {
+        override fun run() {
+            if (::nowPlayingCard.isInitialized && nowPlayingCard.visibility == View.VISIBLE) {
+                pixelShiftIndex = (pixelShiftIndex + 1) % pixelShiftOffsets.size
+                val (dx, dy) = pixelShiftOffsets[pixelShiftIndex]
+                nowPlayingCard.translationX = Ui.dp(context, dx.toFloat()).toFloat()
+                nowPlayingCard.translationY = Ui.dp(context, dy.toFloat()).toFloat()
+            }
+            handler.postDelayed(this, 900_000L) // every 15 minutes
+        }
+    }
+
+    private fun resetAutoResumeTimer() {
+        if (slideshowPaused) {
+            handler.removeCallbacks(autoResumeRunnable)
+            handler.postDelayed(autoResumeRunnable, PAUSE_AUTO_RESUME_TIMEOUT_MS)
+        }
+    }
+
+    private fun animatePillNudge(dx: Float) {
+        if (!::mediaPillRow.isInitialized) return
+        mediaPillRow.animate().translationX(dx).setDuration(120).withEndAction {
+            mediaPillRow.animate().translationX(0f).setDuration(120).start()
+        }.start()
+    }
+
+    private fun updateMediaPaletteGlow(art: Bitmap?) {
+        val extracted = if (art != null) AmbientColor.extract(art) else null
+        val strokeColor = if (extracted != null) {
+            (extracted and 0x00FFFFFF) or 0x8C000000.toInt()
+        } else {
+            0x3DFFFFFF
+        }
+        if (::mediaPillRow.isInitialized) {
+            (mediaPillRow.background as? GradientDrawable)?.setStroke(
+                Ui.dp(context, 1.4f),
+                strokeColor
+            )
+        }
+        if (::mediaExpandedCard.isInitialized) {
+            (mediaExpandedCard.background as? GradientDrawable)?.setStroke(
+                Ui.dp(context, 1.4f),
+                strokeColor
+            )
+        }
+    }
+
     private val mediaListener = object : MediaMonitor.Listener {
         override fun onMediaStateChanged(state: MediaMonitor.State) {
             updateNowPlaying(state)
@@ -319,17 +390,20 @@ class SlideshowController(
         bsp.gravity = Gravity.BOTTOM
         bottomScrim.layoutParams = bsp
 
-        // Loading / error hint / pause badge — sleek iOS floating capsule at top center.
+        // Loading / error hint / pause badge — high-contrast senior-friendly capsule at top center.
         status = TextView(context).apply {
             setTextColor(Color.WHITE)
-            typeface = Ui.medium(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setShadowLayer(8f, 0f, 1f, Color.BLACK)
+            typeface = Ui.bold(context)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            setShadowLayer(10f, 0f, 2f, Color.BLACK)
             gravity = Gravity.CENTER
-            background = Ui.roundRect(0xCC1C1C1E.toInt(), Ui.dp(context, 20f)).apply {
-                setStroke(Ui.dp(context, 1f), 0x33FFFFFF)
+            background = Ui.roundRect(0xDD1A1D24.toInt(), Ui.dp(context, 26f)).apply {
+                setStroke(Ui.dp(context, 1.5f), 0x55FFFFFF)
             }
-            setPadding(Ui.dp(context, 20f), Ui.dp(context, 10f), Ui.dp(context, 20f), Ui.dp(context, 10f))
+            val padH = Ui.dp(context, 28f)
+            val padV = Ui.dp(context, 14f)
+            setPadding(padH, padV, padH, padV)
+            elevation = Ui.dp(context, 16f).toFloat()
             visibility = View.GONE
         }
         val sp = FrameLayout.LayoutParams(
@@ -974,13 +1048,49 @@ class SlideshowController(
             setOnClickListener { collapseMediaCapsule() }
         }
 
+        val pillGestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                expandMediaCapsule()
+                return true
+            }
+
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 == null) return false
+                val diffX = e2.x - e1.x
+                val diffY = e2.y - e1.y
+                if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > Ui.dp(context, 26f) && Math.abs(velocityX) > 150) {
+                    if (diffX < 0) {
+                        MediaMonitor.next(context)
+                        animatePillNudge(-Ui.dp(context, 10f).toFloat())
+                    } else {
+                        MediaMonitor.prev(context)
+                        animatePillNudge(Ui.dp(context, 10f).toFloat())
+                    }
+                    return true
+                }
+                return false
+            }
+        })
+
         mediaPillRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             clipToOutline = true
             isClickable = true
-            setOnClickListener {
-                expandMediaCapsule()
+            isFocusable = true
+            setOnTouchListener { _, event ->
+                val rectPlay = Rect()
+                if (::pillPlayBtn.isInitialized) pillPlayBtn.getHitRect(rectPlay)
+                val rectArt = Rect()
+                if (::pillArtImageView.isInitialized) pillArtImageView.getHitRect(rectArt)
+                val x = event.x.toInt()
+                val y = event.y.toInt()
+                if (rectPlay.contains(x, y) || rectArt.contains(x, y)) {
+                    false
+                } else {
+                    pillGestureDetector.onTouchEvent(event)
+                    true
+                }
             }
         }
 
@@ -1310,6 +1420,7 @@ class SlideshowController(
         nowPlayingCard.post { applyMediaWidgetScale() }
 
         MediaMonitor.addListener(mediaListener)
+        handler.postDelayed(pixelShiftRunnable, 900_000L)
     }
 
     private fun setupControlsSize(isCompact: Boolean) {
@@ -1406,9 +1517,16 @@ class SlideshowController(
         isMediaExpanded = false
         handler.removeCallbacks(collapseMediaRunnable)
         if (::mediaPillRow.isInitialized && ::mediaExpandedCard.isInitialized) {
-            android.transition.TransitionManager.beginDelayedTransition(nowPlayingCard)
+            val transition = android.transition.AutoTransition().apply {
+                duration = 240
+                interpolator = OvershootInterpolator(1.1f)
+            }
+            android.transition.TransitionManager.beginDelayedTransition(nowPlayingCard, transition)
             mediaExpandedCard.visibility = View.GONE
             mediaPillRow.visibility = View.VISIBLE
+            mediaPillRow.scaleX = 0.95f
+            mediaPillRow.scaleY = 0.95f
+            mediaPillRow.animate().scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(OvershootInterpolator(1.2f)).start()
             nowPlayingCard.post { applyMediaWidgetScale() }
         }
     }
@@ -1417,9 +1535,16 @@ class SlideshowController(
         if (isMediaExpanded) return
         isMediaExpanded = true
         if (::mediaPillRow.isInitialized && ::mediaExpandedCard.isInitialized) {
-            android.transition.TransitionManager.beginDelayedTransition(nowPlayingCard)
+            val transition = android.transition.AutoTransition().apply {
+                duration = 260
+                interpolator = OvershootInterpolator(1.15f)
+            }
+            android.transition.TransitionManager.beginDelayedTransition(nowPlayingCard, transition)
             mediaPillRow.visibility = View.GONE
             mediaExpandedCard.visibility = View.VISIBLE
+            mediaExpandedCard.scaleX = 0.95f
+            mediaExpandedCard.scaleY = 0.95f
+            mediaExpandedCard.animate().scaleX(1f).scaleY(1f).setDuration(240).setInterpolator(OvershootInterpolator(1.2f)).start()
             nowPlayingCard.post { applyMediaWidgetScale() }
         }
         resetMediaCollapseTimer()
@@ -1500,6 +1625,7 @@ class SlideshowController(
         mediaExpandedCard.elevation = Ui.dp(context, 20f).toFloat()
         val expPad = Ui.dp(context, 12f)
         mediaExpandedCard.setPadding(expPad, expPad, expPad, expPad)
+        updateMediaPaletteGlow(lastMediaState?.art)
 
         setupControlsSize(isCompact = true)
 
@@ -1629,9 +1755,11 @@ class SlideshowController(
             if (state.art != null) {
                 nowPlayingArt.setImageBitmap(state.art)
                 if (::pillArtImageView.isInitialized) pillArtImageView.setImageBitmap(state.art)
+                updateMediaPaletteGlow(state.art)
             } else {
                 nowPlayingArt.setImageResource(R.drawable.ic_music)
                 if (::pillArtImageView.isInitialized) pillArtImageView.setImageResource(R.drawable.ic_music)
+                updateMediaPaletteGlow(null)
             }
             nowPlayingPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
             if (::pillPlayBtn.isInitialized) pillPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
@@ -1647,6 +1775,7 @@ class SlideshowController(
 
             if (state.isPlaying) {
                 handler.removeCallbacks(nowPlayingHideRunnable)
+                handler.removeCallbacks(mediaIdleDismissRunnable)
                 if (nowPlayingCard.visibility != View.VISIBLE && !clockOnly) {
                     nowPlayingCard.alpha = 0f
                     nowPlayingCard.translationX = Ui.dp(context, 60f).toFloat()
@@ -1664,8 +1793,10 @@ class SlideshowController(
                 updateOverlayShortcuts()
             } else {
                 handler.removeCallbacks(nowPlayingHideRunnable)
+                handler.removeCallbacks(mediaIdleDismissRunnable)
                 val hideDelay = if (isSonos) 2500L else 12000L
                 handler.postDelayed(nowPlayingHideRunnable, hideDelay)
+                handler.postDelayed(mediaIdleDismissRunnable, MEDIA_IDLE_DISMISS_TIMEOUT_MS)
             }
         }
     }
@@ -1798,9 +1929,11 @@ class SlideshowController(
         }
         slideshowPaused = true
         handler.removeCallbacks(autoTick)
+        handler.removeCallbacks(autoResumeRunnable)
+        handler.postDelayed(autoResumeRunnable, PAUSE_AUTO_RESUME_TIMEOUT_MS)
         refreshActionMenuLabels()
         if (running && items.isNotEmpty()) {
-            status.text = "⏸️  Paused on current photo"
+            status.text = "Paused on this photo"
             status.visibility = if (!clockOnly) View.VISIBLE else View.GONE
         }
         showPlayButtonOverlay()
@@ -1812,6 +1945,7 @@ class SlideshowController(
             return
         }
         slideshowPaused = false
+        handler.removeCallbacks(autoResumeRunnable)
         refreshActionMenuLabels()
         if (running && items.isNotEmpty()) {
             status.text = ""
@@ -2110,6 +2244,7 @@ class SlideshowController(
             isClickable = true
             isFocusable = true
             setOnClickListener {
+                resetAutoResumeTimer()
                 showPrevious()
             }
         }
@@ -2133,6 +2268,7 @@ class SlideshowController(
             isClickable = true
             isFocusable = true
             setOnClickListener {
+                resetAutoResumeTimer()
                 showNext()
             }
         }
@@ -2140,7 +2276,7 @@ class SlideshowController(
         playButtonOverlay.addView(leftArrowBtn)
         playButtonOverlay.addView(rightArrowBtn)
 
-        // Central Pause Indicator
+        // Central Pause / Resume Indicator
         val centerContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -2152,59 +2288,68 @@ class SlideshowController(
             }
         }
 
-        // Circular background wrapper for pause symbol
-        val pauseCircle = FrameLayout(context).apply {
+        // Circular background wrapper for resume / play symbol
+        val playCircle = FrameLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(
-                Ui.dp(context, 80f),
-                Ui.dp(context, 80f),
+                Ui.dp(context, 96f),
+                Ui.dp(context, 96f),
             ).apply {
                 bottomMargin = Ui.dp(context, 16f)
                 gravity = Gravity.CENTER_HORIZONTAL
             }
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0x80000000.toInt())
-                setStroke(Ui.dp(context, 2f), 0x40FFFFFF.toInt())
+                setColor(0xCC1A1D24.toInt())
+                setStroke(Ui.dp(context, 2.5f), 0x80FFFFFF.toInt())
+            }
+            elevation = Ui.dp(context, 12f).toFloat()
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                resumeSlideshow()
             }
         }
 
-        val pauseIcon = TextView(context).apply {
-            text = "\u23F8" // Pause symbol ⏸
+        val playIcon = TextView(context).apply {
+            text = "▶" // Crisp Unicode Play symbol \u25B6 (not emoji, won't render orange box)
             setTextColor(Color.WHITE)
-            textSize = 32f
+            textSize = 38f
+            typeface = Ui.bold(context)
             gravity = Gravity.CENTER
+            setPadding(Ui.dp(context, 4f), 0, 0, 0)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
             )
         }
-        pauseCircle.addView(pauseIcon)
+        playCircle.addView(playIcon)
 
         val pauseText = TextView(context).apply {
             text = "Slideshow Paused"
             setTextColor(Color.WHITE)
-            textSize = 28f
-            typeface = Ui.medium(context)
+            textSize = 30f
+            typeface = Ui.bold(context)
             gravity = Gravity.CENTER
-            setShadowLayer(8f, 0f, 2f, Color.BLACK)
+            setShadowLayer(10f, 0f, 2f, Color.BLACK)
         }
 
         val resumeSubtext = TextView(context).apply {
             text = "Tap anywhere to resume"
-            setTextColor(0xCCFFFFFF.toInt())
-            textSize = 18f
+            setTextColor(0xE6FFFFFF.toInt())
+            textSize = 20f
+            typeface = Ui.medium(context)
             gravity = Gravity.CENTER
-            setShadowLayer(6f, 0f, 1f, Color.BLACK)
+            setShadowLayer(8f, 0f, 1f, Color.BLACK)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply {
-                topMargin = Ui.dp(context, 8f)
+                topMargin = Ui.dp(context, 10f)
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         }
 
-        centerContainer.addView(pauseCircle)
+        centerContainer.addView(playCircle)
         centerContainer.addView(pauseText)
         centerContainer.addView(resumeSubtext)
         playButtonOverlay.addView(centerContainer)
@@ -2846,12 +2991,14 @@ class SlideshowController(
 
     fun showNext() {
         if (items.isNotEmpty()) {
+            resetAutoResumeTimer()
             transitionTo(nextStart(index, curIsPair), transitionDurationMs)
         }
     }
 
     fun showPrevious() {
         if (items.isNotEmpty()) {
+            resetAutoResumeTimer()
             transitionTo((index - 1 + items.size) % items.size, transitionDurationMs)
         }
     }
@@ -4105,6 +4252,8 @@ class SlideshowController(
     companion object {
         private const val TAG = "PortalFrame"
         private const val SLIDES_DIR = "slides"
+        const val PAUSE_AUTO_RESUME_TIMEOUT_MS = 300_000L // 5 minutes safeguard
+        const val MEDIA_IDLE_DISMISS_TIMEOUT_MS = 300_000L // 5 minutes media idle dismiss
 
         @JvmStatic
         fun synthesizeAndPlayChime() {
