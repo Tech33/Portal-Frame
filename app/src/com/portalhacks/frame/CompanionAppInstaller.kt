@@ -68,6 +68,39 @@ object CompanionAppInstaller {
         }
     }
 
+    /**
+     * Terminates background Spotify processes and stops active playback
+     * when the media widget idle timeout expires, saving memory and battery on Portal Go.
+     */
+    fun killSpotify(context: Context) {
+        try {
+            // 1. Dispatch standard Android Media Stop key event
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+            audioManager?.dispatchMediaKeyEvent(
+                android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_STOP)
+            )
+            audioManager?.dispatchMediaKeyEvent(
+                android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_STOP)
+            )
+
+            // 2. Kill background processes via ActivityManager
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            for (pkg in SPOTIFY_PACKAGES) {
+                am?.killBackgroundProcesses(pkg)
+            }
+
+            // 3. Fallback shell force-stop
+            for (pkg in SPOTIFY_PACKAGES) {
+                try {
+                    Runtime.getRuntime().exec(arrayOf("am", "force-stop", pkg))
+                } catch (_: Exception) {}
+            }
+            Log.i(TAG, "Successfully terminated background Spotify processes")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed terminating Spotify background processes", e)
+        }
+    }
+
     private fun openConnectionWithRedirects(initialUrl: String, maxRedirects: Int = 5): HttpURLConnection {
         var currentUrl = initialUrl
         var redirects = 0

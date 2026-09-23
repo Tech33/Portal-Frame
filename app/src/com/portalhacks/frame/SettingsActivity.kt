@@ -1544,6 +1544,49 @@ class SettingsActivity : ComponentActivity() {
                 val nowPlayingEnabled = rememberPrefBoolean(ConfigReceiver.KEY_NOW_PLAYING_ENABLED, ConfigReceiver.DEFAULT_NOW_PLAYING_ENABLED)
                 if (nowPlayingEnabled.value) {
                     Divider()
+                    val widgetStyleState = rememberPrefString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
+                    val styleLabel = if (widgetStyleState.value == ConfigReceiver.STYLE_GLASS_CARD) "Liquid Glass" else "Floating Capsule"
+                    CycleRow(
+                        label = "Widget Style",
+                        value = styleLabel,
+                        subtitle = "Choose between minimalist floating capsule or horizontal frosted glass card.",
+                        iconRes = R.drawable.ic_music,
+                        iconBg = Color(0xFF007AFF),
+                    ) {
+                        val next = if (widgetStyleState.value == ConfigReceiver.STYLE_GLASS_CARD) {
+                            ConfigReceiver.STYLE_CAPSULE
+                        } else {
+                            ConfigReceiver.STYLE_GLASS_CARD
+                        }
+                        prefs.edit().putString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, next).apply()
+                    }
+                    Divider()
+                    val idleTimeoutState = rememberPrefLong(ConfigReceiver.KEY_MEDIA_WIDGET_IDLE_TIMEOUT, ConfigReceiver.DEFAULT_MEDIA_WIDGET_IDLE_TIMEOUT)
+                    val timeoutLabel = when (idleTimeoutState.value) {
+                        15_000L -> "15 Seconds (Default)"
+                        30_000L -> "30 Seconds"
+                        60_000L -> "1 Minute"
+                        300_000L -> "5 Minutes"
+                        -1L -> "Never (Always On)"
+                        else -> "15 Seconds"
+                    }
+                    CycleRow(
+                        label = "Idle Inactivity Timeout",
+                        value = timeoutLabel,
+                        subtitle = "Auto-fades widget and terminates background Spotify app on timeout to save battery on Portal Go.",
+                        iconRes = R.drawable.ic_clock,
+                        iconBg = Color(0xFFFF9500),
+                    ) {
+                        val next = when (idleTimeoutState.value) {
+                            15_000L -> 30_000L
+                            30_000L -> 60_000L
+                            60_000L -> 300_000L
+                            300_000L -> -1L
+                            else -> 15_000L
+                        }
+                        prefs.edit().putLong(ConfigReceiver.KEY_MEDIA_WIDGET_IDLE_TIMEOUT, next).apply()
+                    }
+                    Divider()
                     OpacitySliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF007AFF))
                     Divider()
                     BlurSliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF5856D6))

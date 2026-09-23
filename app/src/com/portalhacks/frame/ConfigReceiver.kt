@@ -189,9 +189,12 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_PRESENCE_TIMEOUT_MIN = "presence_timeout_min"
         const val KEY_AIRPLAY_ENABLED = "airplay_enabled"
         const val KEY_NOW_PLAYING_ENABLED = "now_playing_enabled"
-        const val KEY_NOW_PLAYING_STYLE = "now_playing_style" // "capsule", "classic", "frosted", "compact"
+        const val KEY_NOW_PLAYING_STYLE = "now_playing_style" // "capsule", "glass_card"
+        const val STYLE_CAPSULE = "capsule"
+        const val STYLE_GLASS_CARD = "glass_card"
         const val KEY_NOW_PLAYING_OPACITY = "now_playing_opacity" // int: 2..100%
         const val KEY_MEDIA_WIDGET_SCALE = "media_widget_scale"
+        const val KEY_MEDIA_WIDGET_IDLE_TIMEOUT = "media_widget_idle_timeout" // Long: ms (15000, 30000, 60000, 300000, -1L for Never)
 
         // MQTT and Embedded Home Assistant keys
         const val KEY_MQTT_ENABLED = "mqtt_enabled"
@@ -294,6 +297,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_MEDIA_WIDGET_SCALE = 1.0f
         const val MIN_MEDIA_WIDGET_SCALE = 0.6f
         const val MAX_MEDIA_WIDGET_SCALE = 1.6f
+        const val DEFAULT_MEDIA_WIDGET_IDLE_TIMEOUT = 15_000L // 15 seconds default
 
         // ADB-settable boolean extras (extra name -> pref key) for quick testing
         private val BOOL_EXTRAS = arrayOf(

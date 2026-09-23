@@ -268,6 +268,26 @@ object MediaMonitor {
         }
     }
 
+    fun getPlaybackPosition(): Long {
+        return activeController?.playbackState?.position ?: 0L
+    }
+
+    fun getDuration(): Long {
+        return try {
+            activeController?.metadata?.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
+    fun seekTo(posMs: Long) {
+        try {
+            activeController?.transportControls?.seekTo(posMs)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed seeking to $posMs ms", e)
+        }
+    }
+
     private fun notifyListeners() {
         mainHandler.post {
             for (l in listeners) {
@@ -288,3 +308,4 @@ object MediaMonitor {
         }
     }
 }
+
