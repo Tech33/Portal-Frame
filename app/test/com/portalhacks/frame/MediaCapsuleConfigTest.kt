@@ -12,9 +12,6 @@ class MediaCapsuleConfigTest {
         // Default style must be the new slim floating capsule docked at bottom
         assertEquals("capsule", ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
 
-        // Permanent exit button must be false by default (on-demand tap reveal)
-        assertFalse(ConfigReceiver.DEFAULT_PERSISTENT_EXIT_BUTTON)
-
         // Media widget default scale is 1.0f with min 0.6f and max 1.6f
         assertEquals(1.0f, ConfigReceiver.DEFAULT_MEDIA_WIDGET_SCALE, 0.001f)
         assertEquals(0.6f, ConfigReceiver.MIN_MEDIA_WIDGET_SCALE, 0.001f)

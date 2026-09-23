@@ -207,7 +207,6 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_HA_IDLE_TIMEOUT_SEC = "ha_idle_timeout_sec"
         const val KEY_HA_BUTTON = "ha_button"
         const val KEY_SPOTIFY_SHORTCUT = "spotify_shortcut_button"
-        const val KEY_PERSISTENT_EXIT_BUTTON = "persistent_exit_button"
 
         // Broadcast Intent Actions
         const val ACTION_SHOW_DASHBOARD = "com.portalhacks.frame.SHOW_DASHBOARD"
@@ -295,7 +294,6 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_MEDIA_WIDGET_SCALE = 1.0f
         const val MIN_MEDIA_WIDGET_SCALE = 0.6f
         const val MAX_MEDIA_WIDGET_SCALE = 1.6f
-        const val DEFAULT_PERSISTENT_EXIT_BUTTON = false
 
         // ADB-settable boolean extras (extra name -> pref key) for quick testing
         private val BOOL_EXTRAS = arrayOf(

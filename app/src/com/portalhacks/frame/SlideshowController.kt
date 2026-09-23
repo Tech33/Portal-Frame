@@ -127,7 +127,6 @@ class SlideshowController(
     private var currentAppliedNowPlayingOpacity: Int = -1
     private var isUserTrackingVolume = false
     private lateinit var topControlsRow: LinearLayout
-    private lateinit var slideshowExitBtn: TextView
     private lateinit var spotifyShortcutButton: LinearLayout
     private lateinit var actionMenuExit: TextView
     private val nowPlayingHideRunnable = Runnable { hideNowPlaying() }
@@ -641,36 +640,8 @@ class SlideshowController(
             elevation = Ui.dp(context, 20f).toFloat()
         }
 
-        slideshowExitBtn = TextView(context).apply {
-            text = "✕ Exit"
-            setTextColor(Color.WHITE)
-            typeface = Ui.bold(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
-            background = Ui.roundRect(0x99121418.toInt(), Ui.dp(context, 23f)).apply {
-                setStroke(Ui.dp(context, 1.2f), 0x4DFFFFFF)
-            }
-            alpha = 0.85f
-            val padH = Ui.dp(context, 18f)
-            val padV = Ui.dp(context, 11f)
-            setPadding(padH, padV, padH, padV)
-            minimumHeight = Ui.dp(context, 46f)
-            elevation = Ui.dp(context, 6f).toFloat()
-            clipToOutline = true
-            isClickable = true
-            isFocusable = true
-            setOnTouchListener { v, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> v.alpha = 1.0f
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.85f
-                }
-                false
-            }
-            setOnClickListener { onDismiss?.run() }
-        }
-
         initHaButton()
 
-        topControlsRow.addView(slideshowExitBtn)
         topControlsRow.addView(haButton)
 
         val lp = FrameLayout.LayoutParams(
@@ -698,14 +669,6 @@ class SlideshowController(
             setPadding(padH, padV, padH, padV)
             minimumHeight = Ui.dp(context, 46f)
             elevation = Ui.dp(context, 6f).toFloat()
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                leftMargin = Ui.dp(context, 10f)
-                marginStart = Ui.dp(context, 10f)
-            }
-            layoutParams = lp
             clipToOutline = true
             isClickable = true
             isFocusable = true
@@ -820,16 +783,8 @@ class SlideshowController(
             haButton.visibility = if (shouldShowHa) View.VISIBLE else View.GONE
         }
 
-        val showExit = prefs.getBoolean(
-            ConfigReceiver.KEY_PERSISTENT_EXIT_BUTTON,
-            ConfigReceiver.DEFAULT_PERSISTENT_EXIT_BUTTON
-        )
-        if (::slideshowExitBtn.isInitialized) {
-            slideshowExitBtn.visibility = if (!clockOnly) View.VISIBLE else View.GONE
-        }
-
         if (::topControlsRow.isInitialized) {
-            val shouldBeVisible = (showExit && !clockOnly) || (slideshowPaused && !clockOnly)
+            val shouldBeVisible = ::haButton.isInitialized && haButton.visibility == View.VISIBLE && !clockOnly
             topControlsRow.visibility = if (shouldBeVisible) View.VISIBLE else View.GONE
             if (shouldBeVisible) {
                 topControlsRow.alpha = 1f
@@ -856,17 +811,8 @@ class SlideshowController(
 
     fun revealTopControlsTemporarily(timeoutMs: Long = 5000L) {
         if (!::topControlsRow.isInitialized || clockOnly) return
-        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-        val persistent = prefs.getBoolean(
-            ConfigReceiver.KEY_PERSISTENT_EXIT_BUTTON,
-            ConfigReceiver.DEFAULT_PERSISTENT_EXIT_BUTTON
-        )
-        if (persistent) {
-            topControlsRow.visibility = View.VISIBLE
-            topControlsRow.alpha = 1f
-            topControlsRow.bringToFront()
-            return
-        }
+        val hasVisibleChild = ::haButton.isInitialized && haButton.visibility == View.VISIBLE
+        if (!hasVisibleChild) return
         handler.removeCallbacks(hideTopControlsRunnable)
         topControlsRow.visibility = View.VISIBLE
         topControlsRow.animate().alpha(1f).setDuration(200).start()
@@ -878,12 +824,7 @@ class SlideshowController(
 
     private fun fadeOutTopControls() {
         if (!::topControlsRow.isInitialized || clockOnly) return
-        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-        val persistent = prefs.getBoolean(
-            ConfigReceiver.KEY_PERSISTENT_EXIT_BUTTON,
-            ConfigReceiver.DEFAULT_PERSISTENT_EXIT_BUTTON
-        )
-        if (persistent || slideshowPaused) return
+        if (slideshowPaused) return
         topControlsRow.animate().alpha(0f).setDuration(300).withEndAction {
             topControlsRow.visibility = View.GONE
         }.start()
@@ -2091,28 +2032,6 @@ class SlideshowController(
             clipToPadding = false
         }
 
-        val exitBtn = TextView(context).apply {
-            text = "✕ Exit"
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 20f
-            typeface = Ui.medium(context)
-            gravity = Gravity.CENTER
-            val paddingH = Ui.dp(context, 34f)
-            val paddingV = Ui.dp(context, 16f)
-            setPadding(paddingH, paddingV, paddingH, paddingV)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xCCFF3B30.toInt())
-                cornerRadius = Ui.dp(context, 26f).toFloat()
-                setStroke(Ui.dp(context, 1.5f), 0xFFFFFFFF.toInt())
-            }
-            elevation = Ui.dp(context, 8f).toFloat()
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                onDismiss?.run()
-            }
-        }
-
         val settingsBtn = TextView(context).apply {
             text = "⚙ Settings"
             setTextColor(0xFFFFFFFF.toInt())
@@ -2135,18 +2054,11 @@ class SlideshowController(
             }
         }
 
-        val lpExit = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-        )
         val lpSettings = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
-        ).apply {
-            leftMargin = Ui.dp(context, 14f)
-        }
+        )
 
-        menuContainer.addView(exitBtn, lpExit)
         menuContainer.addView(settingsBtn, lpSettings)
         playButtonOverlay.addView(menuContainer)
 

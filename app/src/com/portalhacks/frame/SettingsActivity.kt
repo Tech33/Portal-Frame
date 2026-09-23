@@ -1423,15 +1423,6 @@ class SettingsActivity : ComponentActivity() {
                     iconBg = Color(0xFF007AFF),
                 )
                 Divider()
-                ToggleRow(
-                    "Persistent ✕ Exit button",
-                    ConfigReceiver.KEY_PERSISTENT_EXIT_BUTTON,
-                    ConfigReceiver.DEFAULT_PERSISTENT_EXIT_BUTTON,
-                    subtitle = "Subtle, translucent button to exit without pausing. When off, Exit appears upon tapping to pause.",
-                    iconRes = R.drawable.ic_close,
-                    iconBg = Color(0xFF8E8E93),
-                )
-                Divider()
                 
                 val clock24hState = rememberPrefBoolean(ConfigReceiver.KEY_CLOCK_24H, ConfigReceiver.DEFAULT_CLOCK_24H)
                 CycleRow("Clock format", if (clock24hState.value) "24-hour" else "12-hour", iconRes = R.drawable.ic_clock_format, iconBg = Color(0xFF8E8E93)) {
