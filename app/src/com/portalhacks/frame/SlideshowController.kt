@@ -36,6 +36,7 @@ import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
@@ -854,15 +855,11 @@ class SlideshowController(
      * Double-tap snaps back to default docked bottom-right corner.
      */
     private inner class PinchableMediaCard(c: Context) : LinearLayout(c) {
-        var onScaleRatioChanged: ((ratio: Float, baseScale: Float) -> Unit)? = null
+        var onScaleFactorChanged: ((factor: Float) -> Unit)? = null
         var onScaleEnd: (() -> Unit)? = null
         var onCardTapped: (() -> Unit)? = null
-        var getBaseScale: (() -> Float)? = null
 
-        private var pinchStartDist = 0f
-        private var pinchBaseScale = 1f
         private var isPinching = false
-
         private var initialRawX = 0f
         private var initialRawY = 0f
         private var initialTranslationX = 0f
@@ -871,118 +868,121 @@ class SlideshowController(
         private var lastTapUpTime = 0L
         private val touchSlop = ViewConfiguration.get(c).scaledTouchSlop.toFloat()
 
-        private fun twoPointerDist(e: MotionEvent): Float {
-            if (e.pointerCount < 2) return 0f
-            return Math.hypot(
-                (e.getX(0) - e.getX(1)).toDouble(),
-                (e.getY(0) - e.getY(1)).toDouble()
-            ).toFloat()
+        private val scaleDetector = ScaleGestureDetector(c, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                isPinching = true
+                isDragging = false
+                parent?.requestDisallowInterceptTouchEvent(true)
+                return true
+            }
+
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val factor = detector.scaleFactor
+                if (factor > 0f && !factor.isNaN() && !factor.isInfinite()) {
+                    onScaleFactorChanged?.invoke(factor)
+                }
+                return true
+            }
+
+            override fun onScaleEnd(detector: ScaleGestureDetector) {
+                isPinching = false
+                onScaleEnd?.invoke()
+            }
+        })
+
+        override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            scaleDetector.onTouchEvent(ev)
+            if (scaleDetector.isInProgress || isPinching) {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                if (ev.actionMasked == MotionEvent.ACTION_MOVE) {
+                    val cancel = MotionEvent.obtain(ev).apply { action = MotionEvent.ACTION_CANCEL }
+                    super.dispatchTouchEvent(cancel)
+                    cancel.recycle()
+                    return true
+                }
+            }
+            return super.dispatchTouchEvent(ev)
         }
 
         override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+            if (isPinching || scaleDetector.isInProgress) return true
             when (ev.actionMasked) {
-                MotionEvent.ACTION_POINTER_DOWN -> {
-                    if (ev.pointerCount >= 2) {
-                        pinchStartDist = twoPointerDist(ev)
-                        pinchBaseScale = getBaseScale?.invoke() ?: scaleX
-                        isPinching = true
-                        isDragging = false
-                        parent?.requestDisallowInterceptTouchEvent(true)
-                        return true
-                    }
-                }
                 MotionEvent.ACTION_DOWN -> {
                     initialRawX = ev.rawX
                     initialRawY = ev.rawY
                     initialTranslationX = translationX
                     initialTranslationY = translationY
-                    isPinching = false
                     isDragging = false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (isPinching) return true
-                    // When resting capsule is shown, do NOT intercept single-finger dragging:
-                    // Swipe-to-skip (Left for Next, Right for Previous) on resting pill takes priority!
+                    val dx = ev.rawX - initialRawX
+                    val dy = ev.rawY - initialRawY
+                    val absDx = Math.abs(dx)
+                    val absDy = Math.abs(dy)
                     val isCapsuleResting = !isMediaExpanded && ::mediaPillRow.isInitialized && mediaPillRow.visibility == View.VISIBLE
                     if (isCapsuleResting) {
-                        return false
-                    }
-                    if (ev.pointerCount == 1) {
-                        val dx = ev.rawX - initialRawX
-                        val dy = ev.rawY - initialRawY
-                        if (Math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
+                        // On resting capsule:
+                        // Vertical movement (pulling up onto the screen) intercepts for dragging!
+                        // Horizontal movement lets mediaPillRow handle swipe-to-skip.
+                        if (absDy > touchSlop && absDy > absDx * 1.15f) {
                             isDragging = true
                             parent?.requestDisallowInterceptTouchEvent(true)
                             return true
                         }
+                        return false
                     }
-                }
-            }
-            return isPinching || isDragging
-        }
-
-        override fun onTouchEvent(event: MotionEvent): Boolean {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_POINTER_DOWN -> {
-                    if (event.pointerCount >= 2) {
-                        pinchStartDist = twoPointerDist(event)
-                        pinchBaseScale = getBaseScale?.invoke() ?: scaleX
-                        isPinching = true
-                        isDragging = false
+                    if (ev.pointerCount == 1 && Math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
+                        isDragging = true
                         parent?.requestDisallowInterceptTouchEvent(true)
                         return true
                     }
                 }
+            }
+            return isDragging
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (isPinching || scaleDetector.isInProgress) return true
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    initialRawX = event.rawX
+                    initialRawY = event.rawY
+                    initialTranslationX = translationX
+                    initialTranslationY = translationY
+                    isDragging = false
+                }
                 MotionEvent.ACTION_MOVE -> {
-                    if (isPinching && event.pointerCount >= 2 && pinchStartDist > 0f) {
-                        val d = twoPointerDist(event)
-                        if (d > 0f) {
-                            val ratio = d / pinchStartDist
-                            onScaleRatioChanged?.invoke(ratio, pinchBaseScale)
-                        }
-                        return true
-                    }
+                    val dx = event.rawX - initialRawX
+                    val dy = event.rawY - initialRawY
                     val isCapsuleResting = !isMediaExpanded && ::mediaPillRow.isInitialized && mediaPillRow.visibility == View.VISIBLE
-                    if (isCapsuleResting && !isPinching) {
-                        return false
-                    }
-                    if (isDragging || (!isPinching && event.pointerCount == 1)) {
-                        val dx = event.rawX - initialRawX
-                        val dy = event.rawY - initialRawY
-                        if (!isDragging && Math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
+                    if (isCapsuleResting && !isDragging) {
+                        if (Math.abs(dy) > touchSlop && Math.abs(dy) > Math.abs(dx) * 1.15f) {
                             isDragging = true
                             parent?.requestDisallowInterceptTouchEvent(true)
                         }
-                        if (isDragging) {
-                            var targetTx = initialTranslationX + dx
-                            var targetTy = initialTranslationY + dy
-                            val pView = parent as? View
-                            if (pView != null && pView.width > 0 && pView.height > 0) {
-                                val w = (width * scaleX).toInt().coerceAtLeast(width)
-                                val h = (height * scaleY).toInt().coerceAtLeast(height)
-                                val margin = Ui.dp(context, 24f).toFloat()
-                                targetTx = targetTx.coerceIn(-pView.width.toFloat() + w, margin * 0.5f)
-                                targetTy = targetTy.coerceIn(-pView.height.toFloat() + h, margin * 0.5f)
-                            }
-                            translationX = targetTx
-                            translationY = targetTy
-                            return true
-                        }
+                    } else if (!isDragging && Math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
+                        isDragging = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
                     }
-                }
-                MotionEvent.ACTION_POINTER_UP -> {
-                    if (isPinching) {
-                        isPinching = false
-                        onScaleEnd?.invoke()
+                    if (isDragging) {
+                        var targetTx = initialTranslationX + dx
+                        var targetTy = initialTranslationY + dy
+                        val pView = parent as? View
+                        if (pView != null && pView.width > 0 && pView.height > 0) {
+                            val margin = Ui.dp(context, 24f).toFloat()
+                            val cardScaledW = width * scaleX
+                            val cardScaledH = height * scaleY
+                            val maxDragLeft = -(pView.width.toFloat() - cardScaledW - margin * 2f)
+                            val maxDragUp = -(pView.height.toFloat() - cardScaledH - margin * 2f)
+                            targetTx = targetTx.coerceIn(maxDragLeft.coerceAtMost(0f), margin * 0.5f)
+                            targetTy = targetTy.coerceIn(maxDragUp.coerceAtMost(0f), margin * 0.5f)
+                        }
+                        translationX = targetTx
+                        translationY = targetTy
                         return true
                     }
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (isPinching) {
-                        isPinching = false
-                        onScaleEnd?.invoke()
-                        return true
-                    }
                     if (isDragging) {
                         isDragging = false
                         return true
@@ -1002,7 +1002,6 @@ class SlideshowController(
                     }
                 }
                 MotionEvent.ACTION_CANCEL -> {
-                    isPinching = false
                     isDragging = false
                 }
             }
@@ -1018,9 +1017,8 @@ class SlideshowController(
             clipToOutline = false
             clipChildren = false
             isClickable = true
-            getBaseScale = { mediaWidgetScale }
-            onScaleRatioChanged = { ratio, baseScale ->
-                mediaWidgetScale = (baseScale * ratio).coerceIn(
+            onScaleFactorChanged = { factor ->
+                mediaWidgetScale = (mediaWidgetScale * factor).coerceIn(
                     ConfigReceiver.MIN_MEDIA_WIDGET_SCALE,
                     ConfigReceiver.MAX_MEDIA_WIDGET_SCALE
                 )
@@ -1109,17 +1107,17 @@ class SlideshowController(
                 } else {
                     when (event.actionMasked) {
                         MotionEvent.ACTION_DOWN -> {
-                            pillDownX = event.x
-                            pillDownY = event.y
+                            pillDownX = event.rawX
+                            pillDownY = event.rawY
                             pillDownTime = event.eventTime
                             pillSwiped = false
-                            parent?.requestDisallowInterceptTouchEvent(true)
                         }
                         MotionEvent.ACTION_MOVE -> {
-                            val dx = event.x - pillDownX
-                            val dy = event.y - pillDownY
-                            if (!pillSwiped && Math.abs(dx) > Ui.dp(context, 26f) && Math.abs(dx) > Math.abs(dy) * 1.2f) {
+                            val dx = event.rawX - pillDownX
+                            val dy = event.rawY - pillDownY
+                            if (!pillSwiped && Math.abs(dx) > Ui.dp(context, 24f) && Math.abs(dx) > Math.abs(dy) * 1.2f) {
                                 pillSwiped = true
+                                parent?.requestDisallowInterceptTouchEvent(true)
                                 if (dx < 0) {
                                     MediaMonitor.next(context)
                                     animatePillNudge(-Ui.dp(context, 10f).toFloat())
@@ -1131,10 +1129,10 @@ class SlideshowController(
                         }
                         MotionEvent.ACTION_UP -> {
                             if (!pillSwiped) {
-                                val dx = Math.abs(event.x - pillDownX)
-                                val dy = Math.abs(event.y - pillDownY)
+                                val dx = Math.abs(event.rawX - pillDownX)
+                                val dy = Math.abs(event.rawY - pillDownY)
                                 val dt = event.eventTime - pillDownTime
-                                if (dx < Ui.dp(context, 16f) && dy < Ui.dp(context, 16f) && dt < 450) {
+                                if (dx < Ui.dp(context, 18f) && dy < Ui.dp(context, 18f) && dt < 450) {
                                     expandMediaCapsule()
                                 }
                             }
