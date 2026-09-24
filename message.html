@@ -814,6 +814,10 @@
             <span class="showcase-chip-title">🗓️ Pick a Month</span>
             <span class="showcase-chip-desc">e.g. Sep 2024</span>
           </button>
+          <button id="chip-last_7_days" class="showcase-chip tap-scale" onclick="selectShowcase('last_7_days')">
+            <span class="showcase-chip-title">⚡ Last 7 Days</span>
+            <span class="showcase-chip-desc">This week's photos</span>
+          </button>
           <button id="chip-last_30_days" class="showcase-chip tap-scale" onclick="selectShowcase('last_30_days')">
             <span class="showcase-chip-title">⏳ Last 30 Days</span>
             <span class="showcase-chip-desc">This month's photos</span>
@@ -1225,7 +1229,7 @@
     // --- Showcase Selection ---
     function selectShowcase(mode) {
       activeShowcase = mode;
-      ['recent_trip', 'specific_date', 'month_year', 'last_30_days', 'all'].forEach(m => {
+      ['recent_trip', 'specific_date', 'month_year', 'last_7_days', 'last_30_days', 'all'].forEach(m => {
         const chip = document.getElementById('chip-' + m);
         if (chip) {
           if (m === mode) chip.classList.add('active');
@@ -1371,6 +1375,9 @@
         const mName = document.getElementById('sc-month').options[document.getElementById('sc-month').selectedIndex].text;
         tag = `#showcase:${y}-${m}`;
         desc = `${mName} ${y}`;
+      } else if (activeShowcase === 'last_7_days') {
+        tag = '#showcase:last_7_days';
+        desc = 'Last 7 Days';
       } else if (activeShowcase === 'last_30_days') {
         tag = '#showcase:last_30_days';
         desc = 'Last 30 Days';

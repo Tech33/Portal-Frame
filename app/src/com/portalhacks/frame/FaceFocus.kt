@@ -29,15 +29,9 @@ internal object FaceFocus {
 
     private val detector = FaceDetection.getClient(options)
 
-    // Identity-based/Instance-based cache for Bitmaps to their face detection results.
-    // LruCache sized to 20 is sufficient for holds / transitions and prefetch.
-    private val cache = Collections.synchronizedMap(
-        object : LinkedHashMap<Bitmap, FaceFocusResult>(20, 0.75f, true) {
-            override fun removeEldestEntry(eldest: Map.Entry<Bitmap, FaceFocusResult>?): Boolean {
-                return size > 20
-            }
-        }
-    )
+    // WeakHashMap cache allows garbage collection of Bitmaps as soon as they are no longer in active use,
+    // completely preventing 24/7 continuous memory leaks while keeping O(1) instant lookups for active frames.
+    private val cache = Collections.synchronizedMap(java.util.WeakHashMap<Bitmap, FaceFocusResult>())
 
     /**
      * Runs face detection on a background thread and caches the result.

@@ -2,6 +2,8 @@ package com.portalhacks.frame
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import java.util.Collections
+import java.util.WeakHashMap
 
 /**
  * Extracts a single vibrant "mood" color from a photo so the frame's edges can
@@ -14,13 +16,32 @@ import android.graphics.Color
 internal object AmbientColor {
 
     private const val GRID = 32
+    private val cache = Collections.synchronizedMap(WeakHashMap<Bitmap, Int?>())
 
-    /** An opaque, pleasantly saturated color representing the photo, or null. */
+    /** Precomputes ambient color on background thread without blocking the UI. */
+    @JvmStatic
+    fun precompute(src: Bitmap?) {
+        if (src == null || src.width < 2 || src.height < 2) return
+        if (!cache.containsKey(src)) {
+            cache[src] = extractInternal(src)
+        }
+    }
+
+    /** An opaque, pleasantly saturated color representing the photo, or null. Cached. */
     @JvmStatic
     fun extract(src: Bitmap?): Int? {
         if (src == null || src.width < 2 || src.height < 2) {
             return null
         }
+        if (cache.containsKey(src)) {
+            return cache[src]
+        }
+        val res = extractInternal(src)
+        cache[src] = res
+        return res
+    }
+
+    private fun extractInternal(src: Bitmap): Int? {
         var s: Bitmap? = null
         try {
             s = Bitmap.createScaledBitmap(src, GRID, GRID, true)

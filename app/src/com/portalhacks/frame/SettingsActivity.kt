@@ -1544,21 +1544,25 @@ class SettingsActivity : ComponentActivity() {
                 val nowPlayingEnabled = rememberPrefBoolean(ConfigReceiver.KEY_NOW_PLAYING_ENABLED, ConfigReceiver.DEFAULT_NOW_PLAYING_ENABLED)
                 if (nowPlayingEnabled.value) {
                     Divider()
-                    val widgetStyleState = rememberPrefString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
-                    val styleLabel = if (widgetStyleState.value == ConfigReceiver.STYLE_GLASS_CARD) "Liquid Glass" else "Floating Capsule"
+                    val widgetScaleState = rememberPrefFloat(ConfigReceiver.KEY_MEDIA_WIDGET_SCALE, ConfigReceiver.DEFAULT_MEDIA_WIDGET_SCALE)
+                    val sizeLabel = when {
+                        widgetScaleState.value >= 1.45f -> "Extra Large (1.5x)"
+                        widgetScaleState.value >= 1.20f -> "Large (1.25x)"
+                        else -> "Default (1.0x)"
+                    }
                     CycleRow(
-                        label = "Widget Style",
-                        value = styleLabel,
-                        subtitle = "Choose between minimalist floating capsule or horizontal frosted glass card.",
-                        iconRes = R.drawable.ic_music,
+                        label = "Widget Size",
+                        value = sizeLabel,
+                        subtitle = "Choose a preset size or pinch with 2 fingers directly on the widget to custom resize.",
+                        iconRes = R.drawable.ic_ambient,
                         iconBg = Color(0xFF007AFF),
                     ) {
-                        val next = if (widgetStyleState.value == ConfigReceiver.STYLE_GLASS_CARD) {
-                            ConfigReceiver.STYLE_CAPSULE
-                        } else {
-                            ConfigReceiver.STYLE_GLASS_CARD
+                        val next = when {
+                            widgetScaleState.value < 1.20f -> 1.25f
+                            widgetScaleState.value < 1.45f -> 1.50f
+                            else -> 1.0f
                         }
-                        prefs.edit().putString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, next).apply()
+                        prefs.edit().putFloat(ConfigReceiver.KEY_MEDIA_WIDGET_SCALE, next).apply()
                     }
                     Divider()
                     val idleTimeoutState = rememberPrefLong(ConfigReceiver.KEY_MEDIA_WIDGET_IDLE_TIMEOUT, ConfigReceiver.DEFAULT_MEDIA_WIDGET_IDLE_TIMEOUT)
@@ -1595,10 +1599,6 @@ class SettingsActivity : ComponentActivity() {
                         iconRes = R.drawable.ic_ambient,
                         iconBg = Color(0xFF34C759)
                     )
-                    Divider()
-                    OpacitySliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF007AFF))
-                    Divider()
-                    BlurSliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF5856D6))
                 }
                 val isSpotifyInstalled = CompanionAppInstaller.isSpotifyInstalled(ctx)
                 if (isSpotifyInstalled) {
@@ -1707,13 +1707,8 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.width(10.dp))
                     if (isSpotifyInstalled) {
                         SmallAction("Launch", true) {
-                            try {
-                                val launchIntent = ctx.packageManager.getLaunchIntentForPackage("com.spotify.music")
-                                    ?: ctx.packageManager.getLaunchIntentForPackage("com.spotify.tv.android")
-                                    ?: ctx.packageManager.getLaunchIntentForPackage("com.oculus.aloha.spotify")
-                                if (launchIntent != null) ctx.startActivity(launchIntent)
-                            } catch (e: Exception) {
-                                Toast.makeText(ctx, "Could not launch Spotify: ${e.message}", Toast.LENGTH_SHORT).show()
+                            if (!CompanionAppInstaller.launchSpotify(ctx)) {
+                                Toast.makeText(ctx, "Could not launch Spotify", Toast.LENGTH_SHORT).show()
                             }
                         }
                     } else {
@@ -1729,6 +1724,37 @@ class SettingsActivity : ComponentActivity() {
                                 Spacer(Modifier.height(4.dp))
                                 Text(installStatus, color = Color(0xFF007AFF), fontSize = 10.sp)
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        val cardMediaGestures: @Composable () -> Unit = {
+            Card("Floating Capsule Gestures") {
+                Body("Supported touch gestures for the floating music capsule on the photo slideshow:")
+                Spacer(Modifier.height(10.dp))
+
+                val gestures = listOf(
+                    "🤏 Pinch with 2 Fingers" to "Zoom directly on the widget to custom resize smaller or larger.",
+                    "👆 Touch & Drag" to "Move the floating capsule anywhere on the screen.",
+                    "⏯️ Double-Tap Capsule" to "Instantly pause or mute playback with tactile spring feedback.",
+                    "⏭️ Swipe Left / Right" to "Swipe across the capsule to skip to the next or previous track.",
+                    "🎵 Tap Album Art / Title" to "Directly opens the active player (Spotify Connect / SmartTube).",
+                    "⏸️ Tap Play / Pause" to "Direct one-tap toggle for music playback."
+                )
+                gestures.forEachIndexed { i, (title, desc) ->
+                    if (i > 0) Divider()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(title, color = PortalColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(2.dp))
+                            Text(desc, color = PortalColors.Text.copy(alpha = 0.65f), fontSize = 12.sp, lineHeight = 16.sp)
                         }
                     }
                 }
@@ -2020,6 +2046,7 @@ class SettingsActivity : ComponentActivity() {
                     SettingsSection.MEDIA_STREAMING -> {
                         IosTopBar("Media & Audio Streaming", backText = "Settings", onBack = navigateBack, onDone = { finish() })
                         cardMediaAudio()
+                        cardMediaGestures()
                     }
                     SettingsSection.HOME_ASSISTANT -> {
                         IosTopBar("Home Assistant & Web Remote", backText = "Settings", onBack = navigateBack, onDone = { finish() })
@@ -3647,12 +3674,8 @@ class SettingsActivity : ComponentActivity() {
         private val TRANSITION_OPTIONS = listOf(
             TransitionOption("crossfade", "Crossfade"),
             TransitionOption("slide", "Slide"),
-            TransitionOption("zoom", "Zoom"),
-            TransitionOption("zoom_fade", "Zoom fade"),
             TransitionOption("instant", "Instant"),
             TransitionOption("push", "Push"),
-            TransitionOption("book_flip", "Book Flip"),
-            TransitionOption("cube", "3D Cube Rotate"),
         )
         private val FADE_CHOICES = longArrayOf(2000, 1200, 500)
         private val FADE_LABELS = arrayOf("Slow", "Normal", "Fast")

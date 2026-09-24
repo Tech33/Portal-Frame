@@ -89,6 +89,15 @@ class ImageLoader(context: Context) {
         }
     }
 
+    /** Proactively sheds bitmap cache on system memory pressure to ensure 24/7 stability. */
+    fun trimMemory(level: Int) {
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            mem.evictAll()
+        } else if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
+            mem.trimToSize(mem.size() / 2)
+        }
+    }
+
     fun getCacheSizeBytes(): Long {
         return try {
             cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
@@ -109,6 +118,8 @@ class ImageLoader(context: Context) {
             if (bmp != null) {
                 mem.put(key, bmp)
                 FaceFocus.detectAndCache(bmp)
+                PhotoEnhance.precompute(bmp)
+                AmbientColor.precompute(bmp)
             }
             main.post { cb.onLoaded(bmp) }
         }
@@ -125,6 +136,8 @@ class ImageLoader(context: Context) {
             if (b != null) {
                 mem.put(key, b)
                 FaceFocus.detectAndCache(b)
+                PhotoEnhance.precompute(b)
+                AmbientColor.precompute(b)
             }
         }
     }
@@ -210,6 +223,8 @@ class ImageLoader(context: Context) {
             if (result != null) {
                 mem.put(key, result)
                 FaceFocus.detectAndCache(result)
+                PhotoEnhance.precompute(result)
+                AmbientColor.precompute(result)
             }
             main.post { cb.onLoaded(result) }
         }

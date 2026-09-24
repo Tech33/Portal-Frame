@@ -238,12 +238,23 @@ object AudioVisualizerEngine {
         }
     }
 
+    private val dispatchSnapshot = FloatArray(5)
+    private val isDispatchPending = AtomicBoolean(false)
+    private val dispatchRunnable = Runnable {
+        isDispatchPending.set(false)
+        val copy = synchronized(dispatchSnapshot) { dispatchSnapshot.clone() }
+        for (l in listeners) {
+            l.onAudioBands(copy)
+        }
+    }
+
     private fun dispatchBands() {
-        val snapshot = outputBands.clone()
-        mainHandler.post {
-            for (l in listeners) {
-                l.onAudioBands(snapshot)
-            }
+        if (listeners.isEmpty()) return
+        synchronized(dispatchSnapshot) {
+            System.arraycopy(outputBands, 0, dispatchSnapshot, 0, 5)
+        }
+        if (!isDispatchPending.getAndSet(true)) {
+            mainHandler.post(dispatchRunnable)
         }
     }
 }

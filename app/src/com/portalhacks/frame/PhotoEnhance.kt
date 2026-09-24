@@ -2,6 +2,8 @@ package com.portalhacks.frame
 
 import android.graphics.Bitmap
 import android.graphics.ColorMatrix
+import java.util.Collections
+import java.util.WeakHashMap
 
 /**
  * On-device auto-enhance: analyses each photo's luminance histogram and builds a
@@ -12,13 +14,32 @@ import android.graphics.ColorMatrix
 internal object PhotoEnhance {
 
     private const val GRID = 48
+    private val cache = Collections.synchronizedMap(WeakHashMap<Bitmap, ColorMatrix?>())
 
-    /** A flattering ColorMatrix for this photo, or null if it's already well-exposed. */
+    /** Precomputes enhancement matrix on background thread without blocking the UI. */
+    @JvmStatic
+    fun precompute(src: Bitmap?) {
+        if (src == null || src.width < 2 || src.height < 2) return
+        if (!cache.containsKey(src)) {
+            cache[src] = computeInternal(src)
+        }
+    }
+
+    /** A flattering ColorMatrix for this photo, or null if it's already well-exposed. Cached. */
     @JvmStatic
     fun compute(src: Bitmap?): ColorMatrix? {
         if (src == null || src.width < 2 || src.height < 2) {
             return null
         }
+        if (cache.containsKey(src)) {
+            return cache[src]
+        }
+        val res = computeInternal(src)
+        cache[src] = res
+        return res
+    }
+
+    private fun computeInternal(src: Bitmap): ColorMatrix? {
         var s: Bitmap? = null
         try {
             s = Bitmap.createScaledBitmap(src, GRID, GRID, true)

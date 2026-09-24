@@ -99,62 +99,15 @@ class SlideshowController(
     private val clockEditHint: TextView // "drag/pinch/tap" hint shown while editing the clock
     private lateinit var nowPlayingCard: PinchableMediaCard
     private var mediaWidgetScale: Float = ConfigReceiver.DEFAULT_MEDIA_WIDGET_SCALE
-    private var isMediaExpanded: Boolean = false
-    private val collapseMediaRunnable = Runnable { collapseMediaCapsule() }
     private var lastMediaState: MediaMonitor.State? = null
 
-    // Capsule pill views
+    // Floating Capsule pill views
     private lateinit var mediaPillRow: LinearLayout
     private lateinit var pillArtImageView: ImageView
     private lateinit var pillTitleView: ContinuousMarqueeTextView
     private lateinit var pillArtistView: ContinuousMarqueeTextView
     private lateinit var pillPlayBtn: ImageView
     private lateinit var pillVisualizer: AudioVisualizerView
-    private lateinit var mediaExpandedCard: LinearLayout
-    private lateinit var collapseBtn: TextView
-
-    private lateinit var nowPlayingArt: ImageView
-    private lateinit var nowPlayingTitle: TextView
-    private lateinit var nowPlayingArtist: TextView
-    private lateinit var nowPlayingDeviceBadge: TextView
-    private lateinit var nowPlayingSourceBadge: TextView
-    private lateinit var nowPlayingVisualizer: AudioVisualizerView
-    private lateinit var nowPlayingOpenBtn: TextView
-    private lateinit var nowPlayingPlayBtn: ImageView
-    private lateinit var nowPlayingPrevBtn: ImageView
-    private lateinit var nowPlayingNextBtn: ImageView
-    private lateinit var nowPlayingVolumeSeek: SeekBar
-    private lateinit var nowPlayingVolumeText: TextView
-    private lateinit var nowPlayingVolIcon: ImageView
-    private var preMuteVolume: Int = 50
-    private lateinit var nowPlayingHeaderRow: LinearLayout
-    private lateinit var nowPlayingMetaBox: LinearLayout
-    private lateinit var nowPlayingControlsRow: LinearLayout
-    private lateinit var nowPlayingVolumeRow: LinearLayout
-    private var currentAppliedNowPlayingStyle: String = ""
-    private var currentAppliedNowPlayingOpacity: Int = -1
-    private var isUserTrackingVolume = false
-
-    // Liquid Glass Card views
-    private lateinit var glassCard: LinearLayout
-    private lateinit var glassTitle: ContinuousMarqueeTextView
-    private lateinit var glassArtist: ContinuousMarqueeTextView
-    private lateinit var glassSourceBadge: TextView
-    private lateinit var glassVisualizer: AudioVisualizerView
-    private lateinit var glassTimelineSeek: SeekBar
-    private lateinit var glassCurTime: TextView
-    private lateinit var glassTotalTime: TextView
-    private lateinit var glassHeartBtn: TextView
-    private lateinit var glassPrevBtn: ImageView
-    private lateinit var glassPlayBtn: ImageView
-    private lateinit var glassNextBtn: ImageView
-    private lateinit var glassVolBtn: ImageView
-    private lateinit var glassVolumeDrawer: LinearLayout
-    private lateinit var glassVolumeSeek: SeekBar
-    private lateinit var glassVolumeText: TextView
-    private var isGlassHeartLiked: Boolean = false
-    private var isGlassVolumeDrawerOpen: Boolean = false
-    private var isUserTrackingTimeline: Boolean = false
     private lateinit var pauseHaIconBtn: ImageView
     private lateinit var spotifyShortcutButton: LinearLayout
     private lateinit var actionMenuExit: TextView
@@ -230,12 +183,6 @@ class SlideshowController(
         }
         if (::mediaPillRow.isInitialized) {
             (mediaPillRow.background as? GradientDrawable)?.setStroke(
-                Ui.dp(context, 1.4f),
-                strokeColor
-            )
-        }
-        if (::mediaExpandedCard.isInitialized) {
-            (mediaExpandedCard.background as? GradientDrawable)?.setStroke(
                 Ui.dp(context, 1.4f),
                 strokeColor
             )
@@ -789,7 +736,9 @@ class SlideshowController(
                 false
             }
             setOnClickListener {
-                MediaMonitor.launchApp(context)
+                if (!CompanionAppInstaller.launchSpotify(context)) {
+                    MediaMonitor.launchApp(context)
+                }
             }
         }
 
@@ -953,23 +902,14 @@ class SlideshowController(
                     val dy = ev.rawY - initialRawY
                     val absDx = Math.abs(dx)
                     val absDy = Math.abs(dy)
-                    val isCapsuleResting = !isMediaExpanded && ::mediaPillRow.isInitialized && mediaPillRow.visibility == View.VISIBLE
-                    if (isCapsuleResting) {
-                        // On resting capsule:
-                        // Vertical movement (pulling up onto the screen) intercepts for dragging!
-                        // Horizontal movement lets mediaPillRow handle swipe-to-skip.
-                        if (absDy > touchSlop && absDy > absDx * 1.15f) {
-                            isDragging = true
-                            parent?.requestDisallowInterceptTouchEvent(true)
-                            return true
-                        }
-                        return false
-                    }
-                    if (ev.pointerCount == 1 && Math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
+                    // Vertical movement (pulling up onto the screen) intercepts for dragging!
+                    // Horizontal movement lets mediaPillRow handle swipe-to-skip.
+                    if (absDy > touchSlop && absDy > absDx * 1.15f) {
                         isDragging = true
                         parent?.requestDisallowInterceptTouchEvent(true)
                         return true
                     }
+                    return false
                 }
             }
             return isDragging
@@ -988,15 +928,11 @@ class SlideshowController(
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - initialRawX
                     val dy = event.rawY - initialRawY
-                    val isCapsuleResting = !isMediaExpanded && ::mediaPillRow.isInitialized && mediaPillRow.visibility == View.VISIBLE
-                    if (isCapsuleResting && !isDragging) {
+                    if (!isDragging) {
                         if (Math.abs(dy) > touchSlop && Math.abs(dy) > Math.abs(dx) * 1.15f) {
                             isDragging = true
                             parent?.requestDisallowInterceptTouchEvent(true)
                         }
-                    } else if (!isDragging && Math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
-                        isDragging = true
-                        parent?.requestDisallowInterceptTouchEvent(true)
                     }
                     if (isDragging) {
                         var targetTx = initialTranslationX + dx
@@ -1062,46 +998,17 @@ class SlideshowController(
                 persistMediaWidgetScale()
             }
             onCardTapped = {
-                val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-                val currentStyle = prefs.getString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
-                if (currentStyle == ConfigReceiver.STYLE_GLASS_CARD) {
-                    toggleGlassVolumeDrawer()
-                } else {
-                    if (!isMediaExpanded) {
-                        expandMediaCapsule()
-                    } else {
-                        collapseMediaCapsule()
-                    }
+                if (!CompanionAppInstaller.launchSpotify(context)) {
+                    MediaMonitor.launchApp(context)
                 }
             }
         }
 
-        collapseBtn = TextView(context).apply {
-            setTextColor(0xFFFFFFFF.toInt())
-            typeface = Ui.bold(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            background = Ui.roundRect(0x38FFFFFF, Ui.dp(context, 12f)).apply {
-                setStroke(Ui.dp(context, 1f), 0x55FFFFFF)
-            }
-            gravity = Gravity.CENTER
-            setPadding(Ui.dp(context, 10f), Ui.dp(context, 4f), Ui.dp(context, 10f), Ui.dp(context, 4f))
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginEnd = Ui.dp(context, 8f)
-                rightMargin = Ui.dp(context, 8f)
-            }
-            layoutParams = lp
-            text = "⌄ Collapse"
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { collapseMediaCapsule() }
-        }
-
         val pillGestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                expandMediaCapsule()
+                if (!CompanionAppInstaller.launchSpotify(context)) {
+                    MediaMonitor.launchApp(context)
+                }
                 return true
             }
 
@@ -1190,7 +1097,9 @@ class SlideshowController(
             background = Ui.roundRect(0x22FFFFFF, Ui.dp(context, 20f))
             clipToOutline = true
             setOnClickListener {
-                MediaMonitor.launchApp(context)
+                if (!CompanionAppInstaller.launchSpotify(context)) {
+                    MediaMonitor.launchApp(context)
+                }
             }
         }
 
@@ -1255,746 +1164,11 @@ class SlideshowController(
         mediaPillRow.addView(pillVisualizer)
         mediaPillRow.addView(pillPlayBtn)
 
-        mediaExpandedCard = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            clipToOutline = true
-            visibility = View.GONE
-            var expandedDownY = 0f
-            var expandedDownX = 0f
-            setOnTouchListener { _, event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        expandedDownX = event.rawX
-                        expandedDownY = event.rawY
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        val dy = event.rawY - expandedDownY
-                        val dx = Math.abs(event.rawX - expandedDownX)
-                        if (dy > Ui.dp(context, 26f) && dy > dx * 1.2f) {
-                            collapseMediaCapsule()
-                            return@setOnTouchListener true
-                        }
-                    }
-                }
-                false
-            }
-        }
-
-        // Header row: Badge + Spacer + "Open ↗" button
-        val headerRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = Ui.dp(context, 10f)
-            }
-        }
-
-        nowPlayingSourceBadge = TextView(context).apply {
-            setTextColor(Color.BLACK)
-            typeface = Ui.bold(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f)
-            background = Ui.roundRect(0xFF1DB954.toInt(), Ui.dp(context, 5f))
-            setPadding(Ui.dp(context, 6f), Ui.dp(context, 2f), Ui.dp(context, 6f), Ui.dp(context, 2f))
-            text = "SPOTIFY"
-        }
-
-        val headerSpacer = View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
-        }
-
-        nowPlayingOpenBtn = TextView(context).apply {
-            setTextColor(0xD9FFFFFF.toInt())
-            typeface = Ui.bold(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-            background = Ui.roundRect(0x2BFFFFFF, Ui.dp(context, 12f))
-            setPadding(Ui.dp(context, 9f), Ui.dp(context, 3f), Ui.dp(context, 9f), Ui.dp(context, 3f))
-            text = "Open ↗"
-            setOnClickListener { MediaMonitor.launchApp(context) }
-        }
-
-        nowPlayingVisualizer = AudioVisualizerView(context, barCount = 5).apply {
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginStart = Ui.dp(context, 8f)
-                leftMargin = Ui.dp(context, 8f)
-            }
-            layoutParams = lp
-        }
-
-        headerRow.addView(nowPlayingSourceBadge)
-        headerRow.addView(nowPlayingVisualizer)
-        headerRow.addView(headerSpacer)
-        headerRow.addView(nowPlayingOpenBtn)
-
-        // Square album artwork with 14dp rounded corners
-        nowPlayingArt = ImageView(context).apply {
-            val s = Ui.dp(context, 232f)
-            layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                bottomMargin = Ui.dp(context, 10f)
-            }
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            setImageResource(R.drawable.ic_music)
-            background = Ui.roundRect(0x22FFFFFF, Ui.dp(context, 14f))
-            clipToOutline = true
-            setOnClickListener { MediaMonitor.launchApp(context) }
-        }
-
-        // Metadata box: Title + Artist + Device Badge
-        val metaBox = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = Ui.dp(context, 10f)
-            }
-        }
-
-        nowPlayingTitle = ContinuousMarqueeTextView(context).apply {
-            setTextColor(Color.WHITE)
-            typeface = Ui.bold(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            text = "Now Playing"
-        }
-
-        nowPlayingArtist = ContinuousMarqueeTextView(context).apply {
-            setTextColor(0xE6FFFFFF.toInt())
-            typeface = Ui.medium(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setShadowLayer(4f, 0f, 1f, 0x80000000.toInt())
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = Ui.dp(context, 2f)
-            }
-            layoutParams = lp
-            text = "Audio Playback"
-        }
-
-        nowPlayingDeviceBadge = TextView(context).apply {
-            setTextColor(0x8AFFFFFF.toInt())
-            typeface = Ui.regular(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-            setSingleLine(true)
-            ellipsize = TextUtils.TruncateAt.END
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = Ui.dp(context, 3f)
-            }
-            layoutParams = lp
-            text = "📻 Portal Living Room"
-        }
-
-        metaBox.addView(nowPlayingTitle)
-        metaBox.addView(nowPlayingArtist)
-        metaBox.addView(nowPlayingDeviceBadge)
-
-        // Transport controls: Previous + Big White Play/Pause + Next
-        val controlsRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = Ui.dp(context, 10f)
-            }
-        }
-
-        nowPlayingPrevBtn = ImageView(context).apply {
-            setImageResource(R.drawable.ic_skip_previous)
-            setColorFilter(Color.WHITE)
-            val s = Ui.dp(context, 36f)
-            layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                rightMargin = Ui.dp(context, 16f)
-            }
-            setPadding(Ui.dp(context, 6f), Ui.dp(context, 6f), Ui.dp(context, 6f), Ui.dp(context, 6f))
-            background = Ui.roundRect(0x1FFFFFFF, Ui.dp(context, 18f))
-            clipToOutline = true
-            setOnClickListener { MediaMonitor.prev(context) }
-        }
-
-        nowPlayingPlayBtn = ImageView(context).apply {
-            setImageResource(R.drawable.ic_play)
-            setColorFilter(Color.BLACK)
-            val s = Ui.dp(context, 44f)
-            layoutParams = LinearLayout.LayoutParams(s, s)
-            setPadding(Ui.dp(context, 9f), Ui.dp(context, 9f), Ui.dp(context, 9f), Ui.dp(context, 9f))
-            background = Ui.roundRect(Color.WHITE, Ui.dp(context, 22f))
-            clipToOutline = true
-            elevation = Ui.dp(context, 4f).toFloat()
-            setOnClickListener { MediaMonitor.playPause(context) }
-        }
-
-        nowPlayingNextBtn = ImageView(context).apply {
-            setImageResource(R.drawable.ic_skip_next)
-            setColorFilter(Color.WHITE)
-            val s = Ui.dp(context, 36f)
-            layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                leftMargin = Ui.dp(context, 16f)
-            }
-            setPadding(Ui.dp(context, 6f), Ui.dp(context, 6f), Ui.dp(context, 6f), Ui.dp(context, 6f))
-            background = Ui.roundRect(0x1FFFFFFF, Ui.dp(context, 18f))
-            clipToOutline = true
-            setOnClickListener { MediaMonitor.next(context) }
-        }
-
-        controlsRow.addView(nowPlayingPrevBtn)
-        controlsRow.addView(nowPlayingPlayBtn)
-        controlsRow.addView(nowPlayingNextBtn)
-
-        // Volume row: Speaker Icon + Slider + Percentage
-        val volumeRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val volIcon = ImageView(context).apply {
-            setImageResource(R.drawable.ic_volume_up)
-            setColorFilter(0xB3FFFFFF.toInt())
-            val vs = Ui.dp(context, 18f)
-            layoutParams = LinearLayout.LayoutParams(vs, vs).apply {
-                rightMargin = Ui.dp(context, 6f)
-            }
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                val cur = nowPlayingVolumeSeek.progress
-                if (cur > 0) {
-                    preMuteVolume = cur
-                    nowPlayingVolumeSeek.progress = 0
-                    nowPlayingVolumeText.text = "0%"
-                    setImageResource(R.drawable.ic_volume_off)
-                    MediaMonitor.setVolume(0, context)
-                } else {
-                    val target = if (preMuteVolume > 0) preMuteVolume else 50
-                    nowPlayingVolumeSeek.progress = target
-                    nowPlayingVolumeText.text = "$target%"
-                    setImageResource(R.drawable.ic_volume_up)
-                    MediaMonitor.setVolume(target, context)
-                }
-            }
-        }
-        nowPlayingVolIcon = volIcon
-
-        nowPlayingVolumeSeek = SeekBar(context).apply {
-            max = 100
-            progress = 50
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setPadding(Ui.dp(context, 4f), 0, Ui.dp(context, 4f), 0)
-            }
-            progressDrawable = createSleekSliderDrawable(context, 0xFF1DB954.toInt(), 5f)
-            thumb = createSleekThumb(context, 13f)
-            splitTrack = false
-            thumbOffset = Ui.dp(context, 6f)
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    if (fromUser) {
-                        nowPlayingVolumeText.text = "$progress%"
-                    }
-                }
-
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                    isUserTrackingVolume = true
-                }
-
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    isUserTrackingVolume = false
-                    val p = seekBar?.progress ?: return
-                    MediaMonitor.setVolume(p, context)
-                }
-            })
-        }
-
-        nowPlayingVolumeText = TextView(context).apply {
-            setTextColor(0x8AFFFFFF.toInt())
-            typeface = Ui.medium(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-            text = "50%"
-            layoutParams = LinearLayout.LayoutParams(
-                Ui.dp(context, 32f),
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                leftMargin = Ui.dp(context, 6f)
-            }
-            gravity = Gravity.END
-        }
-
-        volumeRow.addView(volIcon)
-        volumeRow.addView(nowPlayingVolumeSeek)
-        volumeRow.addView(nowPlayingVolumeText)
-
-        nowPlayingHeaderRow = headerRow
-        nowPlayingMetaBox = metaBox
-        nowPlayingControlsRow = controlsRow
-        nowPlayingVolumeRow = volumeRow
-
-        initGlassCard()
-
-        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-        mediaWidgetScale = prefs.getFloat(
-            ConfigReceiver.KEY_MEDIA_WIDGET_SCALE,
-            ConfigReceiver.DEFAULT_MEDIA_WIDGET_SCALE
-        ).coerceIn(ConfigReceiver.MIN_MEDIA_WIDGET_SCALE, ConfigReceiver.MAX_MEDIA_WIDGET_SCALE)
-        val initialStyle = prefs.getString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
-            ?: ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE
-        applyNowPlayingStyle(initialStyle)
+        applyNowPlayingStyle()
         nowPlayingCard.post { applyMediaWidgetScale() }
 
         MediaMonitor.addListener(mediaListener)
         handler.postDelayed(pixelShiftRunnable, 900_000L)
-    }
-
-    private fun initGlassCard() {
-        glassCard = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            clipToOutline = true
-            visibility = View.GONE
-            val padH = Ui.dp(context, 14f)
-            val padV = Ui.dp(context, 10f)
-            setPadding(padH, padV, padH, padV)
-            layoutParams = LinearLayout.LayoutParams(
-                Ui.dp(context, 270f),
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            elevation = Ui.dp(context, 18f).toFloat()
-        }
-
-        // Top Row: Title + Artist on left, Menu / Source on right
-        val topRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val metaBox = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginEnd = Ui.dp(context, 8f)
-                rightMargin = Ui.dp(context, 8f)
-            }
-        }
-
-        glassTitle = ContinuousMarqueeTextView(context).apply {
-            setTextColor(Color.WHITE)
-            typeface = Ui.bold(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setShadowLayer(4f, 0f, 1f, 0x80000000.toInt())
-            text = "Now Playing"
-        }
-
-        glassArtist = ContinuousMarqueeTextView(context).apply {
-            setTextColor(0xE6FFFFFF.toInt())
-            typeface = Ui.medium(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-            setShadowLayer(4f, 0f, 1f, 0x80000000.toInt())
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = Ui.dp(context, 1f)
-            }
-            layoutParams = lp
-            text = "Audio Playback"
-        }
-
-        metaBox.addView(glassTitle)
-        metaBox.addView(glassArtist)
-
-        glassSourceBadge = TextView(context).apply {
-            setTextColor(0xE6FFFFFF.toInt())
-            typeface = Ui.bold(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            background = Ui.roundRect(0x2BFFFFFF, Ui.dp(context, 10f))
-            setPadding(Ui.dp(context, 8f), Ui.dp(context, 3f), Ui.dp(context, 8f), Ui.dp(context, 3f))
-            text = "•••"
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { MediaMonitor.launchApp(context) }
-        }
-
-        glassVisualizer = AudioVisualizerView(context, barCount = 5).apply {
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginEnd = Ui.dp(context, 8f)
-                rightMargin = Ui.dp(context, 8f)
-            }
-            layoutParams = lp
-        }
-
-        topRow.addView(metaBox)
-        topRow.addView(glassVisualizer)
-        topRow.addView(glassSourceBadge)
-
-        // Middle Row: Timeline Scrubber with Timestamps
-        val timelineRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = Ui.dp(context, 6f)
-                bottomMargin = Ui.dp(context, 4f)
-            }
-            layoutParams = lp
-        }
-
-        glassCurTime = TextView(context).apply {
-            setTextColor(0x99FFFFFF.toInt())
-            typeface = Ui.regular(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-            text = "0:00"
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginEnd = Ui.dp(context, 6f)
-                rightMargin = Ui.dp(context, 6f)
-            }
-        }
-
-        glassTimelineSeek = SeekBar(context).apply {
-            max = 1000
-            progress = 0
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setPadding(Ui.dp(context, 2f), 0, Ui.dp(context, 2f), 0)
-            }
-            progressDrawable = createSleekSliderDrawable(context, 0xFFFFFFFF.toInt(), 3.5f)
-            thumb = createSleekThumb(context, 10f)
-            splitTrack = false
-            thumbOffset = Ui.dp(context, 5f)
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    if (fromUser) {
-                        val dur = MediaMonitor.getDuration()
-                        if (dur > 0) {
-                            val curMs = (progress / 1000f * dur).toLong()
-                            glassCurTime.text = formatTime(curMs)
-                        }
-                    }
-                }
-
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                    isUserTrackingTimeline = true
-                }
-
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    isUserTrackingTimeline = false
-                    val p = seekBar?.progress ?: 0
-                    val dur = MediaMonitor.getDuration()
-                    if (dur > 0) {
-                        val curMs = (p / 1000f * dur).toLong()
-                        MediaMonitor.seekTo(curMs)
-                    }
-                }
-            })
-        }
-
-        glassTotalTime = TextView(context).apply {
-            setTextColor(0x99FFFFFF.toInt())
-            typeface = Ui.regular(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-            text = "3:45"
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginStart = Ui.dp(context, 6f)
-                leftMargin = Ui.dp(context, 6f)
-            }
-        }
-
-        timelineRow.addView(glassCurTime)
-        timelineRow.addView(glassTimelineSeek)
-        timelineRow.addView(glassTotalTime)
-
-        // Bottom Row: Controls (Heart, Prev, Play/Pause, Next, Volume)
-        val controlsRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = Ui.dp(context, 2f)
-            }
-        }
-
-        glassHeartBtn = TextView(context).apply {
-            text = "♡"
-            setTextColor(0xB3FFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            gravity = Gravity.CENTER
-            val s = Ui.dp(context, 28f)
-            layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                marginEnd = Ui.dp(context, 6f)
-                rightMargin = Ui.dp(context, 6f)
-            }
-            background = Ui.roundRect(0x1AFFFFFF, Ui.dp(context, 14f))
-            clipToOutline = true
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                isGlassHeartLiked = !isGlassHeartLiked
-                text = if (isGlassHeartLiked) "♥" else "♡"
-                setTextColor(if (isGlassHeartLiked) 0xFFFF3B30.toInt() else 0xB3FFFFFF.toInt())
-                animate().scaleX(1.3f).scaleY(1.3f).setDuration(120).withEndAction {
-                    animate().scaleX(1f).scaleY(1f).setDuration(120).start()
-                }.start()
-            }
-        }
-
-        val transportCenter = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        glassPrevBtn = ImageView(context).apply {
-            setImageResource(R.drawable.ic_skip_previous)
-            setColorFilter(0xE6FFFFFF.toInt())
-            val s = Ui.dp(context, 28f)
-            layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                rightMargin = Ui.dp(context, 14f)
-                marginEnd = Ui.dp(context, 14f)
-            }
-            setPadding(Ui.dp(context, 5f), Ui.dp(context, 5f), Ui.dp(context, 5f), Ui.dp(context, 5f))
-            background = Ui.roundRect(0x1AFFFFFF, Ui.dp(context, 14f))
-            clipToOutline = true
-            setOnClickListener { MediaMonitor.prev(context) }
-        }
-
-        glassPlayBtn = ImageView(context).apply {
-            setImageResource(R.drawable.ic_play)
-            setColorFilter(Color.BLACK)
-            val s = Ui.dp(context, 34f)
-            layoutParams = LinearLayout.LayoutParams(s, s)
-            setPadding(Ui.dp(context, 7f), Ui.dp(context, 7f), Ui.dp(context, 7f), Ui.dp(context, 7f))
-            background = Ui.roundRect(Color.WHITE, Ui.dp(context, 17f))
-            clipToOutline = true
-            elevation = Ui.dp(context, 4f).toFloat()
-            setOnClickListener { MediaMonitor.playPause(context) }
-        }
-
-        glassNextBtn = ImageView(context).apply {
-            setImageResource(R.drawable.ic_skip_next)
-            setColorFilter(0xE6FFFFFF.toInt())
-            val s = Ui.dp(context, 28f)
-            layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                leftMargin = Ui.dp(context, 14f)
-                marginStart = Ui.dp(context, 14f)
-            }
-            setPadding(Ui.dp(context, 5f), Ui.dp(context, 5f), Ui.dp(context, 5f), Ui.dp(context, 5f))
-            background = Ui.roundRect(0x1AFFFFFF, Ui.dp(context, 14f))
-            clipToOutline = true
-            setOnClickListener { MediaMonitor.next(context) }
-        }
-
-        transportCenter.addView(glassPrevBtn)
-        transportCenter.addView(glassPlayBtn)
-        transportCenter.addView(glassNextBtn)
-
-        glassVolBtn = ImageView(context).apply {
-            setImageResource(R.drawable.ic_volume_up)
-            setColorFilter(0xB3FFFFFF.toInt())
-            val s = Ui.dp(context, 28f)
-            layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                marginStart = Ui.dp(context, 6f)
-                leftMargin = Ui.dp(context, 6f)
-            }
-            setPadding(Ui.dp(context, 5f), Ui.dp(context, 5f), Ui.dp(context, 5f), Ui.dp(context, 5f))
-            background = Ui.roundRect(0x1AFFFFFF, Ui.dp(context, 14f))
-            clipToOutline = true
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                toggleGlassVolumeDrawer()
-            }
-        }
-
-        controlsRow.addView(glassHeartBtn)
-        controlsRow.addView(transportCenter)
-        controlsRow.addView(glassVolBtn)
-
-        // Expandable Volume Drawer
-        glassVolumeDrawer = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            visibility = View.GONE
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = Ui.dp(context, 8f)
-            }
-            layoutParams = lp
-            val pad = Ui.dp(context, 6f)
-            setPadding(pad, Ui.dp(context, 4f), pad, Ui.dp(context, 4f))
-            background = Ui.roundRect(0x22FFFFFF, Ui.dp(context, 10f))
-        }
-
-        val drawerVolMin = ImageView(context).apply {
-            setImageResource(R.drawable.ic_volume_off)
-            setColorFilter(0x8AFFFFFF.toInt())
-            val vs = Ui.dp(context, 14f)
-            layoutParams = LinearLayout.LayoutParams(vs, vs).apply {
-                rightMargin = Ui.dp(context, 4f)
-            }
-        }
-
-        glassVolumeSeek = SeekBar(context).apply {
-            max = 100
-            progress = 50
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setPadding(Ui.dp(context, 2f), 0, Ui.dp(context, 2f), 0)
-            }
-            progressDrawable = createSleekSliderDrawable(context, 0xFF1DB954.toInt(), 4.5f)
-            thumb = createSleekThumb(context, 12f)
-            splitTrack = false
-            thumbOffset = Ui.dp(context, 6f)
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    if (fromUser) {
-                        glassVolumeText.text = "$progress%"
-                    }
-                }
-
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                    isUserTrackingVolume = true
-                }
-
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    isUserTrackingVolume = false
-                    val p = seekBar?.progress ?: return
-                    MediaMonitor.setVolume(p, context)
-                }
-            })
-        }
-
-        glassVolumeText = TextView(context).apply {
-            setTextColor(0x8AFFFFFF.toInt())
-            typeface = Ui.medium(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f)
-            text = "50%"
-            layoutParams = LinearLayout.LayoutParams(
-                Ui.dp(context, 28f),
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                leftMargin = Ui.dp(context, 4f)
-            }
-            gravity = Gravity.END
-        }
-
-        glassVolumeDrawer.addView(drawerVolMin)
-        glassVolumeDrawer.addView(glassVolumeSeek)
-        glassVolumeDrawer.addView(glassVolumeText)
-
-        glassCard.addView(topRow)
-        glassCard.addView(timelineRow)
-        glassCard.addView(controlsRow)
-        glassCard.addView(glassVolumeDrawer)
-    }
-
-    private fun toggleGlassVolumeDrawer() {
-        if (!::glassVolumeDrawer.isInitialized) return
-        isGlassVolumeDrawerOpen = !isGlassVolumeDrawerOpen
-        val transition = android.transition.AutoTransition().apply {
-            duration = 200
-        }
-        android.transition.TransitionManager.beginDelayedTransition(nowPlayingCard, transition)
-        glassVolumeDrawer.visibility = if (isGlassVolumeDrawerOpen) View.VISIBLE else View.GONE
-        glassVolBtn.setColorFilter(if (isGlassVolumeDrawerOpen) Color.WHITE else 0xB3FFFFFF.toInt())
-    }
-
-    private fun setupControlsSize(isCompact: Boolean) {
-        if (isCompact) {
-            val sBtn = Ui.dp(context, 28f)
-            val pBtn = Ui.dp(context, 4f)
-            nowPlayingPrevBtn.layoutParams = LinearLayout.LayoutParams(sBtn, sBtn).apply {
-                rightMargin = Ui.dp(context, 8f)
-            }
-            nowPlayingPrevBtn.setPadding(pBtn, pBtn, pBtn, pBtn)
-
-            val sPlay = Ui.dp(context, 34f)
-            val pPlay = Ui.dp(context, 6f)
-            nowPlayingPlayBtn.layoutParams = LinearLayout.LayoutParams(sPlay, sPlay)
-            nowPlayingPlayBtn.setPadding(pPlay, pPlay, pPlay, pPlay)
-
-            nowPlayingNextBtn.layoutParams = LinearLayout.LayoutParams(sBtn, sBtn).apply {
-                leftMargin = Ui.dp(context, 8f)
-            }
-            nowPlayingNextBtn.setPadding(pBtn, pBtn, pBtn, pBtn)
-
-            nowPlayingTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            nowPlayingArtist.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            nowPlayingDeviceBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f)
-
-            nowPlayingMetaBox.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = Ui.dp(context, 4f)
-            }
-            nowPlayingControlsRow.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = 0
-            }
-        } else {
-            val sBtn = Ui.dp(context, 36f)
-            val pBtn = Ui.dp(context, 6f)
-            nowPlayingPrevBtn.layoutParams = LinearLayout.LayoutParams(sBtn, sBtn).apply {
-                rightMargin = Ui.dp(context, 16f)
-            }
-            nowPlayingPrevBtn.setPadding(pBtn, pBtn, pBtn, pBtn)
-
-            val sPlay = Ui.dp(context, 44f)
-            val pPlay = Ui.dp(context, 9f)
-            nowPlayingPlayBtn.layoutParams = LinearLayout.LayoutParams(sPlay, sPlay)
-            nowPlayingPlayBtn.setPadding(pPlay, pPlay, pPlay, pPlay)
-
-            nowPlayingNextBtn.layoutParams = LinearLayout.LayoutParams(sBtn, sBtn).apply {
-                leftMargin = Ui.dp(context, 16f)
-            }
-            nowPlayingNextBtn.setPadding(pBtn, pBtn, pBtn, pBtn)
-
-            nowPlayingTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            nowPlayingArtist.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
-            nowPlayingDeviceBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-
-            nowPlayingMetaBox.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = Ui.dp(context, 10f)
-            }
-            nowPlayingControlsRow.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = Ui.dp(context, 10f)
-            }
-        }
     }
 
     private fun applyMediaWidgetScale() {
@@ -2014,81 +1188,19 @@ class SlideshowController(
         prefs.edit().putFloat(ConfigReceiver.KEY_MEDIA_WIDGET_SCALE, mediaWidgetScale).apply()
     }
 
-    private fun collapseMediaCapsule() {
-        if (!isMediaExpanded) return
-        isMediaExpanded = false
-        handler.removeCallbacks(collapseMediaRunnable)
-        if (::nowPlayingCard.isInitialized) {
-            nowPlayingCard.resetPosition(animated = true)
-        }
-        if (::mediaPillRow.isInitialized && ::mediaExpandedCard.isInitialized) {
-            val transition = android.transition.AutoTransition().apply {
-                duration = 240
-                interpolator = OvershootInterpolator(1.1f)
-            }
-            android.transition.TransitionManager.beginDelayedTransition(nowPlayingCard, transition)
-            mediaExpandedCard.visibility = View.GONE
-            mediaPillRow.visibility = View.VISIBLE
-            mediaPillRow.scaleX = 0.95f
-            mediaPillRow.scaleY = 0.95f
-            mediaPillRow.animate().scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(OvershootInterpolator(1.2f)).start()
-            nowPlayingCard.post { applyMediaWidgetScale() }
-        }
-    }
-
-    private fun expandMediaCapsule() {
-        if (isMediaExpanded) return
-        isMediaExpanded = true
-        if (::mediaPillRow.isInitialized && ::mediaExpandedCard.isInitialized) {
-            val transition = android.transition.AutoTransition().apply {
-                duration = 260
-                interpolator = OvershootInterpolator(1.15f)
-            }
-            android.transition.TransitionManager.beginDelayedTransition(nowPlayingCard, transition)
-            mediaPillRow.visibility = View.GONE
-            mediaExpandedCard.visibility = View.VISIBLE
-            mediaExpandedCard.scaleX = 0.95f
-            mediaExpandedCard.scaleY = 0.95f
-            mediaExpandedCard.animate().scaleX(1f).scaleY(1f).setDuration(240).setInterpolator(OvershootInterpolator(1.2f)).start()
-            nowPlayingCard.post { applyMediaWidgetScale() }
-        }
-        resetMediaCollapseTimer()
-    }
-
-    private fun resetMediaCollapseTimer() {
-        handler.removeCallbacks(collapseMediaRunnable)
-        if (isMediaExpanded) {
-            handler.postDelayed(collapseMediaRunnable, 10000L)
-        }
-    }
-
-    private fun applyNowPlayingStyle(style: String) {
+    private fun applyNowPlayingStyle() {
         val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-        val opacityPercent = prefs.getInt(ConfigReceiver.KEY_NOW_PLAYING_OPACITY, ConfigReceiver.DEFAULT_NOW_PLAYING_OPACITY).coerceIn(2, 100)
-        currentAppliedNowPlayingStyle = style
-        currentAppliedNowPlayingOpacity = opacityPercent
+        mediaWidgetScale = prefs.getFloat(
+            ConfigReceiver.KEY_MEDIA_WIDGET_SCALE,
+            ConfigReceiver.DEFAULT_MEDIA_WIDGET_SCALE
+        ).coerceIn(ConfigReceiver.MIN_MEDIA_WIDGET_SCALE, ConfigReceiver.MAX_MEDIA_WIDGET_SCALE)
 
-        val alpha = (opacityPercent * 255 / 100).coerceIn(0x05, 0xFF)
-        val cardColor = (alpha shl 24) or 0x181A1E
-        val frostedAlpha = if (opacityPercent >= 98) 0xFF else ((alpha * 85) / 100).coerceIn(0x04, 0xFF)
-        val frostedColor = (frostedAlpha shl 24) or 0x141518
+        val cardColor = 0xCC181A1E.toInt()
 
-        // Detach all subviews from previous layout
-        (nowPlayingHeaderRow.parent as? ViewGroup)?.removeView(nowPlayingHeaderRow)
-        (nowPlayingArt.parent as? ViewGroup)?.removeView(nowPlayingArt)
-        (nowPlayingMetaBox.parent as? ViewGroup)?.removeView(nowPlayingMetaBox)
-        (nowPlayingControlsRow.parent as? ViewGroup)?.removeView(nowPlayingControlsRow)
-        (nowPlayingVolumeRow.parent as? ViewGroup)?.removeView(nowPlayingVolumeRow)
-        if (::mediaPillRow.isInitialized) (mediaPillRow.parent as? ViewGroup)?.removeView(mediaPillRow)
-        if (::mediaExpandedCard.isInitialized) (mediaExpandedCard.parent as? ViewGroup)?.removeView(mediaExpandedCard)
-        if (::glassCard.isInitialized) (glassCard.parent as? ViewGroup)?.removeView(glassCard)
+        if (::mediaPillRow.isInitialized) {
+            (mediaPillRow.parent as? ViewGroup)?.removeView(mediaPillRow)
+        }
         nowPlayingCard.removeAllViews()
-
-        val contentAlpha = (0.45f + 0.55f * (opacityPercent / 100f)).coerceIn(0.4f, 1.0f)
-        nowPlayingVolumeRow.alpha = contentAlpha
-        val volBgAlpha = (alpha * 0.35f).toInt().coerceIn(0x06, 0x55)
-        nowPlayingVolumeRow.background = Ui.roundRect((volBgAlpha shl 24) or 0xFFFFFF, Ui.dp(context, 12f))
-        nowPlayingVolumeRow.setPadding(Ui.dp(context, 8f), Ui.dp(context, 4f), Ui.dp(context, 8f), Ui.dp(context, 4f))
 
         val lp = (nowPlayingCard.layoutParams as? FrameLayout.LayoutParams) ?: FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -2104,13 +1216,13 @@ class SlideshowController(
         lp.topMargin = 0
         lp.marginEnd = Ui.dp(context, 24f)
         lp.rightMargin = Ui.dp(context, 24f)
+        lp.width = FrameLayout.LayoutParams.WRAP_CONTENT
 
         nowPlayingCard.background = null
         nowPlayingCard.elevation = 0f
         nowPlayingCard.setPadding(0, 0, 0, 0)
         nowPlayingCard.orientation = LinearLayout.VERTICAL
 
-        // Configure Pill Row
         mediaPillRow.background = Ui.roundRect(cardColor, Ui.dp(context, 26f)).apply {
             setStroke(Ui.dp(context, 1.2f), 0x3DFFFFFF)
         }
@@ -2118,79 +1230,9 @@ class SlideshowController(
         val pillPadH = Ui.dp(context, 7f)
         val pillPadV = Ui.dp(context, 6f)
         mediaPillRow.setPadding(pillPadH, pillPadV, Ui.dp(context, 8f), pillPadV)
+        mediaPillRow.visibility = View.VISIBLE
 
-        // Configure Expanded Card
-        mediaExpandedCard.layoutParams = LinearLayout.LayoutParams(
-            Ui.dp(context, 290f),
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        mediaExpandedCard.background = Ui.roundRect(cardColor, Ui.dp(context, 20f)).apply {
-            setStroke(Ui.dp(context, 1.2f), 0x3DFFFFFF)
-        }
-        mediaExpandedCard.elevation = Ui.dp(context, 20f).toFloat()
-        val expPad = Ui.dp(context, 12f)
-        mediaExpandedCard.setPadding(expPad, expPad, expPad, expPad)
-        updateMediaPaletteGlow(lastMediaState?.art)
-
-        setupControlsSize(isCompact = true)
-
-        val artS = Ui.dp(context, 64f)
-        nowPlayingArt.layoutParams = LinearLayout.LayoutParams(artS, artS).apply {
-            rightMargin = Ui.dp(context, 10f)
-            marginEnd = Ui.dp(context, 10f)
-            bottomMargin = 0
-        }
-
-        (collapseBtn.parent as? ViewGroup)?.removeView(collapseBtn)
-        val openIdx = nowPlayingHeaderRow.indexOfChild(nowPlayingOpenBtn)
-        if (openIdx >= 0) {
-            nowPlayingHeaderRow.addView(collapseBtn, openIdx)
-        } else {
-            nowPlayingHeaderRow.addView(collapseBtn)
-        }
-        collapseBtn.visibility = View.VISIBLE
-
-        mediaExpandedCard.removeAllViews()
-        mediaExpandedCard.addView(nowPlayingHeaderRow)
-
-        val middleRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = Ui.dp(context, 8f)
-            }
-        }
-        val rightCol = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        middleRow.addView(nowPlayingArt)
-        rightCol.addView(nowPlayingMetaBox)
-        middleRow.addView(rightCol)
-
-        mediaExpandedCard.addView(middleRow)
-        mediaExpandedCard.addView(nowPlayingControlsRow)
-        mediaExpandedCard.addView(nowPlayingVolumeRow)
-
-        if (style == ConfigReceiver.STYLE_GLASS_CARD && ::glassCard.isInitialized) {
-            glassCard.background = Ui.roundRect(cardColor, Ui.dp(context, 20f)).apply {
-                setStroke(Ui.dp(context, 1.2f), 0x55FFFFFF.toInt())
-            }
-            glassCard.visibility = View.VISIBLE
-            nowPlayingCard.addView(glassCard)
-            lp.width = Ui.dp(context, 270f)
-        } else {
-            mediaPillRow.visibility = if (isMediaExpanded) View.GONE else View.VISIBLE
-            mediaExpandedCard.visibility = if (isMediaExpanded) View.VISIBLE else View.GONE
-
-            nowPlayingCard.addView(mediaPillRow)
-            nowPlayingCard.addView(mediaExpandedCard)
-            lp.width = FrameLayout.LayoutParams.WRAP_CONTENT
-        }
-
+        nowPlayingCard.addView(mediaPillRow)
         nowPlayingCard.layoutParams = lp
         nowPlayingCard.post { applyMediaWidgetScale() }
     }
@@ -2218,12 +1260,6 @@ class SlideshowController(
                 return@post
             }
 
-            val style = prefs.getString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
-                ?: ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE
-            val opacity = prefs.getInt(ConfigReceiver.KEY_NOW_PLAYING_OPACITY, ConfigReceiver.DEFAULT_NOW_PLAYING_OPACITY).coerceIn(2, 100)
-            if (style != currentAppliedNowPlayingStyle || opacity != currentAppliedNowPlayingOpacity) {
-                applyNowPlayingStyle(style)
-            }
             val displayTitle = if (state.title.isNotEmpty()) state.title else "Playing Audio"
             val rawArtist = state.artist.trim()
             val rawAlbum = state.album.trim()
@@ -2237,13 +1273,14 @@ class SlideshowController(
                 else -> "Media"
             }
 
-            if (nowPlayingTitle.text.toString() != displayTitle) nowPlayingTitle.text = displayTitle
-            if (nowPlayingArtist.text.toString() != displayArtist) nowPlayingArtist.text = displayArtist
-            if (::pillTitleView.isInitialized && pillTitleView.text.toString() != displayTitle) pillTitleView.text = displayTitle
-            if (::pillArtistView.isInitialized && pillArtistView.text.toString() != displayArtist) pillArtistView.text = displayArtist
-
-            if (::glassTitle.isInitialized && glassTitle.text.toString() != displayTitle) glassTitle.text = displayTitle
-            if (::glassArtist.isInitialized && glassArtist.text.toString() != displayArtist) glassArtist.text = displayArtist
+            if (::pillTitleView.isInitialized) {
+                if (pillTitleView.text.toString() != displayTitle) pillTitleView.text = displayTitle
+                pillTitleView.setPlaying(state.isPlaying)
+            }
+            if (::pillArtistView.isInitialized) {
+                if (pillArtistView.text.toString() != displayArtist) pillArtistView.text = displayArtist
+                pillArtistView.setPlaying(state.isPlaying)
+            }
 
             val isAirPlay = state.source.equals("AirPlay", ignoreCase = true)
             val accentColor = when {
@@ -2280,93 +1317,16 @@ class SlideshowController(
                     pillVisualizer.setPlaying(false)
                 }
             }
-            if (::nowPlayingVisualizer.isInitialized) {
-                nowPlayingVisualizer.visibility = if (showVisualizer) View.VISIBLE else View.GONE
-                if (showVisualizer) {
-                    nowPlayingVisualizer.setColor(accentColor)
-                    nowPlayingVisualizer.setPlaying(state.isPlaying)
-                } else {
-                    nowPlayingVisualizer.setPlaying(false)
-                }
-            }
-            if (::glassVisualizer.isInitialized) {
-                glassVisualizer.visibility = if (showVisualizer) View.VISIBLE else View.GONE
-                if (showVisualizer) {
-                    glassVisualizer.setColor(accentColor)
-                    glassVisualizer.setPlaying(state.isPlaying)
-                } else {
-                    glassVisualizer.setPlaying(false)
-                }
-            }
-
-            nowPlayingSourceBadge.text = when {
-                isAirPlay -> "AIRPLAY"
-                isSonos -> "SONOS"
-                state.source.isNotEmpty() -> state.source.uppercase()
-                else -> "SPOTIFY"
-            }
-            nowPlayingSourceBadge.background = Ui.roundRect(accentColor, Ui.dp(context, 5f))
-            nowPlayingSourceBadge.setTextColor(if (isSonos || isAirPlay) Color.WHITE else Color.BLACK)
-            nowPlayingVolumeSeek.progressDrawable = createSleekSliderDrawable(context, accentColor, 5f)
-
-            if (::glassSourceBadge.isInitialized) {
-                glassSourceBadge.text = when {
-                    isAirPlay -> "AIRPLAY"
-                    isSonos -> "SONOS"
-                    state.source.isNotEmpty() -> state.source.uppercase()
-                    else -> "•••"
-                }
-            }
-            if (::glassVolumeSeek.isInitialized) {
-                glassVolumeSeek.progressDrawable = createSleekSliderDrawable(context, accentColor, 4.5f)
-            }
-
-            val dev = when {
-                state.deviceName.isNotEmpty() -> state.deviceName
-                isSonos -> "Sonos Speaker"
-                else -> "Portal Frame"
-            }
-            nowPlayingDeviceBadge.text = "📻 $dev"
 
             if (state.art != null) {
-                nowPlayingArt.setImageBitmap(state.art)
                 if (::pillArtImageView.isInitialized) pillArtImageView.setImageBitmap(state.art)
                 updateMediaPaletteGlow(state.art)
             } else {
-                nowPlayingArt.setImageResource(R.drawable.ic_music)
                 if (::pillArtImageView.isInitialized) pillArtImageView.setImageResource(R.drawable.ic_music)
                 updateMediaPaletteGlow(null)
             }
-            nowPlayingPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
-            if (::pillPlayBtn.isInitialized) pillPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
-            if (::glassPlayBtn.isInitialized) glassPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
-
-            if (!isUserTrackingVolume) {
-                val vol = if (state.volume >= 0) state.volume else MediaMonitor.getStreamVolumePercent(context)
-                nowPlayingVolumeSeek.progress = vol
-                nowPlayingVolumeText.text = "$vol%"
-                if (::nowPlayingVolIcon.isInitialized) {
-                    nowPlayingVolIcon.setImageResource(if (vol > 0) R.drawable.ic_volume_up else R.drawable.ic_volume_off)
-                }
-                if (::glassVolumeSeek.isInitialized) {
-                    glassVolumeSeek.progress = vol
-                    glassVolumeText.text = "$vol%"
-                }
-            }
-
-            if (!isUserTrackingTimeline && ::glassTimelineSeek.isInitialized) {
-                val dur = MediaMonitor.getDuration()
-                val pos = MediaMonitor.getPlaybackPosition()
-                if (dur > 0) {
-                    val progress = ((pos.toFloat() / dur) * 1000).toInt().coerceIn(0, 1000)
-                    glassTimelineSeek.progress = progress
-                    glassCurTime.text = formatTime(pos)
-                    glassTotalTime.text = formatTime(dur)
-                } else {
-                    glassTimelineSeek.progress = 0
-                    glassCurTime.text = "0:00"
-                    glassTotalTime.text = "--:--"
-                }
+            if (::pillPlayBtn.isInitialized) {
+                pillPlayBtn.setImageResource(if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
             }
 
             if (state.isPlaying) {
@@ -2411,10 +1371,7 @@ class SlideshowController(
         handler.removeCallbacks(mediaIdleDismissRunnable)
         AudioVisualizerEngine.updatePlaybackState(playing = false, context = context)
         if (::pillVisualizer.isInitialized) pillVisualizer.setPlaying(false)
-        if (::nowPlayingVisualizer.isInitialized) nowPlayingVisualizer.setPlaying(false)
-        if (::glassVisualizer.isInitialized) glassVisualizer.setPlaying(false)
         if (nowPlayingCard.visibility == View.VISIBLE) {
-            collapseMediaCapsule()
             nowPlayingCard.animate()
                 .alpha(0f)
                 .translationX(Ui.dp(context, 50f).toFloat())
@@ -2469,13 +1426,13 @@ class SlideshowController(
 
         updateOverlayShortcuts()
 
-        // Re-apply Now Playing style/opacity if settings changed while card is visible
-        if (::nowPlayingCard.isInitialized && nowPlayingCard.visibility == View.VISIBLE) {
-            val curStyle = prefs.getString(ConfigReceiver.KEY_NOW_PLAYING_STYLE, ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE)
-                ?: ConfigReceiver.DEFAULT_NOW_PLAYING_STYLE
-            val curOpacity = prefs.getInt(ConfigReceiver.KEY_NOW_PLAYING_OPACITY, ConfigReceiver.DEFAULT_NOW_PLAYING_OPACITY).coerceIn(2, 100)
-            if (curStyle != currentAppliedNowPlayingStyle || curOpacity != currentAppliedNowPlayingOpacity) {
-                applyNowPlayingStyle(curStyle)
+        // Re-apply Now Playing scale if settings changed
+        if (::nowPlayingCard.isInitialized) {
+            val scale = prefs.getFloat(ConfigReceiver.KEY_MEDIA_WIDGET_SCALE, ConfigReceiver.DEFAULT_MEDIA_WIDGET_SCALE)
+                .coerceIn(ConfigReceiver.MIN_MEDIA_WIDGET_SCALE, ConfigReceiver.MAX_MEDIA_WIDGET_SCALE)
+            if (scale != mediaWidgetScale) {
+                mediaWidgetScale = scale
+                applyMediaWidgetScale()
             }
         }
 
@@ -3134,23 +2091,6 @@ class SlideshowController(
             private var datePinching = false  // track pinch on date layer
             private var datePinchStartDist = 0f
             private var datePinchBaseScale = 1f
-            private var mediaPinching = false
-            private var mediaPinchStartDist = 0f
-            private var mediaPinchBaseScale = 1f
-
-            private fun isNearMediaCard(x: Float, y: Float): Boolean {
-                if (!::nowPlayingCard.isInitialized || nowPlayingCard.visibility != View.VISIBLE) return false
-                val loc = IntArray(2)
-                nowPlayingCard.getLocationInWindow(loc)
-                val cardW = nowPlayingCard.width.toFloat() * nowPlayingCard.scaleX
-                val cardH = nowPlayingCard.height.toFloat() * nowPlayingCard.scaleY
-                val right = loc[0].toFloat() + nowPlayingCard.width.toFloat()
-                val left = right - cardW
-                val bottom = loc[1].toFloat() + nowPlayingCard.height.toFloat()
-                val top = bottom - cardH
-                val pad = Ui.dp(context, 30f).toFloat()
-                return x >= (left - pad) && x <= (right + pad) && y >= (top - pad) && y <= (bottom + pad)
-            }
 
             private fun cancelLong() {
                 pendingLong?.let {
@@ -3174,7 +2114,6 @@ class SlideshowController(
                         handled = false
                         moved = false
                         pinching = false
-                        mediaPinching = false
                         v.parent?.requestDisallowInterceptTouchEvent(true)
                         cancelLong()
                         if (!editingClock && !editingDate) {
@@ -3204,11 +2143,6 @@ class SlideshowController(
                             datePinching = true
                             datePinchStartDist = twoPointerDist(e)
                             datePinchBaseScale = dateScale
-                        } else if (isNearMediaCard(e.getX(0), e.getY(0)) || isNearMediaCard(e.getX(1), e.getY(1))) {
-                            cancelLong()
-                            mediaPinching = true
-                            mediaPinchStartDist = twoPointerDist(e)
-                            mediaPinchBaseScale = mediaWidgetScale
                         }
                         return true
                     }
@@ -3244,15 +2178,6 @@ class SlideshowController(
                                 lastX = e.x; lastY = e.y
                                 if (abs(e.x - downX) > TAP_SLOP || abs(e.y - downY) > TAP_SLOP) moved = true
                             }
-                        } else if (mediaPinching) {
-                            if (e.pointerCount >= 2 && mediaPinchStartDist > 0f) {
-                                val d = twoPointerDist(e)
-                                if (d > 0f) {
-                                    mediaWidgetScale = (mediaPinchBaseScale * d / mediaPinchStartDist)
-                                        .coerceIn(ConfigReceiver.MIN_MEDIA_WIDGET_SCALE, ConfigReceiver.MAX_MEDIA_WIDGET_SCALE)
-                                    applyMediaWidgetScale()
-                                }
-                            }
                         } else if (!handled) {
                             val dx = e.x - downX
                             val dy = e.y - downY
@@ -3280,21 +2205,11 @@ class SlideshowController(
                             val rem = if (e.actionIndex == 0) 1 else 0
                             if (e.pointerCount > rem) { lastX = e.getX(rem); lastY = e.getY(rem) }
                             moved = true
-                        } else if (mediaPinching) {
-                            persistMediaWidgetScale()
-                            mediaPinching = false
-                            val rem = if (e.actionIndex == 0) 1 else 0
-                            if (e.pointerCount > rem) { lastX = e.getX(rem); lastY = e.getY(rem) }
-                            moved = true
                         }
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
                         cancelLong()
-                        if (mediaPinching) {
-                            persistMediaWidgetScale()
-                            mediaPinching = false
-                        }
                         if (editingClock) {
                             val dt = e.eventTime - downTime
                             if (!moved && !pinching && abs(e.x - downX) < TAP_SLOP &&
@@ -3327,9 +2242,6 @@ class SlideshowController(
                                 if (clockOnly) {
                                     // In low-light clock mode, center tap does nothing
                                 } else {
-                                    if (isMediaExpanded) {
-                                        collapseMediaCapsule()
-                                    }
                                     val width = v.width
                                     val tapX = e.x
                                     if (tapX < width * 0.25f) {
@@ -3350,10 +2262,6 @@ class SlideshowController(
                     }
                     MotionEvent.ACTION_CANCEL -> {
                         cancelLong()
-                        if (mediaPinching) {
-                            persistMediaWidgetScale()
-                            mediaPinching = false
-                        }
                         if (editingClock) { pinching = false; if (clockOnly) persistClockOnlyTransform() else persistClockTransform() }
                         else if (editingDate) { datePinching = false; persistDateTransform() }
                         return true
@@ -3794,10 +2702,6 @@ class SlideshowController(
                 applyKenBurnsStart(back, kbPath)
                 back.colorFilter = enhanceFilter
                 back.alpha = 1f
-                back.translationX = 0f
-                back.translationY = 0f
-                back.scaleX = 1f
-                back.scaleY = 1f
                 back.rotationY = 0f
                 back.pivotX = back.width.toFloat() / 2f
                 back.pivotY = back.height.toFloat() / 2f
@@ -3827,7 +2731,7 @@ class SlideshowController(
     }
 
     private fun prepareTransitionStart(durationMs: Long) {
-        front.alpha = if (transitionMode == TRANSITION_INSTANT || transitionMode == TRANSITION_ZOOM) 1f else 0f
+        front.alpha = if (transitionMode == TRANSITION_INSTANT) 1f else 0f
         front.translationX = 0f
         front.translationY = 0f
         front.scaleX = 1f
@@ -3836,45 +2740,14 @@ class SlideshowController(
         back.translationX = 0f
         back.translationY = 0f
 
-        // Reset 3D properties
-        front.rotationY = 0f
-        back.rotationY = 0f
-        front.pivotX = front.width.toFloat() / 2f
-        front.pivotY = front.height.toFloat() / 2f
-        back.pivotX = back.width.toFloat() / 2f
-        back.pivotY = back.height.toFloat() / 2f
-        front.cameraDistance = 1280f
-        back.cameraDistance = 1280f
-
         when (transitionMode) {
             TRANSITION_SLIDE, TRANSITION_PUSH -> front.translationX = reqW.toFloat()
-            TRANSITION_ZOOM, TRANSITION_ZOOM_FADE -> {
-                front.scaleX = ZOOM_START_SCALE
-                front.scaleY = ZOOM_START_SCALE
-            }
-            TRANSITION_BOOK_FLIP -> {
-                front.pivotX = 0f // Pivot on left edge
-                front.cameraDistance = reqW.toFloat() * 3.5f
-                front.rotationY = -90f // swing in from left
-                front.alpha = 0f
-            }
-            TRANSITION_CUBE -> {
-                back.pivotX = 0f
-                back.cameraDistance = reqW.toFloat() * 4f
-                back.rotationY = 0f
-                
-                front.pivotX = reqW.toFloat()
-                front.cameraDistance = reqW.toFloat() * 4f
-                front.rotationY = 90f
-                front.alpha = 1f
-            }
         }
         if (durationMs <= 0L) {
             front.alpha = 1f
             front.translationX = 0f
             front.scaleX = 1f
             front.scaleY = 1f
-            front.rotationY = 0f
         }
     }
 
@@ -3883,23 +2756,25 @@ class SlideshowController(
             onEnd()
             return
         }
-        val anim = front.animate().setDuration(durationMs)
+        if (::pillTitleView.isInitialized) pillTitleView.setSuspended(true)
+        if (::pillArtistView.isInitialized) pillArtistView.setSuspended(true)
+
+        val wrappedOnEnd = {
+            if (::pillTitleView.isInitialized) pillTitleView.setSuspended(false)
+            if (::pillArtistView.isInitialized) pillArtistView.setSuspended(false)
+            onEnd()
+        }
+
+        val anim = front.animate().setDuration(durationMs).withLayer()
         when (transitionMode) {
             TRANSITION_SLIDE -> anim.alpha(1f).translationX(0f)
             TRANSITION_PUSH -> {
-                back.animate().translationX(-reqW.toFloat()).setDuration(durationMs)
+                back.animate().translationX(-reqW.toFloat()).setDuration(durationMs).withLayer()
                 anim.alpha(1f).translationX(0f)
-            }
-            TRANSITION_ZOOM -> anim.alpha(1f).scaleX(1f).scaleY(1f)
-            TRANSITION_ZOOM_FADE -> anim.alpha(1f).scaleX(1f).scaleY(1f)
-            TRANSITION_BOOK_FLIP -> anim.alpha(1f).rotationY(0f)
-            TRANSITION_CUBE -> {
-                back.animate().rotationY(-90f).alpha(0f).setDuration(durationMs)
-                anim.rotationY(0f)
             }
             else -> anim.alpha(1f)
         }
-        anim.withEndAction(onEnd)
+        anim.withEndAction(wrappedOnEnd)
     }
 
     /**
@@ -4507,6 +3382,26 @@ class SlideshowController(
         private val speedPxPerMs = Ui.dp(context, 25f).toFloat() / 1000f // 25 dp/sec relaxed readable speed
         private var animStartTime = 0L
         private var isScrolling = false
+        private var isSuspended = false
+        private var isPlaying = true
+
+        fun setSuspended(suspended: Boolean) {
+            if (isSuspended != suspended) {
+                isSuspended = suspended
+                if (!isSuspended && isPlaying && isScrolling && isShown) {
+                    postInvalidateOnAnimation()
+                }
+            }
+        }
+
+        fun setPlaying(playing: Boolean) {
+            if (isPlaying != playing) {
+                isPlaying = playing
+                if (isPlaying && !isSuspended && isScrolling && isShown) {
+                    postInvalidateOnAnimation()
+                }
+            }
+        }
 
         init {
             setSingleLine(true)
@@ -4605,7 +3500,7 @@ class SlideshowController(
             canvas.drawText(textStr, x2, baseline, paint)
             canvas.restore()
 
-            if (isShown) {
+            if (isShown && isPlaying && !isSuspended) {
                 postInvalidateOnAnimation()
             }
         }
@@ -4643,9 +3538,19 @@ class SlideshowController(
 
         private val currentHeights = FloatArray(barCount) { minH }
         private val targetHeights = FloatArray(barCount) { minH }
+        private var cachedShader: LinearGradient? = null
 
         init {
             setColor(Color.WHITE)
+        }
+
+        private fun updateShader() {
+            cachedShader = LinearGradient(
+                0f, 0f, 0f, maxH,
+                highlightColor, primaryColor,
+                Shader.TileMode.CLAMP
+            )
+            barPaint.shader = cachedShader
         }
 
         fun setColor(color: Int) {
@@ -4657,6 +3562,7 @@ class SlideshowController(
             val hlG = (g + (255 - g) * 0.40f).toInt().coerceIn(0, 255)
             val hlB = (b + (255 - b) * 0.40f).toInt().coerceIn(0, 255)
             highlightColor = Color.rgb(hlR, hlG, hlB)
+            updateShader()
             invalidate()
         }
 
@@ -4672,7 +3578,7 @@ class SlideshowController(
         }
 
         override fun onAudioBands(bands: FloatArray) {
-            if (!isPlaying || visibility != VISIBLE) return
+            if (!isPlaying || !isShown) return
             for (i in 0 until barCount) {
                 val bandIdx = if (barCount == 4) {
                     when (i) {
@@ -4718,6 +3624,8 @@ class SlideshowController(
             val corner = barWidth / 2f
             var needsMoreAnimation = false
 
+            barPaint.alpha = if (isPlaying) 255 else 115
+
             for (i in 0 until barCount) {
                 val x = i * (barWidth + barGap)
                 val targetH = if (isPlaying) targetHeights[i] else minH
@@ -4732,15 +3640,6 @@ class SlideshowController(
                 }
 
                 val top = midY - newH
-
-                val shader = LinearGradient(
-                    x, top, x, midY,
-                    highlightColor, primaryColor,
-                    Shader.TileMode.CLAMP
-                )
-                barPaint.shader = shader
-                barPaint.alpha = if (isPlaying) 255 else 115
-
                 canvas.drawRoundRect(x, top, x + barWidth, midY, corner, corner, barPaint)
             }
 
@@ -5274,15 +4173,10 @@ class SlideshowController(
         private const val TAP_TIMEOUT_MS = 350L
         private const val LONG_PRESS_MS = 700L // hold to open Photos setup
         private const val WEATHER_INTERVAL_MS = 30 * 60 * 1000L // refresh weather
-        private const val ZOOM_START_SCALE = 1.08f
         private const val TRANSITION_CROSSFADE = "crossfade"
         private const val TRANSITION_SLIDE = "slide"
-        private const val TRANSITION_ZOOM = "zoom"
-        private const val TRANSITION_ZOOM_FADE = "zoom_fade"
         private const val TRANSITION_INSTANT = "instant"
         private const val TRANSITION_PUSH = "push"
-        private const val TRANSITION_BOOK_FLIP = "book_flip"
-        private const val TRANSITION_CUBE = "cube"
 
 
         /**

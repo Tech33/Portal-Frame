@@ -870,6 +870,16 @@ class SlideshowComposeActivity : ComponentActivity() {
         controller.stop()
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        loader.trimMemory(level)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        loader.trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         SonosMonitor.stop()
