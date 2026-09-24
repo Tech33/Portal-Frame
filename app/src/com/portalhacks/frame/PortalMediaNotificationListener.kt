@@ -222,9 +222,17 @@ class PortalMediaNotificationListener : NotificationListenerService() {
                     else -> "Media"
                 }
                 val actions = notif.actions
-                val hasPauseAction = actions?.any { it.title?.contains("Pause", ignoreCase = true) == true } == true
-                val hasPlayAction = actions?.any { it.title?.contains("Play", ignoreCase = true) == true } == true
-                val fallbackPlaying = if (hasPauseAction) true else if (hasPlayAction) false else true
+                val hasPauseAction = actions?.any {
+                    it.title?.toString()?.contains("pause", ignoreCase = true) == true
+                } ?: false
+                val hasPlayAction = actions?.any {
+                    it.title?.toString()?.contains("play", ignoreCase = true) == true
+                } ?: false
+                val fallbackPlaying = when {
+                    hasPauseAction -> true
+                    hasPlayAction -> false
+                    else -> currentController?.playbackState?.state == PlaybackState.STATE_PLAYING
+                }
 
                 MediaMonitor.update(
                     isPlaying = fallbackPlaying,
@@ -270,9 +278,8 @@ class PortalMediaNotificationListener : NotificationListenerService() {
         val metadata = ctrl.metadata
 
         val stateVal = pbState?.state
-        val isPlaying = stateVal == PlaybackState.STATE_PLAYING ||
-            stateVal == PlaybackState.STATE_BUFFERING ||
-            (pbState != null && pbState.playbackSpeed > 0f)
+        val isPlaying = (stateVal == PlaybackState.STATE_PLAYING || stateVal == PlaybackState.STATE_BUFFERING) &&
+            (pbState?.playbackSpeed ?: 1f) > 0f
 
         var title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
             ?: ctrl.queueTitle?.toString() ?: ""

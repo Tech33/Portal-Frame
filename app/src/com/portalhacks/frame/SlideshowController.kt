@@ -109,6 +109,7 @@ class SlideshowController(
     private lateinit var pillTitleView: ContinuousMarqueeTextView
     private lateinit var pillArtistView: ContinuousMarqueeTextView
     private lateinit var pillPlayBtn: ImageView
+    private lateinit var pillVisualizer: AudioVisualizerView
     private lateinit var mediaExpandedCard: LinearLayout
     private lateinit var collapseBtn: TextView
 
@@ -117,6 +118,7 @@ class SlideshowController(
     private lateinit var nowPlayingArtist: TextView
     private lateinit var nowPlayingDeviceBadge: TextView
     private lateinit var nowPlayingSourceBadge: TextView
+    private lateinit var nowPlayingVisualizer: AudioVisualizerView
     private lateinit var nowPlayingOpenBtn: TextView
     private lateinit var nowPlayingPlayBtn: ImageView
     private lateinit var nowPlayingPrevBtn: ImageView
@@ -138,6 +140,7 @@ class SlideshowController(
     private lateinit var glassTitle: ContinuousMarqueeTextView
     private lateinit var glassArtist: ContinuousMarqueeTextView
     private lateinit var glassSourceBadge: TextView
+    private lateinit var glassVisualizer: AudioVisualizerView
     private lateinit var glassTimelineSeek: SeekBar
     private lateinit var glassCurTime: TextView
     private lateinit var glassTotalTime: TextView
@@ -1036,18 +1039,21 @@ class SlideshowController(
                     if (!isMediaExpanded) {
                         expandMediaCapsule()
                     } else {
-                        resetMediaCollapseTimer()
+                        collapseMediaCapsule()
                     }
                 }
             }
         }
 
         collapseBtn = TextView(context).apply {
-            setTextColor(0xD9FFFFFF.toInt())
+            setTextColor(0xFFFFFFFF.toInt())
             typeface = Ui.bold(context)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            background = Ui.roundRect(0x2BFFFFFF, Ui.dp(context, 12f))
-            setPadding(Ui.dp(context, 9f), Ui.dp(context, 3f), Ui.dp(context, 9f), Ui.dp(context, 3f))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = Ui.roundRect(0x38FFFFFF, Ui.dp(context, 12f)).apply {
+                setStroke(Ui.dp(context, 1f), 0x55FFFFFF)
+            }
+            gravity = Gravity.CENTER
+            setPadding(Ui.dp(context, 10f), Ui.dp(context, 4f), Ui.dp(context, 10f), Ui.dp(context, 4f))
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1056,7 +1062,9 @@ class SlideshowController(
                 rightMargin = Ui.dp(context, 8f)
             }
             layoutParams = lp
-            text = "✕"
+            text = "⌄ Collapse"
+            isClickable = true
+            isFocusable = true
             setOnClickListener { collapseMediaCapsule() }
         }
 
@@ -1204,14 +1212,45 @@ class SlideshowController(
             }
         }
 
+        pillVisualizer = AudioVisualizerView(context).apply {
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = Ui.dp(context, 8f)
+                rightMargin = Ui.dp(context, 8f)
+            }
+            layoutParams = lp
+        }
+
         mediaPillRow.addView(pillArtImageView)
         mediaPillRow.addView(pillMetaBox)
+        mediaPillRow.addView(pillVisualizer)
         mediaPillRow.addView(pillPlayBtn)
 
         mediaExpandedCard = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             clipToOutline = true
             visibility = View.GONE
+            var expandedDownY = 0f
+            var expandedDownX = 0f
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        expandedDownX = event.rawX
+                        expandedDownY = event.rawY
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        val dy = event.rawY - expandedDownY
+                        val dx = Math.abs(event.rawX - expandedDownX)
+                        if (dy > Ui.dp(context, 26f) && dy > dx * 1.2f) {
+                            collapseMediaCapsule()
+                            return@setOnTouchListener true
+                        }
+                    }
+                }
+                false
+            }
         }
 
         // Header row: Badge + Spacer + "Open ↗" button
@@ -1249,7 +1288,19 @@ class SlideshowController(
             setOnClickListener { MediaMonitor.launchApp(context) }
         }
 
+        nowPlayingVisualizer = AudioVisualizerView(context).apply {
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginStart = Ui.dp(context, 8f)
+                leftMargin = Ui.dp(context, 8f)
+            }
+            layoutParams = lp
+        }
+
         headerRow.addView(nowPlayingSourceBadge)
+        headerRow.addView(nowPlayingVisualizer)
         headerRow.addView(headerSpacer)
         headerRow.addView(nowPlayingOpenBtn)
 
@@ -1551,7 +1602,19 @@ class SlideshowController(
             setOnClickListener { MediaMonitor.launchApp(context) }
         }
 
+        glassVisualizer = AudioVisualizerView(context).apply {
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = Ui.dp(context, 8f)
+                rightMargin = Ui.dp(context, 8f)
+            }
+            layoutParams = lp
+        }
+
         topRow.addView(metaBox)
+        topRow.addView(glassVisualizer)
         topRow.addView(glassSourceBadge)
 
         // Middle Row: Timeline Scrubber with Timestamps
@@ -2114,7 +2177,6 @@ class SlideshowController(
 
             val isSonos = state.source.contains("Sonos", ignoreCase = true)
             val isDummySonos = isSonos && (
-                !state.isPlaying ||
                 state.title.isBlank() ||
                 state.title.equals("Playing on Sonos", ignoreCase = true) ||
                 state.title.equals("Sonos", ignoreCase = true) ||
@@ -2145,19 +2207,32 @@ class SlideshowController(
                 else -> "Media"
             }
 
-            nowPlayingTitle.text = displayTitle
-            nowPlayingArtist.text = displayArtist
-            if (::pillTitleView.isInitialized) pillTitleView.text = displayTitle
-            if (::pillArtistView.isInitialized) pillArtistView.text = displayArtist
+            if (nowPlayingTitle.text.toString() != displayTitle) nowPlayingTitle.text = displayTitle
+            if (nowPlayingArtist.text.toString() != displayArtist) nowPlayingArtist.text = displayArtist
+            if (::pillTitleView.isInitialized && pillTitleView.text.toString() != displayTitle) pillTitleView.text = displayTitle
+            if (::pillArtistView.isInitialized && pillArtistView.text.toString() != displayArtist) pillArtistView.text = displayArtist
 
-            if (::glassTitle.isInitialized) glassTitle.text = displayTitle
-            if (::glassArtist.isInitialized) glassArtist.text = displayArtist
+            if (::glassTitle.isInitialized && glassTitle.text.toString() != displayTitle) glassTitle.text = displayTitle
+            if (::glassArtist.isInitialized && glassArtist.text.toString() != displayArtist) glassArtist.text = displayArtist
 
             val isAirPlay = state.source.equals("AirPlay", ignoreCase = true)
             val accentColor = when {
                 isAirPlay -> 0xFF0A84FF.toInt()
                 isSonos -> 0xFFE87722.toInt()
                 else -> 0xFF1DB954.toInt()
+            }
+
+            if (::pillVisualizer.isInitialized) {
+                pillVisualizer.setColor(accentColor)
+                pillVisualizer.setPlaying(state.isPlaying)
+            }
+            if (::nowPlayingVisualizer.isInitialized) {
+                nowPlayingVisualizer.setColor(accentColor)
+                nowPlayingVisualizer.setPlaying(state.isPlaying)
+            }
+            if (::glassVisualizer.isInitialized) {
+                glassVisualizer.setColor(accentColor)
+                glassVisualizer.setPlaying(state.isPlaying)
             }
 
             nowPlayingSourceBadge.text = when {
@@ -2256,14 +2331,16 @@ class SlideshowController(
                     ConfigReceiver.DEFAULT_MEDIA_WIDGET_IDLE_TIMEOUT
                 )
                 if (idleTimeoutMs > 0L) {
-                    val delay = if (isSonos) 2500L else idleTimeoutMs
-                    handler.postDelayed(mediaIdleDismissRunnable, delay)
+                    handler.postDelayed(mediaIdleDismissRunnable, idleTimeoutMs)
                 }
             }
         }
     }
 
     private fun hideNowPlaying() {
+        if (::pillVisualizer.isInitialized) pillVisualizer.setPlaying(false)
+        if (::nowPlayingVisualizer.isInitialized) nowPlayingVisualizer.setPlaying(false)
+        if (::glassVisualizer.isInitialized) glassVisualizer.setPlaying(false)
         if (nowPlayingCard.visibility == View.VISIBLE) {
             collapseMediaCapsule()
             nowPlayingCard.animate()
@@ -4365,11 +4442,16 @@ class SlideshowController(
             paint.isLinearText = true
         }
 
+        private var lastMeasuredText = ""
+
         override fun isFocused(): Boolean = true
 
         override fun onTextChanged(text: CharSequence?, start: Int, lengthBefore: Int, lengthAfter: Int) {
             super.onTextChanged(text, start, lengthBefore, lengthAfter)
-            measureAndRestart()
+            val newText = text?.toString() ?: ""
+            if (newText != lastMeasuredText) {
+                measureAndRestart()
+            }
         }
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -4401,6 +4483,7 @@ class SlideshowController(
 
         private fun measureAndRestart() {
             val textStr = text?.toString() ?: ""
+            lastMeasuredText = textStr
             if (textStr.isEmpty() || width <= 0) {
                 isScrolling = false
                 return
@@ -4456,6 +4539,108 @@ class SlideshowController(
         override fun onDetachedFromWindow() {
             super.onDetachedFromWindow()
             isScrolling = false
+        }
+    }
+
+    /**
+     * Small dynamic audio visualizer with 3 organic dancing equalizer bars.
+     * Provides an immediate, clean visual cue when music is actively playing.
+     * Settles into 3 low resting dots when music is paused.
+     */
+    private class AudioVisualizerView @JvmOverloads constructor(
+        c: Context,
+        attrs: android.util.AttributeSet? = null,
+        defStyleAttr: Int = 0
+    ) : View(c, attrs, defStyleAttr) {
+
+        private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.WHITE
+        }
+
+        private var isPlaying = false
+        private var animator: ValueAnimator? = null
+        private var phase = 0f
+
+        private val barWidth = Ui.dp(c, 2.8f).toFloat()
+        private val barGap = Ui.dp(c, 2.2f).toFloat()
+        private val minH = Ui.dp(c, 3.2f).toFloat()
+        private val maxH = Ui.dp(c, 14f).toFloat()
+
+        fun setColor(color: Int) {
+            barPaint.color = color
+            invalidate()
+        }
+
+        fun setPlaying(playing: Boolean) {
+            if (isPlaying == playing) return
+            isPlaying = playing
+            if (playing) {
+                if (animator == null) {
+                    animator = ValueAnimator.ofFloat(0f, 1f).apply {
+                        duration = 1000L
+                        repeatCount = ValueAnimator.INFINITE
+                        interpolator = LinearInterpolator()
+                        addUpdateListener {
+                            phase = it.animatedValue as Float
+                            invalidate()
+                        }
+                    }
+                }
+                animator?.start()
+            } else {
+                animator?.cancel()
+                phase = 0f
+                invalidate()
+            }
+        }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val totalW = (barWidth * 3 + barGap * 2).toInt()
+            val totalH = maxH.toInt()
+            setMeasuredDimension(totalW, totalH)
+        }
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            if (isPlaying && animator?.isRunning != true) {
+                animator?.start()
+            }
+        }
+
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow()
+            animator?.cancel()
+        }
+
+        override fun onVisibilityChanged(changedView: View, visibility: Int) {
+            super.onVisibilityChanged(changedView, visibility)
+            if (visibility == VISIBLE && isPlaying) {
+                if (animator?.isRunning != true) animator?.start()
+            } else {
+                animator?.cancel()
+            }
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val midY = height.toFloat()
+            val corner = barWidth / 2f
+
+            for (i in 0 until 3) {
+                val x = i * (barWidth + barGap)
+                val h = if (isPlaying) {
+                    val p = when (i) {
+                        0 -> (Math.sin((phase * 2.0 * Math.PI * 1.3) + 0.2) * 0.45 + 0.55).toFloat()
+                        1 -> (Math.sin((phase * 2.0 * Math.PI * 2.1) + 1.5) * 0.45 + 0.55).toFloat()
+                        else -> (Math.sin((phase * 2.0 * Math.PI * 1.6) + 3.0) * 0.45 + 0.55).toFloat()
+                    }
+                    minH + (maxH - minH) * p
+                } else {
+                    minH
+                }
+                val top = midY - h
+                canvas.drawRoundRect(x, top, x + barWidth, midY, corner, corner, barPaint)
+            }
         }
     }
 
