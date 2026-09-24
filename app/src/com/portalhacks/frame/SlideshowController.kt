@@ -163,10 +163,18 @@ class SlideshowController(
         Log.i(TAG, "Auto-resume safeguard triggered after 5min inactivity while paused")
         resumeSlideshow()
     }
+    private var isMediaIdleDismissScheduled = false
     private val mediaIdleDismissRunnable = Runnable {
+        isMediaIdleDismissScheduled = false
         if (lastMediaState?.isPlaying != true && ::nowPlayingCard.isInitialized && nowPlayingCard.visibility == View.VISIBLE) {
+            val src = lastMediaState?.source ?: ""
             hideNowPlaying()
-            CompanionAppInstaller.killSpotify(context)
+            if (src.contains("Sonos", ignoreCase = true)) {
+                SonosMonitor.clearActiveSpeaker()
+            } else {
+                CompanionAppInstaller.killSpotify(context)
+            }
+            MediaMonitor.clear()
         }
     }
     private var pixelShiftIndex = 0
@@ -202,6 +210,14 @@ class SlideshowController(
         if (!::mediaPillRow.isInitialized) return
         mediaPillRow.animate().translationX(dx).setDuration(120).withEndAction {
             mediaPillRow.animate().translationX(0f).setDuration(120).start()
+        }.start()
+    }
+
+    private fun animatePillPulse() {
+        if (!::mediaPillRow.isInitialized) return
+        mediaPillRow.animate().scaleX(0.92f).scaleY(0.92f).setDuration(90).withEndAction {
+            mediaPillRow.animate().scaleX(1.0f).scaleY(1.0f).setDuration(160)
+                .setInterpolator(OvershootInterpolator(1.2f)).start()
         }.start()
     }
 
@@ -862,6 +878,21 @@ class SlideshowController(
         var onScaleEnd: (() -> Unit)? = null
         var onCardTapped: (() -> Unit)? = null
 
+        fun resetPosition(animated: Boolean = true) {
+            isDragging = false
+            if (animated) {
+                animate()
+                    .translationX(0f)
+                    .translationY(0f)
+                    .setDuration(280)
+                    .setInterpolator(OvershootInterpolator(1.1f))
+                    .start()
+            } else {
+                translationX = 0f
+                translationY = 0f
+            }
+        }
+
         private var isPinching = false
         private var initialRawX = 0f
         private var initialRawY = 0f
@@ -1074,6 +1105,12 @@ class SlideshowController(
                 return true
             }
 
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                MediaMonitor.playPause(context)
+                animatePillPulse()
+                return true
+            }
+
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
                 if (e1 == null) return false
                 val diffX = e2.x - e1.x
@@ -1132,16 +1169,6 @@ class SlideshowController(
                                 } else {
                                     MediaMonitor.prev(context)
                                     animatePillNudge(Ui.dp(context, 10f).toFloat())
-                                }
-                            }
-                        }
-                        MotionEvent.ACTION_UP -> {
-                            if (!pillSwiped) {
-                                val dx = Math.abs(event.rawX - pillDownX)
-                                val dy = Math.abs(event.rawY - pillDownY)
-                                val dt = event.eventTime - pillDownTime
-                                if (dx < Ui.dp(context, 18f) && dy < Ui.dp(context, 18f) && dt < 450) {
-                                    expandMediaCapsule()
                                 }
                             }
                         }
@@ -1212,7 +1239,7 @@ class SlideshowController(
             }
         }
 
-        pillVisualizer = AudioVisualizerView(context).apply {
+        pillVisualizer = AudioVisualizerView(context, barCount = 4).apply {
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1288,7 +1315,7 @@ class SlideshowController(
             setOnClickListener { MediaMonitor.launchApp(context) }
         }
 
-        nowPlayingVisualizer = AudioVisualizerView(context).apply {
+        nowPlayingVisualizer = AudioVisualizerView(context, barCount = 5).apply {
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1602,7 +1629,7 @@ class SlideshowController(
             setOnClickListener { MediaMonitor.launchApp(context) }
         }
 
-        glassVisualizer = AudioVisualizerView(context).apply {
+        glassVisualizer = AudioVisualizerView(context, barCount = 5).apply {
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1991,6 +2018,9 @@ class SlideshowController(
         if (!isMediaExpanded) return
         isMediaExpanded = false
         handler.removeCallbacks(collapseMediaRunnable)
+        if (::nowPlayingCard.isInitialized) {
+            nowPlayingCard.resetPosition(animated = true)
+        }
         if (::mediaPillRow.isInitialized && ::mediaExpandedCard.isInitialized) {
             val transition = android.transition.AutoTransition().apply {
                 duration = 240
@@ -2222,17 +2252,51 @@ class SlideshowController(
                 else -> 0xFF1DB954.toInt()
             }
 
+            val showVisualizer = prefs.getBoolean(
+                ConfigReceiver.KEY_MEDIA_WIDGET_SHOW_VISUALIZER,
+                ConfigReceiver.DEFAULT_MEDIA_WIDGET_SHOW_VISUALIZER
+            )
+
+            if (showVisualizer) {
+                AudioVisualizerEngine.updatePlaybackState(
+                    playing = state.isPlaying,
+                    context = context,
+                    title = state.title,
+                    source = state.source
+                )
+            } else {
+                AudioVisualizerEngine.updatePlaybackState(
+                    playing = false,
+                    context = context
+                )
+            }
+
             if (::pillVisualizer.isInitialized) {
-                pillVisualizer.setColor(accentColor)
-                pillVisualizer.setPlaying(state.isPlaying)
+                pillVisualizer.visibility = if (showVisualizer) View.VISIBLE else View.GONE
+                if (showVisualizer) {
+                    pillVisualizer.setColor(accentColor)
+                    pillVisualizer.setPlaying(state.isPlaying)
+                } else {
+                    pillVisualizer.setPlaying(false)
+                }
             }
             if (::nowPlayingVisualizer.isInitialized) {
-                nowPlayingVisualizer.setColor(accentColor)
-                nowPlayingVisualizer.setPlaying(state.isPlaying)
+                nowPlayingVisualizer.visibility = if (showVisualizer) View.VISIBLE else View.GONE
+                if (showVisualizer) {
+                    nowPlayingVisualizer.setColor(accentColor)
+                    nowPlayingVisualizer.setPlaying(state.isPlaying)
+                } else {
+                    nowPlayingVisualizer.setPlaying(false)
+                }
             }
             if (::glassVisualizer.isInitialized) {
-                glassVisualizer.setColor(accentColor)
-                glassVisualizer.setPlaying(state.isPlaying)
+                glassVisualizer.visibility = if (showVisualizer) View.VISIBLE else View.GONE
+                if (showVisualizer) {
+                    glassVisualizer.setColor(accentColor)
+                    glassVisualizer.setPlaying(state.isPlaying)
+                } else {
+                    glassVisualizer.setPlaying(false)
+                }
             }
 
             nowPlayingSourceBadge.text = when {
@@ -2306,6 +2370,7 @@ class SlideshowController(
             }
 
             if (state.isPlaying) {
+                isMediaIdleDismissScheduled = false
                 handler.removeCallbacks(nowPlayingHideRunnable)
                 handler.removeCallbacks(mediaIdleDismissRunnable)
                 if (nowPlayingCard.visibility != View.VISIBLE && !clockOnly) {
@@ -2325,19 +2390,26 @@ class SlideshowController(
                 updateOverlayShortcuts()
             } else {
                 handler.removeCallbacks(nowPlayingHideRunnable)
-                handler.removeCallbacks(mediaIdleDismissRunnable)
-                val idleTimeoutMs = prefs.getLong(
-                    ConfigReceiver.KEY_MEDIA_WIDGET_IDLE_TIMEOUT,
-                    ConfigReceiver.DEFAULT_MEDIA_WIDGET_IDLE_TIMEOUT
-                )
-                if (idleTimeoutMs > 0L) {
-                    handler.postDelayed(mediaIdleDismissRunnable, idleTimeoutMs)
+                val isNewTrack = lastMediaState?.title != state.title
+                if (!isMediaIdleDismissScheduled || isNewTrack) {
+                    handler.removeCallbacks(mediaIdleDismissRunnable)
+                    val idleTimeoutMs = prefs.getLong(
+                        ConfigReceiver.KEY_MEDIA_WIDGET_IDLE_TIMEOUT,
+                        ConfigReceiver.DEFAULT_MEDIA_WIDGET_IDLE_TIMEOUT
+                    )
+                    if (idleTimeoutMs > 0L) {
+                        isMediaIdleDismissScheduled = true
+                        handler.postDelayed(mediaIdleDismissRunnable, idleTimeoutMs)
+                    }
                 }
             }
         }
     }
 
     private fun hideNowPlaying() {
+        isMediaIdleDismissScheduled = false
+        handler.removeCallbacks(mediaIdleDismissRunnable)
+        AudioVisualizerEngine.updatePlaybackState(playing = false, context = context)
         if (::pillVisualizer.isInitialized) pillVisualizer.setPlaying(false)
         if (::nowPlayingVisualizer.isInitialized) nowPlayingVisualizer.setPlaying(false)
         if (::glassVisualizer.isInitialized) glassVisualizer.setPlaying(false)
@@ -2350,6 +2422,8 @@ class SlideshowController(
                 .setInterpolator(android.view.animation.AccelerateInterpolator())
                 .withEndAction {
                     nowPlayingCard.visibility = View.GONE
+                    nowPlayingCard.translationX = 0f
+                    nowPlayingCard.translationY = 0f
                     updateOverlayShortcuts()
                 }.start()
         }
@@ -4543,103 +4617,135 @@ class SlideshowController(
     }
 
     /**
-     * Small dynamic audio visualizer with 3 organic dancing equalizer bars.
-     * Provides an immediate, clean visual cue when music is actively playing.
-     * Settles into 3 low resting dots when music is paused.
+     * Dynamic frequency audio visualizer connected to AudioVisualizerEngine.
+     * Renders real frequency spectrum bands with responsive attack and gravity decay physics.
+     * Settles into subtle resting dots when paused (0% CPU when paused/hidden).
      */
     private class AudioVisualizerView @JvmOverloads constructor(
         c: Context,
         attrs: android.util.AttributeSet? = null,
-        defStyleAttr: Int = 0
-    ) : View(c, attrs, defStyleAttr) {
+        defStyleAttr: Int = 0,
+        private val barCount: Int = 4
+    ) : View(c, attrs, defStyleAttr), AudioVisualizerEngine.Listener {
 
         private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
-            color = Color.WHITE
         }
 
         private var isPlaying = false
-        private var animator: ValueAnimator? = null
-        private var phase = 0f
+        private var primaryColor: Int = Color.WHITE
+        private var highlightColor: Int = Color.WHITE
 
-        private val barWidth = Ui.dp(c, 2.8f).toFloat()
+        private val barWidth = Ui.dp(c, if (barCount >= 5) 3.2f else 3.0f).toFloat()
         private val barGap = Ui.dp(c, 2.2f).toFloat()
         private val minH = Ui.dp(c, 3.2f).toFloat()
-        private val maxH = Ui.dp(c, 14f).toFloat()
+        private val maxH = Ui.dp(c, if (barCount >= 5) 17f else 15f).toFloat()
+
+        private val currentHeights = FloatArray(barCount) { minH }
+        private val targetHeights = FloatArray(barCount) { minH }
+
+        init {
+            setColor(Color.WHITE)
+        }
 
         fun setColor(color: Int) {
-            barPaint.color = color
+            primaryColor = color
+            val r = Color.red(color)
+            val g = Color.green(color)
+            val b = Color.blue(color)
+            val hlR = (r + (255 - r) * 0.40f).toInt().coerceIn(0, 255)
+            val hlG = (g + (255 - g) * 0.40f).toInt().coerceIn(0, 255)
+            val hlB = (b + (255 - b) * 0.40f).toInt().coerceIn(0, 255)
+            highlightColor = Color.rgb(hlR, hlG, hlB)
             invalidate()
         }
 
         fun setPlaying(playing: Boolean) {
             if (isPlaying == playing) return
             isPlaying = playing
-            if (playing) {
-                if (animator == null) {
-                    animator = ValueAnimator.ofFloat(0f, 1f).apply {
-                        duration = 1000L
-                        repeatCount = ValueAnimator.INFINITE
-                        interpolator = LinearInterpolator()
-                        addUpdateListener {
-                            phase = it.animatedValue as Float
-                            invalidate()
-                        }
-                    }
+            if (!playing) {
+                for (i in 0 until barCount) {
+                    targetHeights[i] = minH
                 }
-                animator?.start()
-            } else {
-                animator?.cancel()
-                phase = 0f
-                invalidate()
             }
+            invalidate()
+        }
+
+        override fun onAudioBands(bands: FloatArray) {
+            if (!isPlaying || visibility != VISIBLE) return
+            for (i in 0 until barCount) {
+                val bandIdx = if (barCount == 4) {
+                    when (i) {
+                        0 -> 0 // Sub-bass
+                        1 -> 1 // Low-mid
+                        2 -> 2 // Mid/Vocals
+                        else -> 4 // Treble
+                    }
+                } else {
+                    i.coerceIn(0, bands.size - 1)
+                }
+                val rawNorm = bands.getOrElse(bandIdx) { 0.05f }
+                targetHeights[i] = minH + (maxH - minH) * rawNorm
+            }
+            postInvalidateOnAnimation()
         }
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-            val totalW = (barWidth * 3 + barGap * 2).toInt()
+            val totalW = (barWidth * barCount + barGap * (barCount - 1)).toInt()
             val totalH = maxH.toInt()
             setMeasuredDimension(totalW, totalH)
         }
 
         override fun onAttachedToWindow() {
             super.onAttachedToWindow()
-            if (isPlaying && animator?.isRunning != true) {
-                animator?.start()
-            }
+            AudioVisualizerEngine.addListener(this)
         }
 
         override fun onDetachedFromWindow() {
             super.onDetachedFromWindow()
-            animator?.cancel()
+            AudioVisualizerEngine.removeListener(this)
         }
 
         override fun onVisibilityChanged(changedView: View, visibility: Int) {
             super.onVisibilityChanged(changedView, visibility)
             if (visibility == VISIBLE && isPlaying) {
-                if (animator?.isRunning != true) animator?.start()
-            } else {
-                animator?.cancel()
+                invalidate()
             }
         }
 
         override fun onDraw(canvas: Canvas) {
             val midY = height.toFloat()
             val corner = barWidth / 2f
+            var needsMoreAnimation = false
 
-            for (i in 0 until 3) {
+            for (i in 0 until barCount) {
                 val x = i * (barWidth + barGap)
-                val h = if (isPlaying) {
-                    val p = when (i) {
-                        0 -> (Math.sin((phase * 2.0 * Math.PI * 1.3) + 0.2) * 0.45 + 0.55).toFloat()
-                        1 -> (Math.sin((phase * 2.0 * Math.PI * 2.1) + 1.5) * 0.45 + 0.55).toFloat()
-                        else -> (Math.sin((phase * 2.0 * Math.PI * 1.6) + 3.0) * 0.45 + 0.55).toFloat()
-                    }
-                    minH + (maxH - minH) * p
-                } else {
-                    minH
+                val targetH = if (isPlaying) targetHeights[i] else minH
+                val currH = currentHeights[i]
+
+                // Slow, graceful low-pass smoothing (0.14f) for calm and fluid motion
+                val newH = currH + (targetH - currH) * 0.14f
+                currentHeights[i] = newH
+
+                if (Math.abs(targetH - newH) > 0.15f) {
+                    needsMoreAnimation = true
                 }
-                val top = midY - h
+
+                val top = midY - newH
+
+                val shader = LinearGradient(
+                    x, top, x, midY,
+                    highlightColor, primaryColor,
+                    Shader.TileMode.CLAMP
+                )
+                barPaint.shader = shader
+                barPaint.alpha = if (isPlaying) 255 else 115
+
                 canvas.drawRoundRect(x, top, x + barWidth, midY, corner, corner, barPaint)
+            }
+
+            if (needsMoreAnimation && isPlaying) {
+                postInvalidateOnAnimation()
             }
         }
     }

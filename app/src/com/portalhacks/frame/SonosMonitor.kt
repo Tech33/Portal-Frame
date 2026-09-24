@@ -51,6 +51,13 @@ object SonosMonitor {
     @Volatile
     var activeSpeakerIp: String? = null
         private set
+    @Volatile
+    private var wasPlayingSonos: Boolean = false
+
+    fun clearActiveSpeaker() {
+        activeSpeakerIp = null
+        wasPlayingSonos = false
+    }
 
     private val isRunning = AtomicBoolean(false)
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -292,13 +299,20 @@ object SonosMonitor {
             if (isTransportPlaying) {
                 foundPlayingSpeaker = speaker
                 break
-            } else if (foundPausedSpeaker == null) {
+            } else if (speaker.ip == activeSpeakerIp) {
                 foundPausedSpeaker = speaker
             }
         }
 
         if (foundPlayingSpeaker != null) {
+            val current = MediaMonitor.currentState
+            val localIsPlaying = current.isPlaying && !current.source.contains("Sonos", ignoreCase = true)
+            if (localIsPlaying) {
+                // Do not hijack active local playback (e.g. Spotify playing on Portal)
+                return
+            }
             activeSpeakerIp = foundPlayingSpeaker.ip
+            wasPlayingSonos = true
             MediaMonitor.update(
                 isPlaying = true,
                 title = foundPlayingSpeaker.title,
@@ -309,8 +323,9 @@ object SonosMonitor {
                 deviceName = "${foundPlayingSpeaker.roomName} Sonos",
                 volume = foundPlayingSpeaker.volume
             )
-        } else if (foundPausedSpeaker != null && foundPausedSpeaker.title.isNotEmpty()) {
-            activeSpeakerIp = foundPausedSpeaker.ip
+        } else if (wasPlayingSonos && activeSpeakerIp != null && foundPausedSpeaker != null && foundPausedSpeaker.title.isNotEmpty()) {
+            // Sonos was actively streaming and just transitioned to paused; report once
+            wasPlayingSonos = false
             MediaMonitor.update(
                 isPlaying = false,
                 title = foundPausedSpeaker.title,
@@ -321,25 +336,21 @@ object SonosMonitor {
                 deviceName = "${foundPausedSpeaker.roomName} Sonos",
                 volume = foundPausedSpeaker.volume
             )
-        } else {
-            // No Sonos speaker is actively streaming or paused with music
-            val wasSonos = activeSpeakerIp != null || MediaMonitor.currentState.source.contains("Sonos", ignoreCase = true)
-            activeSpeakerIp = null
-            if (wasSonos) {
-                val lastState = MediaMonitor.currentState
-                if (lastState.isPlaying && lastState.title.isNotEmpty()) {
-                    // Transition to paused state first so idle timeout handles dismissal
-                    MediaMonitor.update(
-                        isPlaying = false,
-                        title = lastState.title,
-                        artist = lastState.artist,
-                        album = lastState.album,
-                        art = lastState.art,
-                        source = lastState.source,
-                        deviceName = lastState.deviceName,
-                        volume = lastState.volume
-                    )
-                }
+        } else if (wasPlayingSonos && activeSpeakerIp != null) {
+            // Sonos was playing, but now stopped completely / empty track
+            wasPlayingSonos = false
+            val lastState = MediaMonitor.currentState
+            if (lastState.isPlaying && lastState.source.contains("Sonos", ignoreCase = true)) {
+                MediaMonitor.update(
+                    isPlaying = false,
+                    title = lastState.title,
+                    artist = lastState.artist,
+                    album = lastState.album,
+                    art = lastState.art,
+                    source = lastState.source,
+                    deviceName = lastState.deviceName,
+                    volume = lastState.volume
+                )
             }
         }
     }

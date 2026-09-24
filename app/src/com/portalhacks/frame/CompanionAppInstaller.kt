@@ -74,7 +74,31 @@ object CompanionAppInstaller {
      */
     fun killSpotify(context: Context) {
         try {
-            // 1. Dispatch standard Android Media Stop key event
+            // 1. Direct MediaController IPC Stop to release foreground service status
+            try {
+                MediaMonitor.activeController?.transportControls?.stop()
+                MediaMonitor.activeController?.transportControls?.pause()
+            } catch (e: Exception) {
+                Log.d(TAG, "MediaController stop failed: ${e.message}")
+            }
+
+            // 2. Targeted Media Stop broadcast to all Spotify packages
+            for (pkg in SPOTIFY_PACKAGES) {
+                try {
+                    val stopDown = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+                        setPackage(pkg)
+                        putExtra(Intent.EXTRA_KEY_EVENT, android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_STOP))
+                    }
+                    context.sendBroadcast(stopDown)
+                    val stopUp = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+                        setPackage(pkg)
+                        putExtra(Intent.EXTRA_KEY_EVENT, android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_STOP))
+                    }
+                    context.sendBroadcast(stopUp)
+                } catch (_: Exception) {}
+            }
+
+            // 3. Dispatch standard Android Media Stop key event
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
             audioManager?.dispatchMediaKeyEvent(
                 android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_STOP)
@@ -83,13 +107,13 @@ object CompanionAppInstaller {
                 android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_STOP)
             )
 
-            // 2. Kill background processes via ActivityManager
+            // 4. Kill background processes via ActivityManager
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
             for (pkg in SPOTIFY_PACKAGES) {
                 am?.killBackgroundProcesses(pkg)
             }
 
-            // 3. Fallback shell force-stop
+            // 5. Fallback shell force-stop (if ADB / system permissions granted)
             for (pkg in SPOTIFY_PACKAGES) {
                 try {
                     Runtime.getRuntime().exec(arrayOf("am", "force-stop", pkg))

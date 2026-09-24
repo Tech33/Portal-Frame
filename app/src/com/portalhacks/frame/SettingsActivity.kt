@@ -1587,6 +1587,15 @@ class SettingsActivity : ComponentActivity() {
                         prefs.edit().putLong(ConfigReceiver.KEY_MEDIA_WIDGET_IDLE_TIMEOUT, next).apply()
                     }
                     Divider()
+                    ToggleRow(
+                        label = "Show Audio Visualizer",
+                        key = ConfigReceiver.KEY_MEDIA_WIDGET_SHOW_VISUALIZER,
+                        def = ConfigReceiver.DEFAULT_MEDIA_WIDGET_SHOW_VISUALIZER,
+                        subtitle = "Display animated smooth equalizer bars when music is playing.",
+                        iconRes = R.drawable.ic_ambient,
+                        iconBg = Color(0xFF34C759)
+                    )
+                    Divider()
                     OpacitySliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF007AFF))
                     Divider()
                     BlurSliderRow(iconRes = R.drawable.ic_ambient, iconBg = Color(0xFF5856D6))
