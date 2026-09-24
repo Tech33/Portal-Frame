@@ -1,7 +1,7 @@
 {
-  "versionCode": 72,
-  "versionName": "1.6.30",
+  "versionCode": 73,
+  "versionName": "1.6.31",
   "apkUrl": "https://github.com/Tech33/Portal-Frame/releases/latest/download/Frame.apk",
   "sha256": "e3a1e57ae868fd21f33e46fe7487031d1283588c0544ec72f24f5f94243eff05",
-  "releaseNotes": "See the GitHub release notes for v1.6.30."
+  "releaseNotes": "See the GitHub release notes for v1.6.31."
 }

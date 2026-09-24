@@ -100,7 +100,6 @@ class SlideshowController(
     private var mediaWidgetScale: Float = ConfigReceiver.DEFAULT_MEDIA_WIDGET_SCALE
     private var isMediaExpanded: Boolean = false
     private val collapseMediaRunnable = Runnable { collapseMediaCapsule() }
-    private val hideTopControlsRunnable = Runnable { fadeOutTopControls() }
     private var lastMediaState: MediaMonitor.State? = null
 
     // Capsule pill views
@@ -153,8 +152,6 @@ class SlideshowController(
     private var isGlassVolumeDrawerOpen: Boolean = false
     private var isUserTrackingTimeline: Boolean = false
     private lateinit var pauseHaIconBtn: ImageView
-
-    private lateinit var topControlsRow: LinearLayout
     private lateinit var spotifyShortcutButton: LinearLayout
     private lateinit var actionMenuExit: TextView
     private val nowPlayingHideRunnable = Runnable { hideNowPlaying() }
@@ -288,7 +285,6 @@ class SlideshowController(
     private var onDismiss: Runnable? = null
     private var onSettings: Runnable? = null
     private var onOpenHomeAssistant: Runnable? = null
-    private lateinit var haButton: View
     private var clockOnly = false // low-light mode: black screen, clock only
     private var lastChimedHour = -1
 
@@ -709,11 +705,9 @@ class SlideshowController(
         root.addView(clockEditHint)
         root.addView(buildTouchOverlay())
         initPlayButton()
-        initTopControls()
         initSpotifyShortcut()
         initNowPlaying()
         root.addView(clockExit)
-        root.addView(topControlsRow)
         root.addView(spotifyShortcutButton)
         root.addView(nowPlayingCard)
         root.addView(playButtonOverlay)
@@ -729,77 +723,6 @@ class SlideshowController(
         startWeather()
         shimmer.startSweep()
         checkCustomMessage()
-    }
-
-    private fun initTopControls() {
-        topControlsRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            elevation = Ui.dp(context, 20f).toFloat()
-        }
-
-        initHaButton()
-
-        topControlsRow.addView(haButton)
-
-        val lp = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            topMargin = Ui.dp(context, 24f)
-            leftMargin = Ui.dp(context, 24f)
-            marginStart = Ui.dp(context, 24f)
-        }
-        topControlsRow.layoutParams = lp
-    }
-
-    private fun initHaButton() {
-        haButton = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = Ui.roundRect(0x99121418.toInt(), Ui.dp(context, 23f)).apply {
-                setStroke(Ui.dp(context, 1.2f), 0x4DFFFFFF)
-            }
-            alpha = 0.85f
-            val padH = Ui.dp(context, 18f)
-            val padV = Ui.dp(context, 11f)
-            setPadding(padH, padV, padH, padV)
-            minimumHeight = Ui.dp(context, 46f)
-            elevation = Ui.dp(context, 6f).toFloat()
-            clipToOutline = true
-            isClickable = true
-            isFocusable = true
-            visibility = View.GONE
-
-            val icon = ImageView(context).apply {
-                setImageResource(R.drawable.ic_home_assistant)
-                setColorFilter(0xFF0A84FF.toInt())
-                val s = Ui.dp(context, 20f)
-                layoutParams = LinearLayout.LayoutParams(s, s).apply {
-                    rightMargin = Ui.dp(context, 7f)
-                }
-            }
-
-            val label = TextView(context).apply {
-                text = "Home"
-                setTextColor(Color.WHITE)
-                typeface = Ui.bold(context)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
-            }
-
-            addView(icon)
-            addView(label)
-
-            setOnTouchListener { v, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> v.alpha = 1.0f
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.85f
-                }
-                false
-            }
-            setOnClickListener { onOpenHomeAssistant?.run() }
-        }
     }
 
     private fun initSpotifyShortcut() {
@@ -864,34 +787,11 @@ class SlideshowController(
 
     /**
      * Updates visibility of corner overlay shortcuts:
-     * - Top-left Home Assistant icon: only visible when HA toggle is on, HA button is enabled,
-     *   HA URL is configured, and slideshow is not in clock-only mode.
      * - Bottom-right Spotify icon: only visible when Spotify is installed/setup on Portal,
      *   the Spotify shortcut setting is enabled, and slideshow is not in clock-only mode.
-     * - Top-left Exit button: always present inside topControlsRow when not in clock-only mode.
      */
     fun updateOverlayShortcuts() {
         val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-
-        if (::haButton.isInitialized) {
-            val haEnabled = prefs.getBoolean(ConfigReceiver.KEY_HA_EMBEDDED, ConfigReceiver.DEFAULT_HA_EMBEDDED)
-            val showBtn = prefs.getBoolean(ConfigReceiver.KEY_HA_BUTTON, ConfigReceiver.DEFAULT_HA_BUTTON)
-            val haUrl = prefs.getString(ConfigReceiver.KEY_HA_URL, "")?.trim() ?: ""
-            val shouldShowHa = haEnabled && showBtn && haUrl.isNotEmpty() && !clockOnly
-            haButton.visibility = if (shouldShowHa) View.VISIBLE else View.GONE
-        }
-
-        if (::topControlsRow.isInitialized) {
-            val shouldBeAvailable = ::haButton.isInitialized && haButton.visibility == View.VISIBLE && !clockOnly
-            if (!shouldBeAvailable) {
-                topControlsRow.visibility = View.GONE
-            } else if (slideshowPaused) {
-                topControlsRow.visibility = View.VISIBLE
-                topControlsRow.alpha = 1f
-                topControlsRow.bringToFront()
-            }
-            // During active slideshow, topControlsRow remains hidden until screen is tapped
-        }
 
         if (::spotifyShortcutButton.isInitialized) {
             val spotifyInstalled = CompanionAppInstaller.isSpotifyInstalled(context)
@@ -908,27 +808,6 @@ class SlideshowController(
                 spotifyShortcutButton.bringToFront()
             }
         }
-    }
-
-    fun revealTopControlsTemporarily(timeoutMs: Long = 5000L) {
-        if (!::topControlsRow.isInitialized || clockOnly) return
-        val hasVisibleChild = ::haButton.isInitialized && haButton.visibility == View.VISIBLE
-        if (!hasVisibleChild) return
-        handler.removeCallbacks(hideTopControlsRunnable)
-        topControlsRow.visibility = View.VISIBLE
-        topControlsRow.animate().alpha(1f).setDuration(200).start()
-        topControlsRow.bringToFront()
-        if (timeoutMs > 0) {
-            handler.postDelayed(hideTopControlsRunnable, timeoutMs)
-        }
-    }
-
-    private fun fadeOutTopControls() {
-        if (!::topControlsRow.isInitialized || clockOnly) return
-        if (slideshowPaused) return
-        topControlsRow.animate().alpha(0f).setDuration(300).withEndAction {
-            topControlsRow.visibility = View.GONE
-        }.start()
     }
 
     /**
@@ -2522,7 +2401,6 @@ class SlideshowController(
             status.visibility = if (!clockOnly) View.VISIBLE else View.GONE
         }
         showPlayButtonOverlay()
-        revealTopControlsTemporarily(0L)
     }
 
     fun resumeSlideshow() {
@@ -2538,7 +2416,6 @@ class SlideshowController(
             scheduleAuto()
         }
         hidePlayButtonOverlay()
-        fadeOutTopControls()
     }
 
     private fun showActionMenu() {
@@ -3304,7 +3181,6 @@ class SlideshowController(
                                     if (isMediaExpanded) {
                                         collapseMediaCapsule()
                                     }
-                                    revealTopControlsTemporarily(5000L)
                                     val width = v.width
                                     val tapX = e.x
                                     if (tapX < width * 0.25f) {
@@ -3532,7 +3408,6 @@ class SlideshowController(
             applyClockOnlyTransform()
             clockBox.visibility = View.GONE // hide the bottom overlay clock
             broadcastBanner.visibility = View.GONE
-            topControlsRow.visibility = View.GONE
             spotifyShortcutButton.visibility = View.GONE
             nowPlayingCard.visibility = View.GONE
             clockOnlyBox.visibility = View.VISIBLE // big centered clock instead

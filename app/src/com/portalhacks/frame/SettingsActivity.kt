@@ -1808,7 +1808,7 @@ class SettingsActivity : ComponentActivity() {
                             "Floating Dashboard button",
                             ConfigReceiver.KEY_HA_BUTTON,
                             ConfigReceiver.DEFAULT_HA_BUTTON,
-                            subtitle = "Corner button on the photo slideshow to quickly open Home Assistant.",
+                            subtitle = "Minimal shortcut button on the pause screen to quickly open Home Assistant.",
                             iconRes = R.drawable.ic_ambient,
                             iconBg = Color(0xFF007AFF),
                         )
