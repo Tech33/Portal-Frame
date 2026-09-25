@@ -143,6 +143,9 @@ class SlideshowComposeActivity : ComponentActivity() {
                 ConfigReceiver.ACTION_MEDIA_PLAY_PAUSE -> MediaMonitor.playPause()
                 ConfigReceiver.ACTION_MEDIA_NEXT -> MediaMonitor.next()
                 ConfigReceiver.ACTION_MEDIA_PREV -> MediaMonitor.prev()
+                ConfigReceiver.ACTION_RELOAD_SETTINGS -> {
+                    controller.reloadSettings()
+                }
             }
         }
     }
@@ -539,6 +542,7 @@ class SlideshowComposeActivity : ComponentActivity() {
             addAction(ConfigReceiver.ACTION_MEDIA_PLAY_PAUSE)
             addAction(ConfigReceiver.ACTION_MEDIA_NEXT)
             addAction(ConfigReceiver.ACTION_MEDIA_PREV)
+            addAction(ConfigReceiver.ACTION_RELOAD_SETTINGS)
         }
         registerReceiver(commandReceiver, cmdFilter)
 

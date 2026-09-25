@@ -521,6 +521,8 @@ class SettingsActivity : ComponentActivity() {
                     color = PortalColors.Text,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 if (!subtitle.isNullOrEmpty()) {
                     Spacer(Modifier.height(2.dp))
@@ -529,6 +531,8 @@ class SettingsActivity : ComponentActivity() {
                         color = PortalColors.TextMuted,
                         fontSize = 13.sp,
                         lineHeight = 17.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -1485,42 +1489,56 @@ class SettingsActivity : ComponentActivity() {
                     iconRes = R.drawable.ic_clock_format,
                     iconBg = Color(0xFFFF9500),
                 )
-                
+
                 val showChimeOptions = rememberPrefBoolean(ConfigReceiver.KEY_CHIME, ConfigReceiver.DEFAULT_CHIME)
                 if (showChimeOptions.value) {
-                    Spacer(Modifier.height(8.dp))
-                    Column(Modifier.padding(start = 32.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Chime Sound", color = PortalColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Classic Soothing Bell (880Hz Harmonics)", color = PortalColors.Text.copy(alpha = 0.65f), fontSize = 12.sp)
-                            }
-                            SecondaryBtn("▶️ Test Chime") {
-                                SlideshowController.synthesizeAndPlayChime()
-                            }
+                    Divider()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RowIcon(R.drawable.ic_ambient, Color(0xFF5856D6))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Chime sound",
+                                color = PortalColors.Text,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                "Classic Soothing Bell (880Hz)",
+                                color = PortalColors.TextMuted,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-                        Divider()
-                        TimeSliderRow(
-                            "Chime starts",
-                            ConfigReceiver.KEY_CHIME_START_MIN,
-                            ConfigReceiver.DEFAULT_CHIME_START_MIN,
-                            iconRes = R.drawable.ic_duration,
-                            iconBg = Color(0xFF8E8E93),
-                        )
-                        Divider()
-                        TimeSliderRow(
-                            "Chime ends",
-                            ConfigReceiver.KEY_CHIME_END_MIN,
-                            ConfigReceiver.DEFAULT_CHIME_END_MIN,
-                            iconRes = R.drawable.ic_duration,
-                            iconBg = Color(0xFF8E8E93),
-                        )
+                        Spacer(Modifier.width(8.dp))
+                        SecondaryBtn("▶️ Test Chime") {
+                            SlideshowController.synthesizeAndPlayChime()
+                        }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Divider()
+                    TimeSliderRow(
+                        "Starts at",
+                        ConfigReceiver.KEY_CHIME_START_MIN,
+                        ConfigReceiver.DEFAULT_CHIME_START_MIN,
+                        iconRes = R.drawable.ic_duration,
+                        iconBg = Color(0xFF8E8E93),
+                    )
+                    Divider()
+                    TimeSliderRow(
+                        "Ends at",
+                        ConfigReceiver.KEY_CHIME_END_MIN,
+                        ConfigReceiver.DEFAULT_CHIME_END_MIN,
+                        iconRes = R.drawable.ic_duration,
+                        iconBg = Color(0xFF8E8E93),
+                    )
                 }
             }
         }
@@ -1568,6 +1586,11 @@ class SettingsActivity : ComponentActivity() {
                         }
                         prefs.edit().putFloat(ConfigReceiver.KEY_MEDIA_WIDGET_SCALE, next).apply()
                     }
+                    Divider()
+                    OpacitySliderRow(
+                        iconRes = R.drawable.ic_ambient,
+                        iconBg = Color(0xFF5856D6),
+                    )
                     Divider()
                     val idleTimeoutState = rememberPrefLong(ConfigReceiver.KEY_MEDIA_WIDGET_IDLE_TIMEOUT, ConfigReceiver.DEFAULT_MEDIA_WIDGET_IDLE_TIMEOUT)
                     val timeoutLabel = when (idleTimeoutState.value) {
@@ -1913,8 +1936,8 @@ class SettingsActivity : ComponentActivity() {
                 }
                 Divider()
                 IosMenuRow(
-                    title = "Clock, Weather & Hourly Chime",
-                    subtitle = "12h/24h format, chime bell & battery status",
+                    title = "Clock, Weather & Chime",
+                    subtitle = "12h/24h format, chime & battery status",
                     iconRes = R.drawable.ic_clock,
                     iconBg = Color(0xFFFF2D55),
                 ) {
@@ -3530,7 +3553,7 @@ class SettingsActivity : ComponentActivity() {
                     Text("Widget Transparency & Opacity", color = PortalColors.Text, fontSize = 18.sp)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Controls how transparent or solid the media card appears over your photos.",
+                        "Controls how transparent or solid the floating media pill appears over your photos.",
                         color = PortalColors.Text.copy(alpha = 0.5f),
                         fontSize = 14.sp,
                         lineHeight = 18.sp
@@ -3558,6 +3581,9 @@ class SettingsActivity : ComponentActivity() {
                     val finalVal = sliderVal.toInt().coerceIn(2, 100)
                     opacityVal = finalVal
                     prefs.edit().putInt(ConfigReceiver.KEY_NOW_PLAYING_OPACITY, finalVal).apply()
+                    sendBroadcast(Intent(ConfigReceiver.ACTION_RELOAD_SETTINGS).apply {
+                        setPackage(packageName)
+                    })
                     onChanged?.invoke()
                 },
                 colors = SliderDefaults.colors(
@@ -3568,7 +3594,7 @@ class SettingsActivity : ComponentActivity() {
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("2% (Glass)", color = PortalColors.TextMuted, fontSize = 12.sp)
-                Text("72% (Smokey Ref)", color = PortalColors.Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("72% (Default)", color = PortalColors.Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 Text("100% (Solid)", color = PortalColors.TextMuted, fontSize = 12.sp)
             }
         }
@@ -3756,10 +3782,20 @@ class SettingsActivity : ComponentActivity() {
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 RowIcon(iconRes, iconBg)
-                Text(label, color = PortalColors.Text, fontSize = 18.sp, modifier = Modifier.weight(1f))
                 Text(
-                    fmtTimeOfDay(minute),
-                    color = PortalColors.Blue, fontSize = 18.sp, fontWeight = FontWeight.Medium,
+                    text = label,
+                    color = PortalColors.Text,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = fmtTimeOfDay(minute),
+                    color = PortalColors.Blue,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
             Slider(

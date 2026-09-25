@@ -595,6 +595,12 @@ class MqttManager private constructor(context: Context) {
                 appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_TRANSITION).putExtra(ConfigReceiver.KEY_TRANSITION, t))
                 publishState("$prefix/transition/state", t)
             }
+            "$prefix/media/opacity/set" -> {
+                val op = msg.toIntOrNull()?.coerceIn(2, 100) ?: ConfigReceiver.DEFAULT_NOW_PLAYING_OPACITY
+                prefs.edit().putInt(ConfigReceiver.KEY_NOW_PLAYING_OPACITY, op).apply()
+                appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_RELOAD_SETTINGS))
+                publishState("$prefix/media/opacity/state", op.toString())
+            }
             "$prefix/dashboard/set" -> {
                 val show = msg.equals("ON", ignoreCase = true) || msg == "1"
                 appContext.sendBroadcast(

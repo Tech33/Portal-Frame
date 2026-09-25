@@ -222,6 +222,11 @@ class AlbumServer(
                             editor.putString(ConfigReceiver.KEY_TRANSITION, t)
                             context.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_TRANSITION).setPackage(context.packageName).putExtra(ConfigReceiver.KEY_TRANSITION, t))
                         }
+                        if (json.has("now_playing_opacity")) {
+                            val op = json.getInt("now_playing_opacity").coerceIn(2, 100)
+                            editor.putInt(ConfigReceiver.KEY_NOW_PLAYING_OPACITY, op)
+                            context.sendBroadcast(Intent(ConfigReceiver.ACTION_RELOAD_SETTINGS).setPackage(context.packageName))
+                        }
                         editor.apply()
                         sendResponse(socket, 200, "OK", "application/json", "{\"status\":\"saved\"}".toByteArray(Charsets.UTF_8))
                     } catch (e: Exception) {

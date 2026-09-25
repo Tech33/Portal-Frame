@@ -121,6 +121,15 @@ class ConfigReceiver : BroadcastReceiver() {
                 ctx.sendBroadcast(Intent(ACTION_SET_TRANSITION).setPackage(ctx.packageName).putExtra(KEY_TRANSITION, trans))
             }
         }
+        if (intent.hasExtra(KEY_NOW_PLAYING_OPACITY) || intent.hasExtra("now_playing_opacity") || intent.hasExtra("opacity")) {
+            val op = intent.getIntExtra(KEY_NOW_PLAYING_OPACITY, intent.getIntExtra("now_playing_opacity", intent.getIntExtra("opacity", -1)))
+            if (op in 2..100) {
+                ed.putInt(KEY_NOW_PLAYING_OPACITY, op)
+                Log.i("PortalFrame", "now_playing_opacity set to: $op")
+                any = true
+                ctx.sendBroadcast(Intent(ACTION_RELOAD_SETTINGS).setPackage(ctx.packageName))
+            }
+        }
         if (any) {
             ed.apply()
         }
@@ -237,6 +246,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val ACTION_MEDIA_PLAY_PAUSE = "com.portalhacks.frame.MEDIA_PLAY_PAUSE"
         const val ACTION_MEDIA_NEXT = "com.portalhacks.frame.MEDIA_NEXT"
         const val ACTION_MEDIA_PREV = "com.portalhacks.frame.MEDIA_PREV"
+        const val ACTION_RELOAD_SETTINGS = "com.portalhacks.frame.RELOAD_SETTINGS"
 
         /** Stable URL — always serves the latest release's version.json asset. */
         const val UPDATE_MANIFEST_URL =

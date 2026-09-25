@@ -1154,14 +1154,19 @@ class SlideshowController(
         prefs.edit().putFloat(ConfigReceiver.KEY_MEDIA_WIDGET_SCALE, mediaWidgetScale).apply()
     }
 
-    private fun applyNowPlayingStyle() {
+    fun applyNowPlayingStyle() {
         val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         mediaWidgetScale = prefs.getFloat(
             ConfigReceiver.KEY_MEDIA_WIDGET_SCALE,
             ConfigReceiver.DEFAULT_MEDIA_WIDGET_SCALE
         ).coerceIn(ConfigReceiver.MIN_MEDIA_WIDGET_SCALE, ConfigReceiver.MAX_MEDIA_WIDGET_SCALE)
 
-        val cardColor = 0xCC181A1E.toInt()
+        val opacity = prefs.getInt(
+            ConfigReceiver.KEY_NOW_PLAYING_OPACITY,
+            ConfigReceiver.DEFAULT_NOW_PLAYING_OPACITY
+        ).coerceIn(2, 100)
+        val alphaInt = (opacity * 255 / 100).coerceIn(0, 255)
+        val cardColor = (alphaInt shl 24) or 0x181A1E
 
         if (::mediaPillRow.isInitialized) {
             (mediaPillRow.parent as? ViewGroup)?.removeView(mediaPillRow)
@@ -1189,8 +1194,9 @@ class SlideshowController(
         nowPlayingCard.setPadding(0, 0, 0, 0)
         nowPlayingCard.orientation = LinearLayout.VERTICAL
 
+        val strokeAlpha = (alphaInt * 0.45f).toInt().coerceIn(0x18, 0x66)
         mediaPillRow.background = Ui.roundRect(cardColor, Ui.dp(context, 26f)).apply {
-            setStroke(Ui.dp(context, 1.2f), 0x3DFFFFFF)
+            setStroke(Ui.dp(context, 1.2f), (strokeAlpha shl 24) or 0x00FFFFFF)
         }
         mediaPillRow.elevation = Ui.dp(context, 16f).toFloat()
         val pillPadH = Ui.dp(context, 7f)
