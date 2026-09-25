@@ -73,6 +73,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -3163,10 +3167,12 @@ class SettingsActivity : ComponentActivity() {
                             Modifier.fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable {
-                                    if (selectedVal != option.id) {
-                                        prefs.edit().putString(ConfigReceiver.KEY_TRANSITION, option.id).apply()
-                                        onChanged?.invoke()
-                                    }
+                                    prefs.edit().putString(ConfigReceiver.KEY_TRANSITION, option.id).apply()
+                                    sendBroadcast(Intent(ConfigReceiver.ACTION_SET_TRANSITION).apply {
+                                        setPackage(packageName)
+                                        putExtra(ConfigReceiver.KEY_TRANSITION, option.id)
+                                    })
+                                    onChanged?.invoke()
                                 }
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -3184,6 +3190,130 @@ class SettingsActivity : ComponentActivity() {
                         if (i < TRANSITION_OPTIONS.lastIndex) {
                             Spacer(Modifier.height(2.dp))
                         }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    TransitionPreviewCard(selectedVal) {
+                        sendBroadcast(Intent(ConfigReceiver.ACTION_SET_TRANSITION).apply {
+                            setPackage(packageName)
+                            putExtra(ConfigReceiver.KEY_TRANSITION, selectedVal)
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun TransitionPreviewCard(transitionId: String, onReplayBroadcast: () -> Unit) {
+        var replayKey by remember { mutableIntStateOf(0) }
+        val anim = remember { Animatable(0f) }
+        var showSecond by remember { mutableStateOf(false) }
+
+        LaunchedEffect(transitionId, replayKey) {
+            anim.snapTo(0f)
+            showSecond = false
+            delay(150)
+            if (transitionId == "instant") {
+                delay(300)
+                showSecond = true
+            } else {
+                anim.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = 650,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+            }
+        }
+
+        val label = TRANSITION_OPTIONS.firstOrNull { it.id == transitionId }?.label ?: "Transition"
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF14171F))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                .clickable {
+                    replayKey++
+                    onReplayBroadcast()
+                }
+                .padding(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Live preview · $label",
+                    color = PortalColors.TextMuted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Tap to replay ↺",
+                    color = PortalColors.Blue,
+                    fontSize = 12.sp
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(84.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black)
+            ) {
+                val boxWidthPx = constraints.maxWidth.toFloat()
+                val progress = anim.value
+
+                // Background / Slide 1
+                val slide1TranslationX = if (transitionId == "push") -boxWidthPx * progress else 0f
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationX = slide1TranslationX
+                        }
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(Color(0xFF1E3A8A), Color(0xFF0D9488))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Photo 1", color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                // Foreground / Slide 2
+                val slide2Alpha = when (transitionId) {
+                    "crossfade" -> progress
+                    "instant" -> if (showSecond) 1f else 0f
+                    else -> 1f
+                }
+                val slide2TranslationX = when (transitionId) {
+                    "slide", "push" -> boxWidthPx * (1f - progress)
+                    else -> 0f
+                }
+
+                if (transitionId != "instant" || showSecond) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                alpha = slide2Alpha
+                                translationX = slide2TranslationX
+                            }
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(Color(0xFF9333EA), Color(0xFFEA580C))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Photo 2", color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

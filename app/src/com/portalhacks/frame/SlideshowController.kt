@@ -200,7 +200,7 @@ class SlideshowController(
     private val dateFmt = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
     private val bigDateFmt = SimpleDateFormat("EEE, d MMM", Locale.getDefault())
     private val monthYearFmt = SimpleDateFormat("MMM yyyy", Locale.getDefault())
-    private val fahrenheit: Boolean
+    private var fahrenheit: Boolean = ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT
     private val nightTint: View // warm overlay that fades in at night (Ambient-EQ-lite)
     private val ambientGlow: View // edge vignette tinted to the photo's mood color
     private var weather: Weather.Now? = null // current reading; null until loaded
@@ -216,23 +216,23 @@ class SlideshowController(
     private var lastShownId: String? = null
     private var shimmerHidden = false
 
-    // User-tunable settings (read from prefs in the constructor; see PhotosActivity).
-    private val intervalMs: Long // time each slide is held
-    private val transitionDurationMs: Long // transition animation duration
-    private val transitionMode: String // single selected slideshow transition mode
-    private val use24Hour: Boolean
-    private val shuffle: Boolean // play photos in random order
-    private val recentFirst: Boolean // sort newest photos first
-    private val pairs: Boolean // pair two photos to fill the screen (side-by-side or stacked)
-    private val kenBurns: Boolean // cinematic slow pan + zoom while held
-    private val showClock: Boolean // clock + weather overlay
-    private val nightMode: Boolean // warm night dimming
-    private val onThisDay: Boolean // surface "N years ago today" memories
-    private val captions: Boolean // photo date captions (lower-right)
-    private val faceFraming: Boolean // bias Ken Burns toward detected faces
-    private val ambientColor: Boolean // tint chrome to each photo's palette
-    private val enhance: Boolean // on-device auto-levels + vibrance
-    private val zoomFill: Boolean // single photos: crop to fill (vs whole photo + blurred fill).
+    // User-tunable settings (read from prefs in the constructor; dynamically reloaded).
+    private var intervalMs: Long = ConfigReceiver.DEFAULT_DELAY_MS // time each slide is held
+    private var transitionDurationMs: Long = ConfigReceiver.DEFAULT_FADE_MS // transition animation duration
+    private var transitionMode: String = ConfigReceiver.DEFAULT_TRANSITION // single selected slideshow transition mode
+    private var use24Hour: Boolean = ConfigReceiver.DEFAULT_CLOCK_24H
+    private var shuffle: Boolean = false // play photos in random order
+    private var recentFirst: Boolean = ConfigReceiver.DEFAULT_RECENT_FIRST // sort newest photos first
+    private var pairs: Boolean = ConfigReceiver.DEFAULT_PAIRS // pair two photos to fill the screen (side-by-side or stacked)
+    private var kenBurns: Boolean = ConfigReceiver.DEFAULT_KEN_BURNS // cinematic slow pan + zoom while held
+    private var showClock: Boolean = ConfigReceiver.DEFAULT_CLOCK // clock + weather overlay
+    private var nightMode: Boolean = ConfigReceiver.DEFAULT_NIGHT // warm night dimming
+    private var onThisDay: Boolean = ConfigReceiver.DEFAULT_ON_THIS_DAY // surface "N years ago today" memories
+    private var captions: Boolean = ConfigReceiver.DEFAULT_CAPTIONS // photo date captions (lower-right)
+    private var faceFraming: Boolean = ConfigReceiver.DEFAULT_FACE // bias Ken Burns toward detected faces
+    private var ambientColor: Boolean = ConfigReceiver.DEFAULT_AMBIENT // tint chrome to each photo's palette
+    private var enhance: Boolean = ConfigReceiver.DEFAULT_ENHANCE // on-device auto-levels + vibrance
+    private var zoomFill: Boolean = ConfigReceiver.DEFAULT_ZOOM_FILL // single photos: crop to fill (vs whole photo + blurred fill).
                                   // Pairs always fill their half regardless.
 
     // Ken Burns animation state.
@@ -302,41 +302,7 @@ class SlideshowController(
         reqH = if (dm.heightPixels > 0) dm.heightPixels else 800
         screenPortrait = reqH > reqW
 
-        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-        intervalMs = prefs.getLong(ConfigReceiver.KEY_DELAY_MS, ConfigReceiver.DEFAULT_DELAY_MS)
-        transitionDurationMs = prefs.getLong(ConfigReceiver.KEY_FADE_MS, ConfigReceiver.DEFAULT_FADE_MS)
-        transitionMode = prefs.getString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
-            ?: ConfigReceiver.DEFAULT_TRANSITION
-        use24Hour = if (prefs.contains(ConfigReceiver.KEY_CLOCK_24H)) {
-            prefs.getBoolean(ConfigReceiver.KEY_CLOCK_24H, ConfigReceiver.DEFAULT_CLOCK_24H)
-        } else {
-            android.text.format.DateFormat.is24HourFormat(context)
-        }
-        shuffle = prefs.getBoolean(ConfigReceiver.KEY_SHUFFLE, false)
-        recentFirst = prefs.getBoolean(ConfigReceiver.KEY_RECENT_FIRST, ConfigReceiver.DEFAULT_RECENT_FIRST)
-        pairs = prefs.getBoolean(ConfigReceiver.KEY_PAIRS, ConfigReceiver.DEFAULT_PAIRS)
-        kenBurns = prefs.getBoolean(ConfigReceiver.KEY_KEN_BURNS, ConfigReceiver.DEFAULT_KEN_BURNS)
-        showClock = prefs.getBoolean(ConfigReceiver.KEY_CLOCK, ConfigReceiver.DEFAULT_CLOCK)
-        fahrenheit = prefs.getBoolean(
-            ConfigReceiver.KEY_WEATHER_FAHRENHEIT,
-            ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT,
-        )
-        nightMode = prefs.getBoolean(ConfigReceiver.KEY_NIGHT, ConfigReceiver.DEFAULT_NIGHT)
-        onThisDay = prefs.getBoolean(ConfigReceiver.KEY_ON_THIS_DAY, ConfigReceiver.DEFAULT_ON_THIS_DAY)
-        captions = prefs.getBoolean(ConfigReceiver.KEY_CAPTIONS, ConfigReceiver.DEFAULT_CAPTIONS)
-        faceFraming = prefs.getBoolean(ConfigReceiver.KEY_FACE, ConfigReceiver.DEFAULT_FACE)
-        ambientColor = prefs.getBoolean(ConfigReceiver.KEY_AMBIENT, ConfigReceiver.DEFAULT_AMBIENT)
-        enhance = prefs.getBoolean(ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE)
-        zoomFill = prefs.getBoolean(ConfigReceiver.KEY_ZOOM_FILL, ConfigReceiver.DEFAULT_ZOOM_FILL)
-        clockDx = prefs.getFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
-        clockDy = prefs.getFloat(ConfigReceiver.KEY_CLOCK_DY, ConfigReceiver.DEFAULT_CLOCK_DY)
-        clockScale = prefs.getFloat(ConfigReceiver.KEY_CLOCK_SCALE, ConfigReceiver.DEFAULT_CLOCK_SCALE)
-        dateDx = prefs.getFloat(ConfigReceiver.KEY_DATE_DX, ConfigReceiver.DEFAULT_DATE_DX)
-        dateDy = prefs.getFloat(ConfigReceiver.KEY_DATE_DY, ConfigReceiver.DEFAULT_DATE_DY)
-        dateScale = prefs.getFloat(ConfigReceiver.KEY_DATE_SCALE, ConfigReceiver.DEFAULT_DATE_SCALE)
-        clockOnlyDx = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_DX, ConfigReceiver.DEFAULT_CLOCK_ONLY_DX)
-        clockOnlyDy = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_DY, ConfigReceiver.DEFAULT_CLOCK_ONLY_DY)
-        clockOnlyScale = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_SCALE, ConfigReceiver.DEFAULT_CLOCK_ONLY_SCALE)
+        loadSettingsFromPrefs()
         val fontScale = Ui.fontScale(context)
         monthYearFmt.timeZone = TimeZone.getTimeZone("UTC")
 
@@ -2401,6 +2367,94 @@ class SlideshowController(
         ambientGlow.alpha = 0f
     }
 
+    private fun loadSettingsFromPrefs(): Boolean {
+        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val oldTransition = transitionMode
+        intervalMs = prefs.getLong(ConfigReceiver.KEY_DELAY_MS, ConfigReceiver.DEFAULT_DELAY_MS)
+        transitionDurationMs = prefs.getLong(ConfigReceiver.KEY_FADE_MS, ConfigReceiver.DEFAULT_FADE_MS)
+        val rawTrans = prefs.getString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
+            ?: ConfigReceiver.DEFAULT_TRANSITION
+        transitionMode = when (rawTrans.trim().lowercase(Locale.US)) {
+            TRANSITION_CROSSFADE, TRANSITION_SLIDE, TRANSITION_INSTANT, TRANSITION_PUSH -> rawTrans.trim().lowercase(Locale.US)
+            else -> ConfigReceiver.DEFAULT_TRANSITION
+        }
+        use24Hour = if (prefs.contains(ConfigReceiver.KEY_CLOCK_24H)) {
+            prefs.getBoolean(ConfigReceiver.KEY_CLOCK_24H, ConfigReceiver.DEFAULT_CLOCK_24H)
+        } else {
+            android.text.format.DateFormat.is24HourFormat(context)
+        }
+        shuffle = prefs.getBoolean(ConfigReceiver.KEY_SHUFFLE, false)
+        recentFirst = prefs.getBoolean(ConfigReceiver.KEY_RECENT_FIRST, ConfigReceiver.DEFAULT_RECENT_FIRST)
+        pairs = prefs.getBoolean(ConfigReceiver.KEY_PAIRS, ConfigReceiver.DEFAULT_PAIRS)
+        kenBurns = prefs.getBoolean(ConfigReceiver.KEY_KEN_BURNS, ConfigReceiver.DEFAULT_KEN_BURNS)
+        showClock = prefs.getBoolean(ConfigReceiver.KEY_CLOCK, ConfigReceiver.DEFAULT_CLOCK)
+        fahrenheit = prefs.getBoolean(
+            ConfigReceiver.KEY_WEATHER_FAHRENHEIT,
+            ConfigReceiver.DEFAULT_WEATHER_FAHRENHEIT,
+        )
+        nightMode = prefs.getBoolean(ConfigReceiver.KEY_NIGHT, ConfigReceiver.DEFAULT_NIGHT)
+        onThisDay = prefs.getBoolean(ConfigReceiver.KEY_ON_THIS_DAY, ConfigReceiver.DEFAULT_ON_THIS_DAY)
+        captions = prefs.getBoolean(ConfigReceiver.KEY_CAPTIONS, ConfigReceiver.DEFAULT_CAPTIONS)
+        faceFraming = prefs.getBoolean(ConfigReceiver.KEY_FACE, ConfigReceiver.DEFAULT_FACE)
+        ambientColor = prefs.getBoolean(ConfigReceiver.KEY_AMBIENT, ConfigReceiver.DEFAULT_AMBIENT)
+        enhance = prefs.getBoolean(ConfigReceiver.KEY_ENHANCE, ConfigReceiver.DEFAULT_ENHANCE)
+        zoomFill = prefs.getBoolean(ConfigReceiver.KEY_ZOOM_FILL, ConfigReceiver.DEFAULT_ZOOM_FILL)
+        clockDx = prefs.getFloat(ConfigReceiver.KEY_CLOCK_DX, ConfigReceiver.DEFAULT_CLOCK_DX)
+        clockDy = prefs.getFloat(ConfigReceiver.KEY_CLOCK_DY, ConfigReceiver.DEFAULT_CLOCK_DY)
+        clockScale = prefs.getFloat(ConfigReceiver.KEY_CLOCK_SCALE, ConfigReceiver.DEFAULT_CLOCK_SCALE)
+        dateDx = prefs.getFloat(ConfigReceiver.KEY_DATE_DX, ConfigReceiver.DEFAULT_DATE_DX)
+        dateDy = prefs.getFloat(ConfigReceiver.KEY_DATE_DY, ConfigReceiver.DEFAULT_DATE_DY)
+        dateScale = prefs.getFloat(ConfigReceiver.KEY_DATE_SCALE, ConfigReceiver.DEFAULT_DATE_SCALE)
+        clockOnlyDx = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_DX, ConfigReceiver.DEFAULT_CLOCK_ONLY_DX)
+        clockOnlyDy = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_DY, ConfigReceiver.DEFAULT_CLOCK_ONLY_DY)
+        clockOnlyScale = prefs.getFloat(ConfigReceiver.KEY_CLOCK_ONLY_SCALE, ConfigReceiver.DEFAULT_CLOCK_ONLY_SCALE)
+        return oldTransition != transitionMode
+    }
+
+    /**
+     * Updates the slideshow transition mode dynamically.
+     * If [triggerImmediate] is true (or if the transition changed), immediately transitions
+     * to the next slide so the user can see the newly selected transition in action.
+     */
+    fun updateTransitionMode(newMode: String? = null, triggerImmediate: Boolean = false) {
+        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val raw = (newMode ?: prefs.getString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
+            ?: ConfigReceiver.DEFAULT_TRANSITION).trim().lowercase(Locale.US)
+        val valid = when (raw) {
+            TRANSITION_CROSSFADE, TRANSITION_SLIDE, TRANSITION_INSTANT, TRANSITION_PUSH -> raw
+            else -> ConfigReceiver.DEFAULT_TRANSITION
+        }
+        val changed = (transitionMode != valid)
+        transitionMode = valid
+        Log.i(TAG, "Slideshow transition mode updated to: $transitionMode (changed=$changed, triggerImmediate=$triggerImmediate)")
+        if (triggerImmediate || changed) {
+            if (running && !clockOnly && items.isNotEmpty()) {
+                next()
+            }
+        }
+    }
+
+    /**
+     * Reloads all user preferences from SharedPreferences into runtime variables,
+     * reapplying clock transforms, widget positions, and optionally auto-triggering
+     * the next slide if the transition or configuration changed.
+     */
+    fun reloadSettings(triggerImmediateTransition: Boolean = false) {
+        val transChanged = loadSettingsFromPrefs()
+        applyClockTransform()
+        applyClockOnlyTransform()
+        applyDateTransform()
+        applyNowPlayingStyle()
+        updateClock()
+        updateOverlayShortcuts()
+
+        if (triggerImmediateTransition || transChanged) {
+            if (running && !clockOnly && items.isNotEmpty()) {
+                next()
+            }
+        }
+    }
+
     /**
      * Low-light "clock only" mode: a black screen showing just the clock (photos paused).
      * Mirrors the Portal night-mode "only show clock in low light" behaviour. Driven by
@@ -4173,10 +4227,10 @@ class SlideshowController(
         private const val TAP_TIMEOUT_MS = 350L
         private const val LONG_PRESS_MS = 700L // hold to open Photos setup
         private const val WEATHER_INTERVAL_MS = 30 * 60 * 1000L // refresh weather
-        private const val TRANSITION_CROSSFADE = "crossfade"
-        private const val TRANSITION_SLIDE = "slide"
-        private const val TRANSITION_INSTANT = "instant"
-        private const val TRANSITION_PUSH = "push"
+        const val TRANSITION_CROSSFADE = "crossfade"
+        const val TRANSITION_SLIDE = "slide"
+        const val TRANSITION_INSTANT = "instant"
+        const val TRANSITION_PUSH = "push"
 
 
         /**

@@ -589,6 +589,12 @@ class MqttManager private constructor(context: Context) {
             "$prefix/prev/set" -> {
                 appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_PREV_PHOTO))
             }
+            "$prefix/transition/set" -> {
+                val t = msg.trim().lowercase(java.util.Locale.US)
+                prefs.edit().putString(ConfigReceiver.KEY_TRANSITION, t).apply()
+                appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_TRANSITION).putExtra(ConfigReceiver.KEY_TRANSITION, t))
+                publishState("$prefix/transition/state", t)
+            }
             "$prefix/dashboard/set" -> {
                 val show = msg.equals("ON", ignoreCase = true) || msg == "1"
                 appContext.sendBroadcast(

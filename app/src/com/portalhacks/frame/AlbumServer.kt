@@ -217,6 +217,11 @@ class AlbumServer(
                         if (json.has("clock_only_dx")) editor.putFloat(ConfigReceiver.KEY_CLOCK_ONLY_DX, json.getDouble("clock_only_dx").toFloat().coerceIn(-1.0f, 1.0f))
                         if (json.has("clock_only_dy")) editor.putFloat(ConfigReceiver.KEY_CLOCK_ONLY_DY, json.getDouble("clock_only_dy").toFloat().coerceIn(-1.0f, 1.0f))
                         if (json.has("clock_only_scale")) editor.putFloat(ConfigReceiver.KEY_CLOCK_ONLY_SCALE, json.getDouble("clock_only_scale").toFloat().coerceIn(0.5f, 3.0f))
+                        if (json.has("transition")) {
+                            val t = json.getString("transition").trim().lowercase(java.util.Locale.US)
+                            editor.putString(ConfigReceiver.KEY_TRANSITION, t)
+                            context.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_TRANSITION).setPackage(context.packageName).putExtra(ConfigReceiver.KEY_TRANSITION, t))
+                        }
                         editor.apply()
                         sendResponse(socket, 200, "OK", "application/json", "{\"status\":\"saved\"}".toByteArray(Charsets.UTF_8))
                     } catch (e: Exception) {

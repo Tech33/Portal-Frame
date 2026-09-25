@@ -112,6 +112,15 @@ class ConfigReceiver : BroadcastReceiver() {
             Log.i("PortalFrame", "presence_timeout_min set to: $to")
             any = true
         }
+        if (intent.hasExtra(KEY_TRANSITION) || intent.hasExtra("transition")) {
+            val trans = (intent.getStringExtra(KEY_TRANSITION) ?: intent.getStringExtra("transition"))?.trim()?.lowercase(java.util.Locale.US)
+            if (!trans.isNullOrEmpty()) {
+                ed.putString(KEY_TRANSITION, trans)
+                Log.i("PortalFrame", "transition set to: $trans")
+                any = true
+                ctx.sendBroadcast(Intent(ACTION_SET_TRANSITION).setPackage(ctx.packageName).putExtra(KEY_TRANSITION, trans))
+            }
+        }
         if (any) {
             ed.apply()
         }
@@ -222,6 +231,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val ACTION_WAKE = "com.portalhacks.frame.WAKE"
         const val ACTION_SLEEP = "com.portalhacks.frame.SLEEP"
         const val ACTION_SET_SHOWCASE = "com.portalhacks.frame.SET_SHOWCASE"
+        const val ACTION_SET_TRANSITION = "com.portalhacks.frame.SET_TRANSITION"
         const val ACTION_SET_NICKNAME = "com.portalhacks.frame.SET_NICKNAME"
         const val ACTION_SET_PRESENCE = "com.portalhacks.frame.SET_PRESENCE"
         const val ACTION_MEDIA_PLAY_PAUSE = "com.portalhacks.frame.MEDIA_PLAY_PAUSE"

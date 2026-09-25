@@ -130,6 +130,12 @@ class SlideshowComposeActivity : ComponentActivity() {
                     val loc = intent?.getStringExtra("location")
                     applyShowcase(mode, loc)
                 }
+                ConfigReceiver.ACTION_SET_TRANSITION -> {
+                    val mode = intent?.getStringExtra(ConfigReceiver.KEY_TRANSITION)
+                        ?: intent?.getStringExtra("transition")
+                        ?: prefs.getString(ConfigReceiver.KEY_TRANSITION, ConfigReceiver.DEFAULT_TRANSITION)
+                    controller.updateTransitionMode(mode, triggerImmediate = true)
+                }
                 ConfigReceiver.ACTION_SET_PRESENCE -> {
                     val present = intent?.getBooleanExtra("present", true) ?: true
                     presenceDetector?.setPresenceState(present)
@@ -528,6 +534,7 @@ class SlideshowComposeActivity : ComponentActivity() {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(ConfigReceiver.ACTION_SET_SHOWCASE)
+            addAction(ConfigReceiver.ACTION_SET_TRANSITION)
             addAction(ConfigReceiver.ACTION_SET_PRESENCE)
             addAction(ConfigReceiver.ACTION_MEDIA_PLAY_PAUSE)
             addAction(ConfigReceiver.ACTION_MEDIA_NEXT)
@@ -807,9 +814,8 @@ class SlideshowComposeActivity : ComponentActivity() {
         // Clear any photo retained from a previous run so re-entering the frame
         // doesn't flash the old image before the first new frame loads.
         controller.blank()
-        // Re-apply the clock position/size (picks up a Settings "reset" done while away).
-        controller.applyClockTransform()
-        controller.applyClockOnlyTransform()
+        // Reload all settings (transition mode, interval, clock transforms, etc.)
+        controller.reloadSettings()
         preloadHomeAssistant()
         val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
 
