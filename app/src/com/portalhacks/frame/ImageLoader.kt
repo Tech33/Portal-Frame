@@ -19,6 +19,7 @@ import java.math.BigInteger
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.Collections
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
@@ -62,6 +63,12 @@ class ImageLoader(context: Context) {
             override fun sizeOf(key: String, value: Bitmap): Int {
                 return value.byteCount / 1024
             }
+
+            override fun entryRemoved(evicted: Boolean, key: String, oldValue: Bitmap, newValue: Bitmap?) {
+                if (evicted && oldValue !== newValue) {
+                    releaseToPool(oldValue)
+                }
+            }
         }
         cacheDir = File(ctx.cacheDir, "photos_v2")
         cacheDir.mkdirs()
@@ -82,6 +89,7 @@ class ImageLoader(context: Context) {
 
     fun clearDiskAndMemoryCache() {
         mem.evictAll()
+        clearPool()
         ioPrefetch.execute {
             try {
                 cacheDir.listFiles()?.forEach { it.delete() }
@@ -91,6 +99,7 @@ class ImageLoader(context: Context) {
 
     /** Proactively sheds bitmap cache on system memory pressure to ensure 24/7 stability. */
     fun trimMemory(level: Int) {
+        clearPool()
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
             mem.evictAll()
         } else if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
@@ -236,8 +245,21 @@ class ImageLoader(context: Context) {
         BitmapFactory.decodeFile(path, o)
         o.inSampleSize = sampleSize(o.outWidth, o.outHeight, reqW, reqH)
         o.inPreferredConfig = Bitmap.Config.ARGB_8888
+        o.inMutable = true
+        val targetW = o.outWidth / o.inSampleSize
+        val targetH = o.outHeight / o.inSampleSize
+        val candidate = getReusableBitmap(targetW, targetH)
+        if (candidate != null) {
+            o.inBitmap = candidate
+        }
         o.inJustDecodeBounds = false
-        return BitmapFactory.decodeFile(path, o)
+        return try {
+            BitmapFactory.decodeFile(path, o)
+        } catch (_: IllegalArgumentException) {
+            o.inBitmap = null
+            releaseToPool(candidate)
+            BitmapFactory.decodeFile(path, o)
+        }
     }
 
     @Throws(Exception::class)
@@ -334,12 +356,13 @@ class ImageLoader(context: Context) {
             if (src == null || screenW <= 0 || screenH <= 0) {
                 return src
             }
-            val out = Bitmap.createBitmap(screenW, screenH, Bitmap.Config.ARGB_8888)
+            val out = getReusableBitmap(screenW, screenH) ?: Bitmap.createBitmap(screenW, screenH, Bitmap.Config.ARGB_8888)
+            out.eraseColor(Color.TRANSPARENT)
             val c = Canvas(out)
             val p = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
             drawComposed(c, p, src, 0, 0, screenW, screenH, zoomFill, blurRadius)
             if (src != out) {
-                src.recycle()
+                releaseToPool(src)
             }
             return out
         }
@@ -353,7 +376,8 @@ class ImageLoader(context: Context) {
         private fun composePair(
             a: Bitmap, b: Bitmap, screenW: Int, screenH: Int, stackVertical: Boolean
         ): Bitmap {
-            val out = Bitmap.createBitmap(screenW, screenH, Bitmap.Config.ARGB_8888)
+            val out = getReusableBitmap(screenW, screenH) ?: Bitmap.createBitmap(screenW, screenH, Bitmap.Config.ARGB_8888)
+            out.eraseColor(Color.TRANSPARENT)
             val c = Canvas(out)
             val p = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
             val seam = Paint()
@@ -371,8 +395,8 @@ class ImageLoader(context: Context) {
                 drawComposed(c, p, b, half + gap, 0, screenW - half - gap, screenH, true)
                 c.drawRect(half.toFloat(), 0f, (half + gap).toFloat(), screenH.toFloat(), seam)
             }
-            a.recycle()
-            b.recycle()
+            releaseToPool(a)
+            releaseToPool(b)
             return out
         }
 
@@ -509,51 +533,115 @@ class ImageLoader(context: Context) {
         }
 
         private fun boxH(`in`: IntArray, out: IntArray, w: Int, h: Int, r: Int) {
+            val radius = r.coerceAtLeast(1)
+            val div = radius * 2 + 1
             for (y in 0 until h) {
                 val row = y * w
+                val fv = `in`[row]
+
+                var aa = ((fv ushr 24) and 0xff) * (radius + 1)
+                var rr = ((fv shr 16) and 0xff) * (radius + 1)
+                var gg = ((fv shr 8) and 0xff) * (radius + 1)
+                var bb = (fv and 0xff) * (radius + 1)
+
+                for (i in 0 until radius) {
+                    val p = `in`[row + minOf(w - 1, i + 1)]
+                    aa += (p ushr 24) and 0xff
+                    rr += (p shr 16) and 0xff
+                    gg += (p shr 8) and 0xff
+                    bb += p and 0xff
+                }
+
                 for (x in 0 until w) {
-                    var aa = 0
-                    var rr = 0
-                    var gg = 0
-                    var bb = 0
-                    var cnt = 0
-                    val x0 = max(0, x - r)
-                    val x1 = min(w - 1, x + r)
-                    for (xx in x0..x1) {
-                        val c = `in`[row + xx]
-                        aa += (c ushr 24) and 0xff
-                        rr += (c shr 16) and 0xff
-                        gg += (c shr 8) and 0xff
-                        bb += c and 0xff
-                        cnt++
-                    }
-                    out[row + x] =
-                        ((aa / cnt) shl 24) or ((rr / cnt) shl 16) or ((gg / cnt) shl 8) or (bb / cnt)
+                    out[row + x] = ((aa / div) shl 24) or ((rr / div) shl 16) or ((gg / div) shl 8) or (bb / div)
+
+                    val p1 = `in`[row + minOf(w - 1, x + radius + 1)]
+                    val p2 = if (x - radius >= 0) `in`[row + x - radius] else fv
+
+                    aa += ((p1 ushr 24) and 0xff) - ((p2 ushr 24) and 0xff)
+                    rr += ((p1 shr 16) and 0xff) - ((p2 shr 16) and 0xff)
+                    gg += ((p1 shr 8) and 0xff) - ((p2 shr 8) and 0xff)
+                    bb += (p1 and 0xff) - (p2 and 0xff)
                 }
             }
         }
 
         private fun boxV(`in`: IntArray, out: IntArray, w: Int, h: Int, r: Int) {
+            val radius = r.coerceAtLeast(1)
+            val div = radius * 2 + 1
             for (x in 0 until w) {
-                for (y in 0 until h) {
-                    var aa = 0
-                    var rr = 0
-                    var gg = 0
-                    var bb = 0
-                    var cnt = 0
-                    val y0 = max(0, y - r)
-                    val y1 = min(h - 1, y + r)
-                    for (yy in y0..y1) {
-                        val c = `in`[yy * w + x]
-                        aa += (c ushr 24) and 0xff
-                        rr += (c shr 16) and 0xff
-                        gg += (c shr 8) and 0xff
-                        bb += c and 0xff
-                        cnt++
-                    }
-                    out[y * w + x] =
-                        ((aa / cnt) shl 24) or ((rr / cnt) shl 16) or ((gg / cnt) shl 8) or (bb / cnt)
+                val fv = `in`[x]
+
+                var aa = ((fv ushr 24) and 0xff) * (radius + 1)
+                var rr = ((fv shr 16) and 0xff) * (radius + 1)
+                var gg = ((fv shr 8) and 0xff) * (radius + 1)
+                var bb = (fv and 0xff) * (radius + 1)
+
+                for (i in 0 until radius) {
+                    val p = `in`[minOf(h - 1, i + 1) * w + x]
+                    aa += (p ushr 24) and 0xff
+                    rr += (p shr 16) and 0xff
+                    gg += (p shr 8) and 0xff
+                    bb += p and 0xff
                 }
+
+                for (y in 0 until h) {
+                    out[y * w + x] = ((aa / div) shl 24) or ((rr / div) shl 16) or ((gg / div) shl 8) or (bb / div)
+
+                    val p1 = `in`[minOf(h - 1, y + radius + 1) * w + x]
+                    val p2 = if (y - radius >= 0) `in`[(y - radius) * w + x] else fv
+
+                    aa += ((p1 ushr 24) and 0xff) - ((p2 ushr 24) and 0xff)
+                    rr += ((p1 shr 16) and 0xff) - ((p2 shr 16) and 0xff)
+                    gg += ((p1 shr 8) and 0xff) - ((p2 shr 8) and 0xff)
+                    bb += (p1 and 0xff) - (p2 and 0xff)
+                }
+            }
+        }
+
+        private const val MAX_POOL_SIZE = 3
+        private val bitmapPool = Collections.synchronizedList(ArrayList<Bitmap>())
+
+        fun getReusableBitmap(width: Int, height: Int): Bitmap? {
+            if (width <= 0 || height <= 0) return null
+            val reqBytes = width * height * 4
+            synchronized(bitmapPool) {
+                val it = bitmapPool.iterator()
+                while (it.hasNext()) {
+                    val b = it.next()
+                    if (!b.isRecycled && b.isMutable && b.allocationByteCount >= reqBytes) {
+                        it.remove()
+                        try {
+                            b.reconfigure(width, height, Bitmap.Config.ARGB_8888)
+                            return b
+                        } catch (_: Throwable) {
+                            b.recycle()
+                        }
+                    } else if (b.isRecycled) {
+                        it.remove()
+                    }
+                }
+            }
+            return null
+        }
+
+        fun releaseToPool(b: Bitmap?) {
+            if (b == null || b.isRecycled || !b.isMutable) return
+            synchronized(bitmapPool) {
+                if (bitmapPool.size < MAX_POOL_SIZE && !bitmapPool.contains(b)) {
+                    bitmapPool.add(b)
+                } else {
+                    b.recycle()
+                }
+            }
+        }
+
+        fun clearPool() {
+            synchronized(bitmapPool) {
+                bitmapPool.forEach {
+                    if (!it.isRecycled) it.recycle()
+                }
+                bitmapPool.clear()
             }
         }
 

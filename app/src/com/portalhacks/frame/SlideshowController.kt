@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.os.BatteryManager
 import android.graphics.Canvas
@@ -83,6 +84,8 @@ class SlideshowController(
     root: FrameLayout,
     private val loader: ImageLoader,
 ) {
+
+    private val prefs: SharedPreferences = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
 
     private val back: ImageView
     private val front: ImageView
@@ -175,17 +178,30 @@ class SlideshowController(
     }
 
     private fun updateMediaPaletteGlow(art: Bitmap?) {
-        val extracted = if (art != null) AmbientColor.extract(art) else null
-        val strokeColor = if (extracted != null) {
-            (extracted and 0x00FFFFFF) or 0x8C000000.toInt()
-        } else {
-            0x3DFFFFFF
+        if (art == null) {
+            if (::mediaPillRow.isInitialized) {
+                (mediaPillRow.background as? GradientDrawable)?.setStroke(
+                    Ui.dp(context, 1.4f),
+                    0x3DFFFFFF
+                )
+            }
+            return
         }
-        if (::mediaPillRow.isInitialized) {
-            (mediaPillRow.background as? GradientDrawable)?.setStroke(
-                Ui.dp(context, 1.4f),
-                strokeColor
-            )
+        loader.executor().execute {
+            val extracted = AmbientColor.extract(art)
+            val strokeColor = if (extracted != null) {
+                (extracted and 0x00FFFFFF) or 0x8C000000.toInt()
+            } else {
+                0x3DFFFFFF
+            }
+            handler.post {
+                if (::mediaPillRow.isInitialized) {
+                    (mediaPillRow.background as? GradientDrawable)?.setStroke(
+                        Ui.dp(context, 1.4f),
+                        strokeColor
+                    )
+                }
+            }
         }
     }
 
@@ -2777,6 +2793,7 @@ class SlideshowController(
                 
                 applyKenBurnsStart(front, null) // reset incoming view for reuse
                 front.colorFilter = null
+                front.setImageBitmap(null)
                 startKenBurnsOnBack(gen)
                 updateAmbient(bmp)
                 prefetchNext(nextStart(next, isPair))
@@ -3190,8 +3207,7 @@ class SlideshowController(
     }
 
     private fun getBatterySuffix(): String {
-        val showBattery = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-            .getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
+        val showBattery = prefs.getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
         if (!showBattery || batteryLevel < 0) return ""
         val icon = if (batteryIsCharging) "⚡" else "🔋"
         return "  ·  $batteryLevel% $icon"
@@ -3228,8 +3244,7 @@ class SlideshowController(
         clock.text = time
         trimLeftBearing(clock)
 
-        val showBattery = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-            .getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
+        val showBattery = prefs.getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
 
         val sb = SpannableStringBuilder()
         if (showBattery && batteryLevel >= 0) {
@@ -3283,8 +3298,7 @@ class SlideshowController(
     }
 
     private fun registerBatteryReceiver() {
-        val showBattery = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-            .getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
+        val showBattery = prefs.getBoolean(ConfigReceiver.KEY_BATTERY, ConfigReceiver.DEFAULT_BATTERY)
         if (showBattery && !batteryReceiverRegistered) {
             try {
                 val stickyIntent = context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
@@ -3306,7 +3320,6 @@ class SlideshowController(
     }
 
     private fun triggerHourlyChime(c: Calendar) {
-        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         val enabled = prefs.getBoolean(ConfigReceiver.KEY_CHIME, ConfigReceiver.DEFAULT_CHIME)
         if (!enabled) return
 

@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedInputStream
 import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -20,6 +21,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 import java.security.MessageDigest
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
 /**
@@ -41,6 +44,7 @@ class AlbumServer(
 ) {
 
     private var serverSocket: ServerSocket? = null
+    private var clientPool: ExecutorService? = null
     @Volatile
     private var isRunning = false
     private val cacheDir = File(context.cacheDir, "photos")
@@ -52,13 +56,16 @@ class AlbumServer(
     fun start() {
         if (isRunning) return
         isRunning = true
+        clientPool = Executors.newFixedThreadPool(4) { r ->
+            Thread(r, "AlbumClientWorker").apply { priority = Thread.NORM_PRIORITY }
+        }
         thread(name = "AlbumServerThread") {
             try {
                 serverSocket = ServerSocket(port)
                 Log.i(TAG, "Local AlbumServer listening on http://127.0.0.1:$port")
                 while (isRunning) {
                     val socket = serverSocket?.accept() ?: break
-                    thread(name = "AlbumClientWorker") {
+                    clientPool?.execute {
                         handleClient(socket)
                     }
                 }
@@ -74,8 +81,12 @@ class AlbumServer(
         isRunning = false
         try {
             serverSocket?.close()
-        } catch (ignored: Exception) {}
+        } catch (_: Exception) {}
         serverSocket = null
+        try {
+            clientPool?.shutdownNow()
+        } catch (_: Exception) {}
+        clientPool = null
         Log.i(TAG, "Local AlbumServer stopped")
     }
 
@@ -114,7 +125,7 @@ class AlbumServer(
 
     private fun handleClient(socket: Socket) {
         try {
-            val input = socket.getInputStream()
+            val input = BufferedInputStream(socket.getInputStream(), 8192)
             val line = readHttpLine(input) ?: return
 
             // Parse request line: e.g. "GET /slideshow HTTP/1.1"
@@ -2143,6 +2154,7 @@ class AlbumServer(
                 return existing
             }
             val server = AlbumServer(context.applicationContext, port)
+            AlbumCache.setContext(context.applicationContext)
             server.start()
             instance = server
             GeoLocator.resolveLocationAsync(context.applicationContext)

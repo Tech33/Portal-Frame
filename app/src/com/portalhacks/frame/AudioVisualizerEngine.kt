@@ -69,7 +69,7 @@ object AudioVisualizerEngine {
 
     fun removeListener(listener: Listener) {
         listeners.remove(listener)
-        if (listeners.isEmpty() && !isPlaying) {
+        if (listeners.isEmpty()) {
             stopEngine()
         }
     }
@@ -202,6 +202,14 @@ object AudioVisualizerEngine {
         val baseSpeed = 0.0018 + (titleHash % 10) * 0.00012 // slow, soothing ~3.2-3.8s wave period
 
         while (isEngineRunning.get()) {
+            if (listeners.isEmpty() || !isPlaying) {
+                try {
+                    Thread.sleep(250L)
+                } catch (_: InterruptedException) {
+                    break
+                }
+                continue
+            }
             val now = SystemClock.uptimeMillis()
             val timeSinceSystemFft = now - lastSystemFftMs
             val useHarmonicWave = (timeSinceSystemFft > 1200L) || currentSource.contains("Sonos", ignoreCase = true)

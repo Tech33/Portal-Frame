@@ -131,6 +131,7 @@ class SettingsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AlbumCache.setContext(this)
         setContent {
             val fontScaleState = rememberPrefFloat(ConfigReceiver.KEY_FONT_SCALE, ConfigReceiver.DEFAULT_FONT_SCALE)
             val currentDensity = LocalDensity.current
