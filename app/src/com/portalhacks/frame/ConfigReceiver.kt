@@ -130,6 +130,15 @@ class ConfigReceiver : BroadcastReceiver() {
                 ctx.sendBroadcast(Intent(ACTION_RELOAD_SETTINGS).setPackage(ctx.packageName))
             }
         }
+        if (intent.hasExtra(KEY_NOW_PLAYING_BLUR) || intent.hasExtra("now_playing_blur") || intent.hasExtra("blur")) {
+            val bl = intent.getIntExtra(KEY_NOW_PLAYING_BLUR, intent.getIntExtra("now_playing_blur", intent.getIntExtra("blur", -1)))
+            if (bl in 0..40) {
+                ed.putInt(KEY_NOW_PLAYING_BLUR, bl)
+                Log.i("PortalFrame", "now_playing_blur set to: $bl")
+                any = true
+                ctx.sendBroadcast(Intent(ACTION_RELOAD_SETTINGS).setPackage(ctx.packageName))
+            }
+        }
         if (any) {
             ed.apply()
         }

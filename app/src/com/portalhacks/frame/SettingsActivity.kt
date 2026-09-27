@@ -478,6 +478,7 @@ class SettingsActivity : ComponentActivity() {
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
+                softWrap = false,
                 overflow = TextOverflow.Ellipsis,
             )
 
@@ -523,6 +524,7 @@ class SettingsActivity : ComponentActivity() {
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
+                    softWrap = false,
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (!subtitle.isNullOrEmpty()) {
@@ -1502,26 +1504,43 @@ class SettingsActivity : ComponentActivity() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RowIcon(R.drawable.ic_ambient, Color(0xFF5856D6))
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.weight(1f).padding(end = 12.dp)) {
                             Text(
                                 "Chime sound",
                                 color = PortalColors.Text,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 1,
+                                softWrap = false,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            Spacer(Modifier.height(2.dp))
                             Text(
                                 "Classic Soothing Bell (880Hz)",
                                 color = PortalColors.TextMuted,
                                 fontSize = 13.sp,
                                 maxLines = 1,
+                                softWrap = false,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        Spacer(Modifier.width(8.dp))
-                        SecondaryBtn("▶️ Test Chime") {
-                            SlideshowController.synthesizeAndPlayChime()
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0x22007AFF))
+                                .border(1.dp, Color(0x44007AFF), RoundedCornerShape(10.dp))
+                                .clickable { SlideshowController.synthesizeAndPlayChime() }
+                                .padding(horizontal = 14.dp, vertical = 9.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "▶️ Test",
+                                color = PortalColors.Blue,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                     Divider()
@@ -1589,6 +1608,11 @@ class SettingsActivity : ComponentActivity() {
                     }
                     Divider()
                     OpacitySliderRow(
+                        iconRes = R.drawable.ic_ambient,
+                        iconBg = Color(0xFF007AFF),
+                    )
+                    Divider()
+                    BlurSliderRow(
                         iconRes = R.drawable.ic_ambient,
                         iconBg = Color(0xFF5856D6),
                     )
@@ -2699,6 +2723,7 @@ class SettingsActivity : ComponentActivity() {
                 Text(
                     title.uppercase(), color = PortalColors.TextMuted, fontSize = 12.sp,
                     fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp,
+                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -2961,7 +2986,14 @@ class SettingsActivity : ComponentActivity() {
         ) {
             RowIcon(iconRes, iconBg)
             Column(Modifier.weight(1f)) {
-                Text(label, color = PortalColors.Text, fontSize = 18.sp)
+                Text(
+                    text = label,
+                    color = PortalColors.Text,
+                    fontSize = 18.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
                 if (subtitle != null) {
                     Text(subtitle, color = PortalColors.Text.copy(alpha = 0.8f), fontSize = 14.sp)
                 }
@@ -3639,6 +3671,9 @@ class SettingsActivity : ComponentActivity() {
                     val finalVal = sliderVal.toInt().coerceIn(0, 40)
                     blurVal = finalVal
                     prefs.edit().putInt(ConfigReceiver.KEY_NOW_PLAYING_BLUR, finalVal).apply()
+                    sendBroadcast(Intent(ConfigReceiver.ACTION_RELOAD_SETTINGS).apply {
+                        setPackage(packageName)
+                    })
                     onChanged?.invoke()
                 },
                 colors = SliderDefaults.colors(
@@ -3789,6 +3824,7 @@ class SettingsActivity : ComponentActivity() {
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
+                    softWrap = false,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
@@ -3797,6 +3833,8 @@ class SettingsActivity : ComponentActivity() {
                     color = PortalColors.Blue,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
             Slider(

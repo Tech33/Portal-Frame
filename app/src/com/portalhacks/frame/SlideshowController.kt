@@ -1217,7 +1217,18 @@ class SlideshowController(
         mediaPillRow.elevation = Ui.dp(context, 16f).toFloat()
         val pillPadH = Ui.dp(context, 7f)
         val pillPadV = Ui.dp(context, 6f)
-        mediaPillRow.setPadding(pillPadH, pillPadV, Ui.dp(context, 8f), pillPadV)
+        val blur = prefs.getInt(
+            ConfigReceiver.KEY_NOW_PLAYING_BLUR,
+            ConfigReceiver.DEFAULT_NOW_PLAYING_BLUR
+        ).coerceIn(0, 40)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            if (blur > 0) {
+                mediaPillRow.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(blur.toFloat(), blur.toFloat(), android.graphics.Shader.TileMode.CLAMP))
+            } else {
+                mediaPillRow.setRenderEffect(null)
+            }
+        }
+
         mediaPillRow.visibility = View.VISIBLE
 
         nowPlayingCard.addView(mediaPillRow)
