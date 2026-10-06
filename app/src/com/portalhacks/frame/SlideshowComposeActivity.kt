@@ -19,6 +19,7 @@ import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.net.http.SslError
 import android.webkit.CookieManager
@@ -478,12 +479,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         slideshowContainer = container
         controller = SlideshowController(this, container, loader).apply {
             setOnDismiss {
-                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_HOME)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                startActivity(homeIntent)
-                finishAndRemoveTask()
+                exitToHome()
             }
             setOnSettings {
                 startActivity(Intent(this@SlideshowComposeActivity, SettingsActivity::class.java))
@@ -562,12 +558,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         // GestureDetector to dismiss/exit screensaver or open settings from the WebView flip clock
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_HOME)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                startActivity(homeIntent)
-                finishAndRemoveTask()
+                exitToHome()
                 return true
             }
 
@@ -881,36 +872,99 @@ class SlideshowComposeActivity : ComponentActivity() {
         controller.stop()
     }
 
+    private var isExiting = false
+
+    fun exitToHome() {
+        if (isExiting) return
+        isExiting = true
+
+        // 1. Instant zero-latency visual response
+        try {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window.decorView.visibility = View.INVISIBLE
+        } catch (_: Exception) {}
+
+        // 2. Release controller and cancel all timers/listeners
+        if (::controller.isInitialized) {
+            controller.release()
+        }
+        if (::loader.isInitialized) {
+            loader.clearMemory()
+        }
+        AlbumCache.clearMemCache()
+
+        SonosMonitor.stop()
+        presenceDetector?.stop()
+        presenceDetector = null
+        sensorManager.unregisterListener(lightListener)
+        try { unregisterReceiver(commandReceiver) } catch (_: Exception) {}
+        haIdleHandler.removeCallbacksAndMessages(null)
+        handler.removeCallbacksAndMessages(null)
+
+        // 3. Fast non-blocking WebView teardown (detach and destroy directly without loadUrl)
+        haWebView?.let { wv ->
+            (wv.parent as? ViewGroup)?.removeView(wv)
+            wv.stopLoading()
+            wv.destroy()
+        }
+        haWebView = null
+        flipWebView?.let { wv ->
+            (wv.parent as? ViewGroup)?.removeView(wv)
+            wv.stopLoading()
+            wv.destroy()
+        }
+        flipWebView = null
+
+        // 4. Instant task handoff to Portal Home
+        try {
+            moveTaskToBack(true)
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
+            }
+            startActivity(homeIntent)
+            finishAndRemoveTask()
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error transitioning home", e)
+            finish()
+        }
+
+        // 5. Asynchronously return memory to Portal OS
+        System.gc()
+        Runtime.getRuntime().runFinalization()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        exitToHome()
+    }
+
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        loader.trimMemory(level)
+        if (::loader.isInitialized) {
+            loader.trimMemory(level)
+        }
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            AlbumCache.clearMemCache()
+        }
+        System.gc()
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
-        loader.trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+        if (::loader.isInitialized) {
+            loader.clearMemory()
+        }
+        AlbumCache.clearMemCache()
+        System.gc()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        SonosMonitor.stop()
-        presenceDetector?.stop()
-        presenceDetector = null
-        try {
-            unregisterReceiver(commandReceiver)
-        } catch (_: Exception) {}
-        haIdleHandler.removeCallbacksAndMessages(null)
-        handler.removeCallbacksAndMessages(null)
-        sensorManager.unregisterListener(lightListener)
-        haWebView?.apply {
-            loadUrl("about:blank")
-            stopLoading()
-            destroy()
-        }
-        flipWebView?.apply {
-            loadUrl("about:blank")
-            stopLoading()
-            destroy()
+        if (!isExiting) {
+            exitToHome()
         }
     }
 
@@ -920,6 +974,12 @@ class SlideshowComposeActivity : ComponentActivity() {
         val useFlipForNight = prefs.getBoolean(ConfigReceiver.KEY_CLOCK_FLIP, ConfigReceiver.DEFAULT_CLOCK_FLIP)
 
         if (clockOnlyActive) {
+            // Proactively sweep 100% photo bitmap cache to drop RAM to <25MB during night/clock mode
+            if (::loader.isInitialized) {
+                loader.clearMemory()
+            }
+            AlbumCache.clearMemCache()
+            System.gc()
             if (useFlipForNight) {
                 // Show WebView Flip Clock (hide slideshow completely to prevent any photo bleed)
                 slideshowContainer?.visibility = View.GONE
@@ -971,6 +1031,16 @@ class SlideshowComposeActivity : ComponentActivity() {
 
     private val refreshTick = object : Runnable {
         override fun run() {
+            // 24/7 continuous operation memory watchdog: check heap headroom
+            val runtime = Runtime.getRuntime()
+            val usedMem = runtime.totalMemory() - runtime.freeMemory()
+            val maxMem = runtime.maxMemory()
+            if (maxMem > 0 && usedMem.toFloat() / maxMem.toFloat() > 0.65f) {
+                if (::loader.isInitialized) {
+                    loader.trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND)
+                }
+                System.gc()
+            }
             fetchAllAndApply(false)
             handler.postDelayed(this, REFRESH_INTERVAL_MS)
         }

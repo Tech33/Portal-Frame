@@ -232,6 +232,15 @@ class SlideshowController(
     private var lastShownId: String? = null
     private var shimmerHidden = false
 
+    // History-aware navigation stack for deterministic back/forward browsing
+    private val slideHistory = ArrayDeque<Int>(64)
+    private val forwardHistory = ArrayDeque<Int>(64)
+    private var isNavigatingHistory = false
+    private var transitionDirection = 0 // -1: prev, 1: next, 0: default
+    private var lastTapTime = 0L
+    private val DOUBLE_TAP_TIMEOUT_MS = 350L
+    private lateinit var photoInspectorPill: TextView
+
     // User-tunable settings (read from prefs in the constructor; dynamically reloaded).
     private var intervalMs: Long = ConfigReceiver.DEFAULT_DELAY_MS // time each slide is held
     private var transitionDurationMs: Long = ConfigReceiver.DEFAULT_FADE_MS // transition animation duration
@@ -1712,9 +1721,22 @@ class SlideshowController(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
             )
+            setBackgroundColor(0x60000000)
             visibility = View.GONE
-            setOnClickListener {
-                resumeSlideshow()
+            setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_UP) {
+                    val now = android.os.SystemClock.uptimeMillis()
+                    if (now - lastTapTime < DOUBLE_TAP_TIMEOUT_MS) {
+                        lastTapTime = 0L
+                        visibility = View.GONE
+                        onDismiss?.run()
+                        return@setOnTouchListener true
+                    }
+                    lastTapTime = now
+                    resumeSlideshow()
+                    return@setOnTouchListener true
+                }
+                true
             }
         }
 
@@ -1751,7 +1773,16 @@ class SlideshowController(
             isClickable = true
             isFocusable = true
             setOnClickListener {
+                isEnabled = false
+                playButtonOverlay.visibility = View.GONE
                 onDismiss?.run()
+            }
+            setOnTouchListener { v, ev ->
+                when (ev.action) {
+                    MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.94f).scaleY(0.94f).setDuration(80).start()
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
+                }
+                false
             }
         }
 
@@ -1774,6 +1805,13 @@ class SlideshowController(
             isFocusable = true
             setOnClickListener {
                 onSettings?.run()
+            }
+            setOnTouchListener { v, ev ->
+                when (ev.action) {
+                    MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.94f).scaleY(0.94f).setDuration(80).start()
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
+                }
+                false
             }
         }
 
@@ -1830,23 +1868,32 @@ class SlideshowController(
         val leftArrowBtn = TextView(context).apply {
             text = "‹"
             setTextColor(Color.WHITE)
-            textSize = 32f
+            textSize = 34f
+            typeface = Ui.bold(context)
             gravity = Gravity.CENTER
-            val size = Ui.dp(context, 56f)
+            val size = Ui.dp(context, 58f)
             layoutParams = FrameLayout.LayoutParams(size, size).apply {
                 gravity = Gravity.CENTER_VERTICAL or Gravity.START
                 leftMargin = Ui.dp(context, 32f)
             }
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0x55000000)
-                setStroke(Ui.dp(context, 1f), 0x80FFFFFF.toInt())
+                setColor(0xEE1A1D24.toInt())
+                setStroke(Ui.dp(context, 1.5f), 0xCCFFFFFF.toInt())
             }
+            elevation = Ui.dp(context, 8f).toFloat()
             isClickable = true
             isFocusable = true
             setOnClickListener {
                 resetAutoResumeTimer()
                 showPrevious()
+            }
+            setOnTouchListener { v, ev ->
+                when (ev.action) {
+                    MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).start()
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
+                }
+                false
             }
         }
 
@@ -1854,23 +1901,32 @@ class SlideshowController(
         val rightArrowBtn = TextView(context).apply {
             text = "›"
             setTextColor(Color.WHITE)
-            textSize = 32f
+            textSize = 34f
+            typeface = Ui.bold(context)
             gravity = Gravity.CENTER
-            val size = Ui.dp(context, 56f)
+            val size = Ui.dp(context, 58f)
             layoutParams = FrameLayout.LayoutParams(size, size).apply {
                 gravity = Gravity.CENTER_VERTICAL or Gravity.END
                 rightMargin = Ui.dp(context, 32f)
             }
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0x55000000)
-                setStroke(Ui.dp(context, 1f), 0x80FFFFFF.toInt())
+                setColor(0xEE1A1D24.toInt())
+                setStroke(Ui.dp(context, 1.5f), 0xCCFFFFFF.toInt())
             }
+            elevation = Ui.dp(context, 8f).toFloat()
             isClickable = true
             isFocusable = true
             setOnClickListener {
                 resetAutoResumeTimer()
                 showNext()
+            }
+            setOnTouchListener { v, ev ->
+                when (ev.action) {
+                    MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).start()
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
+                }
+                false
             }
         }
 
@@ -1889,6 +1945,32 @@ class SlideshowController(
             }
         }
 
+        // Photo metadata & deck counter pill ("📍 Paris · 2 years ago · Photo 14 of 120")
+        photoInspectorPill = TextView(context).apply {
+            setTextColor(0xE6FFFFFF.toInt())
+            textSize = 15f
+            typeface = Ui.medium(context)
+            gravity = Gravity.CENTER
+            val padH = Ui.dp(context, 20f)
+            val padV = Ui.dp(context, 9f)
+            setPadding(padH, padV, padH, padV)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xCC181A20.toInt())
+                cornerRadius = Ui.dp(context, 16f).toFloat()
+                setStroke(Ui.dp(context, 1.2f), 0x66FFFFFF)
+            }
+            elevation = Ui.dp(context, 8f).toFloat()
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                bottomMargin = Ui.dp(context, 20f)
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+            layoutParams = lp
+            visibility = View.GONE
+        }
+
         // Circular background wrapper for resume / play symbol
         val playCircle = FrameLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -1900,14 +1982,21 @@ class SlideshowController(
             }
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0xCC1A1D24.toInt())
-                setStroke(Ui.dp(context, 2.5f), 0x80FFFFFF.toInt())
+                setColor(0xFF181A20.toInt())
+                setStroke(Ui.dp(context, 2.5f), 0xE6FFFFFF.toInt())
             }
-            elevation = Ui.dp(context, 12f).toFloat()
+            elevation = Ui.dp(context, 16f).toFloat()
             isClickable = true
             isFocusable = true
             setOnClickListener {
                 resumeSlideshow()
+            }
+            setOnTouchListener { v, ev ->
+                when (ev.action) {
+                    MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.94f).scaleY(0.94f).setDuration(80).start()
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
+                }
+                false
             }
         }
 
@@ -1918,6 +2007,7 @@ class SlideshowController(
             typeface = Ui.bold(context)
             gravity = Gravity.CENTER
             setPadding(Ui.dp(context, 4f), 0, 0, 0)
+            setShadowLayer(8f, 0f, 2f, 0x88000000.toInt())
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -1950,10 +2040,77 @@ class SlideshowController(
             }
         }
 
+        centerContainer.addView(photoInspectorPill)
         centerContainer.addView(playCircle)
         centerContainer.addView(pauseText)
         centerContainer.addView(resumeSubtext)
         playButtonOverlay.addView(centerContainer)
+
+        // Accessible Bottom Home Dock (safe clearance from Portal OS system bottom bar)
+        val bottomHomeDock = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                bottomMargin = Ui.dp(context, 48f)
+            }
+            clipChildren = false
+            clipToPadding = false
+        }
+
+        val bottomHomeBtn = TextView(context).apply {
+            text = "🏠  Exit to Home"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 20f
+            typeface = Ui.bold(context)
+            gravity = Gravity.CENTER
+            val padH = Ui.dp(context, 42f)
+            val padV = Ui.dp(context, 16f)
+            setPadding(padH, padV, padH, padV)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xCCFF3B30.toInt())
+                cornerRadius = Ui.dp(context, 28f).toFloat()
+                setStroke(Ui.dp(context, 2f), 0xEEFFFFFF.toInt())
+            }
+            elevation = Ui.dp(context, 10f).toFloat()
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                isEnabled = false
+                playButtonOverlay.visibility = View.GONE
+                onDismiss?.run()
+            }
+            setOnTouchListener { v, ev ->
+                when (ev.action) {
+                    MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.94f).scaleY(0.94f).setDuration(80).start()
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
+                }
+                false
+            }
+        }
+
+        val bottomHomeHint = TextView(context).apply {
+            text = "Double-tap screen or tap button to exit"
+            setTextColor(0xAAFFFFFF.toInt())
+            textSize = 13f
+            typeface = Ui.regular(context)
+            gravity = Gravity.CENTER
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = Ui.dp(context, 8f)
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+            layoutParams = lp
+        }
+
+        bottomHomeDock.addView(bottomHomeBtn)
+        bottomHomeDock.addView(bottomHomeHint)
+        playButtonOverlay.addView(bottomHomeDock)
     }
 
     private fun showPlayButtonOverlay() {
@@ -1964,12 +2121,27 @@ class SlideshowController(
         if (::pauseHaIconBtn.isInitialized) {
             pauseHaIconBtn.visibility = if (haEnabled && showBtn && haUrl.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
         }
+        if (::photoInspectorPill.isInitialized) {
+            val meta = captionOf(index)
+            val countStr = if (items.isNotEmpty()) "Photo ${index + 1} of ${items.size}" else ""
+            val fullInspector = if (meta.isNotEmpty() && countStr.isNotEmpty()) {
+                "$meta  ·  $countStr"
+            } else {
+                meta.ifEmpty { countStr }
+            }
+            if (fullInspector.isNotEmpty() && !clockOnly) {
+                photoInspectorPill.text = fullInspector
+                photoInspectorPill.visibility = View.VISIBLE
+            } else {
+                photoInspectorPill.visibility = View.GONE
+            }
+        }
         playButtonOverlay.animate().cancel()
         playButtonOverlay.alpha = 0f
         playButtonOverlay.visibility = View.VISIBLE
         playButtonOverlay.elevation = Ui.dp(context, 50f).toFloat()
         playButtonOverlay.bringToFront()
-        playButtonOverlay.animate().alpha(1f).setDuration(300).start()
+        playButtonOverlay.animate().alpha(1f).setDuration(250).start()
     }
 
     private fun hidePlayButtonOverlay() {
@@ -2185,7 +2357,7 @@ class SlideshowController(
                             }
                             if (abs(dx) > SWIPE_MIN_DISTANCE && abs(dx) > abs(dy)) {
                                 handled = true
-                                if (dx < 0) showNext() else showPrevious()
+                                if (dx < 0) showPrevious() else showNext()
                             }
                         }
                         return true
@@ -2234,24 +2406,31 @@ class SlideshowController(
                             val dy = e.y - downY
                             val dt = e.eventTime - downTime
                             if (abs(dx) > SWIPE_MIN_DISTANCE && abs(dx) > abs(dy)) {
-                                if (dx < 0) showNext() else showPrevious()
+                                if (dx < 0) showPrevious() else showNext()
                             } else if (abs(dx) < TAP_SLOP && abs(dy) < TAP_SLOP &&
                                 dt < TAP_TIMEOUT_MS
                             ) {
-                                if (clockOnly) {
-                                    // In low-light clock mode, center tap does nothing
+                                val now = android.os.SystemClock.uptimeMillis()
+                                if (now - lastTapTime < DOUBLE_TAP_TIMEOUT_MS) {
+                                    lastTapTime = 0L
+                                    onDismiss?.run()
                                 } else {
-                                    val width = v.width
-                                    val tapX = e.x
-                                    if (tapX < width * 0.25f) {
-                                        showPrevious()
-                                    } else if (tapX > width * 0.75f) {
-                                        showNext()
+                                    lastTapTime = now
+                                    if (clockOnly) {
+                                        // In low-light clock mode, center tap does nothing
                                     } else {
-                                        if (slideshowPaused) {
-                                            resumeSlideshow()
+                                        val width = v.width
+                                        val tapX = e.x
+                                        if (tapX < width * 0.25f) {
+                                            showPrevious()
+                                        } else if (tapX > width * 0.75f) {
+                                            showNext()
                                         } else {
-                                            pauseSlideshow()
+                                            if (slideshowPaused) {
+                                                resumeSlideshow()
+                                            } else {
+                                                pauseSlideshow()
+                                            }
                                         }
                                     }
                                 }
@@ -2344,6 +2523,32 @@ class SlideshowController(
             batteryReceiverRegistered = false
         }
         hidePlayButtonOverlay()
+    }
+
+    /**
+     * Completely releases all resources, views, callbacks, and singleton listeners
+     * to eliminate memory leaks and instantly return all memory to Portal OS.
+     */
+    fun release() {
+        stop()
+        handler.removeCallbacksAndMessages(null)
+        MediaMonitor.removeListener(mediaListener)
+        if (::pillVisualizer.isInitialized) {
+            AudioVisualizerEngine.removeListener(pillVisualizer)
+        }
+        front.animate().cancel()
+        back.animate().cancel()
+        front.setImageBitmap(null)
+        back.setImageBitmap(null)
+        if (::pillArtImageView.isInitialized) {
+            pillArtImageView.setImageBitmap(null)
+        }
+        items.clear()
+        recentIds.clear()
+        slideHistory.clear()
+        forwardHistory.clear()
+        kbAnim = null
+        kbPath = null
     }
 
     /**
@@ -2605,6 +2810,10 @@ class SlideshowController(
             return
         }
         items = ArrayList(newItems)
+        slideHistory.clear()
+        forwardHistory.clear()
+        isNavigatingHistory = false
+        transitionDirection = 0
         if (recentFirst && !shuffle) {
             items.sortByDescending { it.timeMs }
         } else if (shuffle) {
@@ -2635,17 +2844,40 @@ class SlideshowController(
     }
 
     fun showNext() {
-        if (items.isNotEmpty()) {
-            resetAutoResumeTimer()
-            transitionTo(nextStart(index, curIsPair), transitionDurationMs)
+        if (items.isEmpty()) return
+        resetAutoResumeTimer()
+        scheduleAuto()
+        transitionDirection = 1
+        val targetIndex: Int
+        if (forwardHistory.isNotEmpty()) {
+            val nextFromForward = forwardHistory.removeLast()
+            slideHistory.addLast(nextFromForward)
+            targetIndex = nextFromForward
+            isNavigatingHistory = true
+        } else {
+            isNavigatingHistory = false
+            targetIndex = nextStart(index, curIsPair)
         }
+        transitionTo(targetIndex, transitionDurationMs)
     }
 
     fun showPrevious() {
-        if (items.isNotEmpty()) {
-            resetAutoResumeTimer()
-            transitionTo((index - 1 + items.size) % items.size, transitionDurationMs)
+        if (items.isEmpty()) return
+        resetAutoResumeTimer()
+        scheduleAuto()
+        transitionDirection = -1
+        val targetIndex: Int
+        if (slideHistory.size > 1) {
+            val current = slideHistory.removeLast()
+            forwardHistory.addLast(current)
+            targetIndex = slideHistory.last()
+            isNavigatingHistory = true
+        } else {
+            val step = if (curIsPair) 2 else 1
+            targetIndex = (index - step + items.size) % items.size
+            isNavigatingHistory = false
         }
+        transitionTo(targetIndex, transitionDurationMs)
     }
 
     private fun scheduleAuto() {
@@ -2657,25 +2889,12 @@ class SlideshowController(
 
     fun next() {
         if (clockOnly || !running || items.isEmpty()) return
-        val step = if (curIsPair) 2 else 1
-        val next = if (index + step >= items.size) {
-            if (shuffle && items.size > 2) smartShuffle(items)
-            0
-        } else {
-            index + step
-        }
-        transitionTo(next, transitionDurationMs)
+        showNext()
     }
 
     fun prev() {
         if (clockOnly || !running || items.isEmpty()) return
-        val step = if (curIsPair) 2 else 1
-        val prev = if (index - step < 0) {
-            (items.size - step).coerceAtLeast(0)
-        } else {
-            index - step
-        }
-        transitionTo(prev, transitionDurationMs)
+        showPrevious()
     }
 
     private val autoTick = Runnable {
@@ -2809,6 +3028,8 @@ class SlideshowController(
                 updateAmbient(bmp)
                 prefetchNext(nextStart(next, isPair))
                 scheduleAuto()
+                isNavigatingHistory = false
+                transitionDirection = 0
             }
         }
         if (isPair) {
@@ -2829,7 +3050,14 @@ class SlideshowController(
         back.translationY = 0f
 
         when (transitionMode) {
-            TRANSITION_SLIDE, TRANSITION_PUSH -> front.translationX = reqW.toFloat()
+            TRANSITION_SLIDE, TRANSITION_PUSH -> {
+                front.translationX = if (transitionDirection < 0) -reqW.toFloat() else reqW.toFloat()
+            }
+            TRANSITION_CROSSFADE -> {
+                if (transitionDirection != 0) {
+                    front.translationX = if (transitionDirection < 0) -Ui.dp(context, 40f).toFloat() else Ui.dp(context, 40f).toFloat()
+                }
+            }
         }
         if (durationMs <= 0L) {
             front.alpha = 1f
@@ -2857,10 +3085,17 @@ class SlideshowController(
         when (transitionMode) {
             TRANSITION_SLIDE -> anim.alpha(1f).translationX(0f)
             TRANSITION_PUSH -> {
-                back.animate().translationX(-reqW.toFloat()).setDuration(durationMs).withLayer()
+                val backTargetX = if (transitionDirection < 0) reqW.toFloat() else -reqW.toFloat()
+                back.animate().translationX(backTargetX).setDuration(durationMs).withLayer()
                 anim.alpha(1f).translationX(0f)
             }
-            else -> anim.alpha(1f)
+            else -> {
+                if (transitionDirection != 0) {
+                    anim.translationX(0f).alpha(1f)
+                } else {
+                    anim.alpha(1f)
+                }
+            }
         }
         anim.withEndAction(wrappedOnEnd)
     }
@@ -3114,6 +3349,14 @@ class SlideshowController(
         val cap = max(1, items.size / 3)
         while (recentIds.size > cap) {
             recentIds.removeLast()
+        }
+        if (!isNavigatingHistory) {
+            if (slideHistory.isEmpty() || slideHistory.last() != i) {
+                slideHistory.addLast(i)
+                if (slideHistory.size > 50) {
+                    slideHistory.removeFirst()
+                }
+            }
         }
     }
 

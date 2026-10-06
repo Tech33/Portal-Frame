@@ -40,6 +40,11 @@ internal object AlbumCache {
         }
     })
 
+    @JvmStatic
+    fun clearMemCache() {
+        memCache.clear()
+    }
+
     fun setContext(context: Context) {
         if (baseDir == null) {
             baseDir = File(context.applicationContext.cacheDir, "albums").apply { mkdirs() }

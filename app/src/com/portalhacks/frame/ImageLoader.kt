@@ -87,6 +87,11 @@ class ImageLoader(context: Context) {
         return ioPrefetch
     }
 
+    fun clearMemory() {
+        mem.evictAll()
+        clearPool()
+    }
+
     fun clearDiskAndMemoryCache() {
         mem.evictAll()
         clearPool()
