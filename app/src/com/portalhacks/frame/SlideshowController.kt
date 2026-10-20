@@ -237,7 +237,7 @@ class SlideshowController(
     private val forwardHistory = ArrayDeque<Int>(64)
     private var isNavigatingHistory = false
     private var transitionDirection = 0 // -1: prev, 1: next, 0: default
-    private lateinit var photoInspectorPill: TextView
+    private lateinit var bottomControlDock: LinearLayout
 
     // User-tunable settings (read from prefs in the constructor; dynamically reloaded).
     private var intervalMs: Long = ConfigReceiver.DEFAULT_DELAY_MS // time each slide is held
@@ -1723,23 +1723,6 @@ class SlideshowController(
         }
     }
 
-    private fun updatePhotoInspector() {
-        if (!::photoInspectorPill.isInitialized) return
-        val meta = captionOf(index)
-        val countStr = if (items.isNotEmpty()) "Photo ${index + 1} of ${items.size}" else ""
-        val fullInspector = if (meta.isNotEmpty() && countStr.isNotEmpty()) {
-            "$meta  ·  $countStr"
-        } else {
-            meta.ifEmpty { countStr }
-        }
-        if (fullInspector.isNotEmpty() && !clockOnly) {
-            photoInspectorPill.text = fullInspector
-            photoInspectorPill.visibility = View.VISIBLE
-        } else {
-            photoInspectorPill.visibility = View.GONE
-        }
-    }
-
     private fun initPlayButton() {
         playButtonOverlay = FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -1827,32 +1810,6 @@ class SlideshowController(
             })
         }
 
-        // Top Photo Inspector Pill (📍 Location · Date · Photo X of Y)
-        photoInspectorPill = TextView(context).apply {
-            setTextColor(0xE6FFFFFF.toInt())
-            textSize = 14f
-            typeface = Ui.medium(context)
-            gravity = Gravity.CENTER
-            val padH = Ui.dp(context, 20f)
-            val padV = Ui.dp(context, 8f)
-            setPadding(padH, padV, padH, padV)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xCC181A20.toInt())
-                cornerRadius = Ui.dp(context, 18f).toFloat()
-                setStroke(Ui.dp(context, 1f), 0x4DFFFFFF)
-            }
-            elevation = Ui.dp(context, 8f).toFloat()
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                topMargin = Ui.dp(context, 24f)
-            }
-            visibility = View.GONE
-        }
-        playButtonOverlay.addView(photoInspectorPill)
-
         // Top-Right Home Assistant Icon Button (only if configured)
         pauseHaIconBtn = ImageView(context).apply {
             setImageResource(R.drawable.ic_home_assistant)
@@ -1882,16 +1839,24 @@ class SlideshowController(
         applySpringTouch(pauseHaIconBtn)
         playButtonOverlay.addView(pauseHaIconBtn)
 
+        val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+        val opacity = prefs.getInt(
+            ConfigReceiver.KEY_NOW_PLAYING_OPACITY,
+            ConfigReceiver.DEFAULT_NOW_PLAYING_OPACITY
+        ).coerceIn(2, 100)
+        val alphaInt = ((opacity * 255 / 100) * 0.70f).toInt().coerceIn(0x28, 0x88)
+        val dockColor = (alphaInt shl 24) or 0x181A20
+
         // Unified Bottom Control Dock: [✕ Exit] | [‹] [▶] [›] | [⚙ Settings]
-        val bottomControlDock = LinearLayout(context).apply {
+        bottomControlDock = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val padH = Ui.dp(context, 16f)
-            val padV = Ui.dp(context, 8f)
+            val padH = Ui.dp(context, 24f)
+            val padV = Ui.dp(context, 12f)
             setPadding(padH, padV, padH, padV)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xEE181A20.toInt())
-                cornerRadius = Ui.dp(context, 34f).toFloat()
+                setColor(dockColor)
+                cornerRadius = Ui.dp(context, 44f).toFloat()
                 setStroke(Ui.dp(context, 1.2f), 0x4DFFFFFF)
             }
             elevation = Ui.dp(context, 16f).toFloat()
@@ -1900,7 +1865,7 @@ class SlideshowController(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
             ).apply {
                 gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                bottomMargin = Ui.dp(context, 44f) // Safe clearance above Portal OS bottom bar
+                bottomMargin = Ui.dp(context, 48f) // Safe clearance above Portal OS bottom bar
             }
         }
 
@@ -1908,15 +1873,15 @@ class SlideshowController(
         val exitBtn = TextView(context).apply {
             text = "✕ Exit"
             setTextColor(Color.WHITE)
-            textSize = 16f
+            textSize = 18f
             typeface = Ui.bold(context)
             gravity = Gravity.CENTER
-            val paddingH = Ui.dp(context, 20f)
-            val paddingV = Ui.dp(context, 10f)
+            val paddingH = Ui.dp(context, 26f)
+            val paddingV = Ui.dp(context, 14f)
             setPadding(paddingH, paddingV, paddingH, paddingV)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0xCCFF3B30.toInt())
-                cornerRadius = Ui.dp(context, 22f).toFloat()
+                cornerRadius = Ui.dp(context, 28f).toFloat()
             }
             isClickable = true
             isFocusable = true
@@ -1931,11 +1896,11 @@ class SlideshowController(
         // Divider 1
         val div1 = View(context).apply {
             layoutParams = LinearLayout.LayoutParams(
-                Ui.dp(context, 1f),
-                Ui.dp(context, 24f),
+                Ui.dp(context, 1.5f),
+                Ui.dp(context, 32f),
             ).apply {
-                leftMargin = Ui.dp(context, 14f)
-                rightMargin = Ui.dp(context, 14f)
+                leftMargin = Ui.dp(context, 18f)
+                rightMargin = Ui.dp(context, 18f)
             }
             setBackgroundColor(0x33FFFFFF)
         }
@@ -1944,10 +1909,10 @@ class SlideshowController(
         val prevBtn = TextView(context).apply {
             text = "‹"
             setTextColor(Color.WHITE)
-            textSize = 30f
+            textSize = 36f
             typeface = Ui.bold(context)
             gravity = Gravity.CENTER
-            val size = Ui.dp(context, 48f)
+            val size = Ui.dp(context, 60f)
             layoutParams = LinearLayout.LayoutParams(size, size)
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
@@ -1958,7 +1923,6 @@ class SlideshowController(
             setOnClickListener {
                 resetAutoResumeTimer()
                 showPrevious()
-                updatePhotoInspector()
             }
         }
         applySpringTouch(prevBtn)
@@ -1967,14 +1931,14 @@ class SlideshowController(
         val resumeBtn = TextView(context).apply {
             text = "▶"
             setTextColor(0xFF181A20.toInt())
-            textSize = 24f
+            textSize = 30f
             typeface = Ui.bold(context)
             gravity = Gravity.CENTER
-            setPadding(Ui.dp(context, 3f), 0, 0, 0)
-            val size = Ui.dp(context, 56f)
+            setPadding(Ui.dp(context, 4f), 0, 0, 0)
+            val size = Ui.dp(context, 68f)
             layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                leftMargin = Ui.dp(context, 8f)
-                rightMargin = Ui.dp(context, 8f)
+                leftMargin = Ui.dp(context, 12f)
+                rightMargin = Ui.dp(context, 12f)
             }
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
@@ -1993,10 +1957,10 @@ class SlideshowController(
         val nextBtn = TextView(context).apply {
             text = "›"
             setTextColor(Color.WHITE)
-            textSize = 30f
+            textSize = 36f
             typeface = Ui.bold(context)
             gravity = Gravity.CENTER
-            val size = Ui.dp(context, 48f)
+            val size = Ui.dp(context, 60f)
             layoutParams = LinearLayout.LayoutParams(size, size)
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
@@ -2007,7 +1971,6 @@ class SlideshowController(
             setOnClickListener {
                 resetAutoResumeTimer()
                 showNext()
-                updatePhotoInspector()
             }
         }
         applySpringTouch(nextBtn)
@@ -2015,11 +1978,11 @@ class SlideshowController(
         // Divider 2
         val div2 = View(context).apply {
             layoutParams = LinearLayout.LayoutParams(
-                Ui.dp(context, 1f),
-                Ui.dp(context, 24f),
+                Ui.dp(context, 1.5f),
+                Ui.dp(context, 32f),
             ).apply {
-                leftMargin = Ui.dp(context, 14f)
-                rightMargin = Ui.dp(context, 14f)
+                leftMargin = Ui.dp(context, 18f)
+                rightMargin = Ui.dp(context, 18f)
             }
             setBackgroundColor(0x33FFFFFF)
         }
@@ -2028,15 +1991,15 @@ class SlideshowController(
         val settingsBtn = TextView(context).apply {
             text = "⚙ Settings"
             setTextColor(Color.WHITE)
-            textSize = 16f
+            textSize = 18f
             typeface = Ui.medium(context)
             gravity = Gravity.CENTER
-            val paddingH = Ui.dp(context, 18f)
-            val paddingV = Ui.dp(context, 10f)
+            val paddingH = Ui.dp(context, 24f)
+            val paddingV = Ui.dp(context, 14f)
             setPadding(paddingH, paddingV, paddingH, paddingV)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0x33FFFFFF)
-                cornerRadius = Ui.dp(context, 22f).toFloat()
+                cornerRadius = Ui.dp(context, 28f).toFloat()
             }
             isClickable = true
             isFocusable = true
@@ -2065,7 +2028,15 @@ class SlideshowController(
         if (::pauseHaIconBtn.isInitialized) {
             pauseHaIconBtn.visibility = if (haEnabled && showBtn && haUrl.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
         }
-        updatePhotoInspector()
+        val opacity = prefs.getInt(
+            ConfigReceiver.KEY_NOW_PLAYING_OPACITY,
+            ConfigReceiver.DEFAULT_NOW_PLAYING_OPACITY
+        ).coerceIn(2, 100)
+        val alphaInt = ((opacity * 255 / 100) * 0.70f).toInt().coerceIn(0x28, 0x88)
+        val dockColor = (alphaInt shl 24) or 0x181A20
+        if (::bottomControlDock.isInitialized) {
+            (bottomControlDock.background as? android.graphics.drawable.GradientDrawable)?.setColor(dockColor)
+        }
         playButtonOverlay.animate().cancel()
         playButtonOverlay.alpha = 0f
         playButtonOverlay.visibility = View.VISIBLE
@@ -2951,9 +2922,6 @@ class SlideshowController(
             val captionText = if (isPair) captionForPair(next, j) else captionOf(next)
             info.text = captionText
             info.visibility = if (captions && captionText.isNotEmpty() && !clockOnly) View.VISIBLE else View.GONE
-            if (slideshowPaused) {
-                updatePhotoInspector()
-            }
             noteShown(next)
             if (isPair) {
                 noteShown(j)
