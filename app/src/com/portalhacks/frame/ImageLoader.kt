@@ -79,6 +79,7 @@ class ImageLoader(context: Context) {
                     old.deleteRecursively()
                 }
             } catch (_: Exception) {}
+            pruneDiskCacheIfNeeded()
         }
     }
 
@@ -109,6 +110,40 @@ class ImageLoader(context: Context) {
             mem.evictAll()
         } else if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
             mem.trimToSize(mem.size() / 2)
+        }
+        pruneDiskCacheIfNeeded()
+    }
+
+    /**
+     * Automatic LRU disk cache pruning: prevents storage exhaustion over hundreds of days
+     * of continuous runtime with shared albums. Enforces a 1GB ceiling and leaves at least
+     * 400MB of free flash space on the Meta Portal.
+     */
+    fun pruneDiskCacheIfNeeded() {
+        ioPrefetch.execute {
+            try {
+                val files = cacheDir.listFiles { _, name -> name.endsWith(".img") } ?: return@execute
+                val totalBytes = files.sumOf { it.length() }
+                val usableSpace = cacheDir.usableSpace
+
+                if (totalBytes > MAX_DISK_CACHE_BYTES || usableSpace < MIN_FREE_DISK_BYTES) {
+                    Log.i(TAG, "Disk cache pruning started (cached=${totalBytes / 1024 / 1024}MB, usable=${usableSpace / 1024 / 1024}MB)")
+                    val sorted = files.sortedBy { it.lastModified() }
+                    var currentTotal = totalBytes
+                    for (file in sorted) {
+                        if (currentTotal <= TARGET_DISK_CACHE_BYTES && cacheDir.usableSpace >= MIN_FREE_DISK_BYTES) {
+                            break
+                        }
+                        val len = file.length()
+                        if (file.delete()) {
+                            currentTotal -= len
+                        }
+                    }
+                    Log.i(TAG, "Disk cache pruned successfully to ${currentTotal / 1024 / 1024}MB")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed pruning disk cache", e)
+            }
         }
     }
 
@@ -185,6 +220,8 @@ class ImageLoader(context: Context) {
                 if (!download(id, f)) {
                     return null
                 }
+            } else {
+                try { f.setLastModified(System.currentTimeMillis()) } catch (_: Exception) {}
             }
             return decodeFile(f.absolutePath, reqW, reqH)
         }
@@ -334,7 +371,11 @@ class ImageLoader(context: Context) {
             out.flush()
             out.close()
             `in`.close()
-            return tmp.renameTo(dest)
+            val ok = tmp.renameTo(dest)
+            if (ok) {
+                pruneDiskCacheIfNeeded()
+            }
+            return ok
         } catch (e: Exception) {
             Log.e(TAG, "download failed $urlStr", e)
             return false
@@ -345,6 +386,10 @@ class ImageLoader(context: Context) {
 
     companion object {
         private const val TAG = "PortalFrame"
+
+        private const val MAX_DISK_CACHE_BYTES = 1024L * 1024L * 1024L // 1 GB disk cache limit
+        private const val TARGET_DISK_CACHE_BYTES = 750L * 1024L * 1024L // 750 MB target after pruning
+        private const val MIN_FREE_DISK_BYTES = 400L * 1024L * 1024L // Keep >= 400 MB free on internal flash
 
         const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

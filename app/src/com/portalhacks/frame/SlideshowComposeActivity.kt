@@ -1061,13 +1061,28 @@ class SlideshowComposeActivity : ComponentActivity() {
         scheduledClockOnly = isMinuteInRange(minute, start, end)
     }
 
+    private var lastMaintenanceMs = 0L
+
     private val refreshTick = object : Runnable {
         override fun run() {
             // 24/7 continuous operation memory watchdog: check heap headroom
             val runtime = Runtime.getRuntime()
             val usedMem = runtime.totalMemory() - runtime.freeMemory()
             val maxMem = runtime.maxMemory()
-            if (maxMem > 0 && usedMem.toFloat() / maxMem.toFloat() > 0.65f) {
+            val nowMs = android.os.SystemClock.elapsedRealtime()
+
+            // Routine 12-hour memory defragmentation & disk cache maintenance
+            if (nowMs - lastMaintenanceMs > 12 * 3600 * 1000L) {
+                lastMaintenanceMs = nowMs
+                Log.i(TAG, "Executing scheduled 24/7 memory hygiene & cache compaction")
+                if (::loader.isInitialized) {
+                    loader.trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND)
+                    loader.pruneDiskCacheIfNeeded()
+                }
+                ImageLoader.clearPool()
+                AlbumCache.clearMemCache()
+                System.gc()
+            } else if (maxMem > 0 && usedMem.toFloat() / maxMem.toFloat() > 0.65f) {
                 if (::loader.isInitialized) {
                     loader.trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND)
                 }

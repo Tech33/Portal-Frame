@@ -125,6 +125,7 @@ class AlbumServer(
 
     private fun handleClient(socket: Socket) {
         try {
+            socket.soTimeout = 10_000 // 10-second read timeout prevents hanging worker threads in 24/7 uptime
             val input = BufferedInputStream(socket.getInputStream(), 8192)
             val line = readHttpLine(input) ?: return
 

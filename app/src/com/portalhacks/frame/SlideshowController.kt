@@ -147,11 +147,24 @@ class SlideshowController(
     )
     private val pixelShiftRunnable = object : Runnable {
         override fun run() {
+            pixelShiftIndex = (pixelShiftIndex + 1) % pixelShiftOffsets.size
+            val (dx, dy) = pixelShiftOffsets[pixelShiftIndex]
+            val shiftX = Ui.dp(context, dx.toFloat()).toFloat()
+            val shiftY = Ui.dp(context, dy.toFloat()).toFloat()
+
+            // Shift media widget if active
             if (::nowPlayingCard.isInitialized && nowPlayingCard.visibility == View.VISIBLE) {
-                pixelShiftIndex = (pixelShiftIndex + 1) % pixelShiftOffsets.size
-                val (dx, dy) = pixelShiftOffsets[pixelShiftIndex]
-                nowPlayingCard.translationX = Ui.dp(context, dx.toFloat()).toFloat()
-                nowPlayingCard.translationY = Ui.dp(context, dy.toFloat()).toFloat()
+                nowPlayingCard.translationX = shiftX
+                nowPlayingCard.translationY = shiftY
+            }
+            // Shift clock overlays to protect LCD panel from burn-in/ghosting during 200+ day continuous display
+            if (clockBox.visibility == View.VISIBLE) {
+                clockBox.translationX = clockDx * reqW + shiftX
+                clockBox.translationY = clockDy * reqH + shiftY
+            }
+            if (clockOnlyBox.visibility == View.VISIBLE) {
+                clockOnlyBox.translationX = clockOnlyDx * reqW + shiftX
+                clockOnlyBox.translationY = clockOnlyDy * reqH + shiftY
             }
             handler.postDelayed(this, 900_000L) // every 15 minutes
         }
@@ -3511,14 +3524,16 @@ class SlideshowController(
             if (wasAnimating) {
                 kbAnim?.resume()
             }
-            handler.postDelayed(this, 60000 - System.currentTimeMillis() % 60000)
+            val nextDelay = (60000L - (System.currentTimeMillis() % 60000L)).coerceIn(500L, 60000L)
+            handler.postDelayed(this, nextDelay)
         }
     }
 
     private fun startClock() {
         handler.removeCallbacks(clockTick)
         updateClock()
-        handler.postDelayed(clockTick, 60000 - System.currentTimeMillis() % 60000)
+        val nextDelay = (60000L - (System.currentTimeMillis() % 60000L)).coerceIn(500L, 60000L)
+        handler.postDelayed(clockTick, nextDelay)
     }
 
     private fun getBatterySuffix(): String {
