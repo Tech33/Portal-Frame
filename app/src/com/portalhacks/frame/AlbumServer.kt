@@ -298,6 +298,7 @@ class AlbumServer(
                         .put("customMessage", prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "") ?: "")
                         .put("media", mediaObj)
                         .put("spotifyInstalled", CompanionAppInstaller.isSpotifyInstalled(context))
+                        .put("appleMusicInstalled", CompanionAppInstaller.isAppleMusicInstalled(context))
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", status.toString().toByteArray(Charsets.UTF_8))
                 }
 
@@ -361,11 +362,21 @@ class AlbumServer(
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
                 }
 
+                // Remote Apple Music Installation
+                (method == "POST" || method == "GET") && (rawPath == "/api/apps/applemusic/install" || rawPath == "/api/apps/apple/install") -> {
+                    val url = parseQueryParam(queryString, "url")
+                    CompanionAppInstaller.installAppleMusic(context, url)
+                    val resp = JSONObject().put("status", "ok").put("message", "Apple Music installation initiated in background")
+                    sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
+                }
+
                 // Companion Apps Status
                 method == "GET" && (rawPath == "/api/apps/status" || rawPath == "/api/apps/list") -> {
                     val resp = JSONObject()
                         .put("spotifyInstalled", CompanionAppInstaller.isSpotifyInstalled(context))
                         .put("spotifyPackage", CompanionAppInstaller.getInstalledSpotifyPackage(context) ?: "")
+                        .put("appleMusicInstalled", CompanionAppInstaller.isAppleMusicInstalled(context))
+                        .put("appleMusicPackage", CompanionAppInstaller.getInstalledAppleMusicPackage(context) ?: "")
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
                 }
 
@@ -459,11 +470,12 @@ class AlbumServer(
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
                 }
 
-                // Standalone APK Upload and Spotify Installer Webpage
+                // Standalone APK Upload and Companion Apps Installer Webpage
                 method == "GET" && (rawPath == "/upload" || rawPath == "/apk") -> {
                     val deviceName = ConfigReceiver.getDeviceDisplayName(context)
                     val isSpotify = CompanionAppInstaller.isSpotifyInstalled(context)
-                    sendResponse(socket, 200, "OK", "text/html; charset=utf-8", getUploadApkHtml(deviceName, isSpotify).toByteArray(Charsets.UTF_8))
+                    val isAppleMusic = CompanionAppInstaller.isAppleMusicInstalled(context)
+                    sendResponse(socket, 200, "OK", "text/html; charset=utf-8", getUploadApkHtml(deviceName, isSpotify, isAppleMusic).toByteArray(Charsets.UTF_8))
                 }
 
                 // Form to add album via QR code
@@ -1685,7 +1697,7 @@ class AlbumServer(
         """.trimIndent()
     }
 
-    private fun getUploadApkHtml(deviceName: String, isSpotifyInstalled: Boolean): String {
+    private fun getUploadApkHtml(deviceName: String, isSpotifyInstalled: Boolean, isAppleMusicInstalled: Boolean): String {
         val safeName = sanitizeHtml(deviceName)
         return """
             <!DOCTYPE html>
@@ -1788,6 +1800,25 @@ class AlbumServer(
                 }
                 .btn-spotify:active { transform: scale(0.98); }
                 .btn-spotify:disabled { opacity: 0.5; cursor: not-allowed; }
+                .btn-applemusic {
+                  width: 100%;
+                  height: 48px;
+                  background: #FA243C;
+                  border: none;
+                  border-radius: 14px;
+                  color: #FFFFFF;
+                  font-size: 15px;
+                  font-weight: 700;
+                  cursor: pointer;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 8px;
+                  box-shadow: 0 4px 16px rgba(250, 36, 60, 0.35);
+                  transition: transform 0.1s, opacity 0.2s;
+                }
+                .btn-applemusic:active { transform: scale(0.98); }
+                .btn-applemusic:disabled { opacity: 0.5; cursor: not-allowed; }
                 .file-drop {
                   border: 2px dashed rgba(255, 255, 255, 0.2);
                   border-radius: 14px;
@@ -1887,7 +1918,19 @@ class AlbumServer(
                   <div id="spotify-status" class="status-msg"></div>
                 </div>
 
-                <!-- Section 2: Direct Upload Any APK -->
+                <!-- Section 2: 1-Click Apple Music -->
+                <div class="section">
+                  <div class="section-title">
+                    <span>🍎</span> Apple Music
+                  </div>
+                  <p class="section-desc">Installs Apple Music for Android. Stream your library and lossless tracks wirelessly behind photos.</p>
+                  <button id="applemusic-btn" class="btn-applemusic" onclick="installAppleMusic()">
+                    <span>⚡</span> ${if (isAppleMusicInstalled) "Reinstall / Update Apple Music" else "1-Click Install Apple Music"}
+                  </button>
+                  <div id="applemusic-status" class="status-msg"></div>
+                </div>
+
+                <!-- Section 3: Direct Upload Any APK -->
                 <div class="section">
                   <div class="section-title">
                     <span>📤</span> Sideload Custom APK
@@ -1944,6 +1987,32 @@ class AlbumServer(
                     status.innerText = 'Failed: ' + e.message;
                     btn.disabled = false;
                     btn.innerText = '⚡ 1-Click Install Spotify';
+                  }
+                }
+
+                async function installAppleMusic() {
+                  const btn = document.getElementById('applemusic-btn');
+                  const status = document.getElementById('applemusic-status');
+                  btn.disabled = true;
+                  btn.innerText = 'Connecting to download server…';
+                  status.className = 'status-msg info';
+                  status.innerText = 'Downloading Apple Music APK on Portal…';
+
+                  try {
+                    const res = await fetch('/api/apps/applemusic/install', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.status === 'ok') {
+                      status.className = 'status-msg success';
+                      status.innerText = '✓ Download & Auto-install started! Check Portal screen in ~15s.';
+                      btn.innerText = '✓ Install Initiated';
+                    } else {
+                      throw new Error(data.message || 'Unknown error');
+                    }
+                  } catch (e) {
+                    status.className = 'status-msg error';
+                    status.innerText = 'Failed: ' + e.message;
+                    btn.disabled = false;
+                    btn.innerText = '⚡ 1-Click Install Apple Music';
                   }
                 }
 

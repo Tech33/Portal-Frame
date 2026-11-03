@@ -240,8 +240,21 @@ object MediaMonitor {
                 return
             }
             val installedSpotify = CompanionAppInstaller.getInstalledSpotifyPackage(context)
+            val installedAppleMusic = CompanionAppInstaller.getInstalledAppleMusicPackage(context)
+            val isAppleSource = currentState.source.contains("Apple", ignoreCase = true) ||
+                    currentState.packageName.contains("apple", ignoreCase = true)
+            val isSpotifySource = currentState.source.contains("Spotify", ignoreCase = true) ||
+                    currentState.packageName.contains("spotify", ignoreCase = true)
+
+            if (isAppleSource) {
+                if (CompanionAppInstaller.launchAppleMusic(context)) return
+            } else if (isSpotifySource) {
+                if (CompanionAppInstaller.launchSpotify(context)) return
+            }
+
             val targetPkg = currentState.packageName.ifEmpty {
-                installedSpotify ?: if (currentState.source.contains("Spotify", ignoreCase = true)) "com.spotify.music" else ""
+                if (isAppleSource) (installedAppleMusic ?: "com.apple.android.music")
+                else (installedSpotify ?: if (currentState.source.contains("Spotify", ignoreCase = true)) "com.spotify.music" else "")
             }
             if (targetPkg.isNotEmpty()) {
                 val intent = context.packageManager.getLaunchIntentForPackage(targetPkg)
@@ -251,18 +264,11 @@ object MediaMonitor {
                     return
                 }
             }
-            // Fallback for Spotify standalone on Portal
-            val fallbackSpotify = (if (installedSpotify != null) context.packageManager.getLaunchIntentForPackage(installedSpotify) else null)
-                ?: context.packageManager.getLaunchIntentForPackage("com.facebook.aloha.spotifystandalone")
-                ?: context.packageManager.getLaunchIntentForPackage("com.spotify.music")
-                ?: context.packageManager.getLaunchIntentForPackage("com.spotify.tv.android")
-                ?: context.packageManager.getLaunchIntentForPackage("com.spotify.lite")
-            if (fallbackSpotify != null) {
-                fallbackSpotify.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(fallbackSpotify)
-            } else {
-                android.widget.Toast.makeText(context, "Spotify is not installed on this Portal", android.widget.Toast.LENGTH_SHORT).show()
-            }
+            // Fallback for Spotify or Apple Music standalone on Portal
+            if (CompanionAppInstaller.launchSpotify(context)) return
+            if (CompanionAppInstaller.launchAppleMusic(context)) return
+
+            android.widget.Toast.makeText(context, "Music player is not installed on this Portal", android.widget.Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Log.w(TAG, "Failed launching media app", e)
         }

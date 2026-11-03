@@ -113,6 +113,8 @@ class SlideshowController(
     private lateinit var pillVisualizer: AudioVisualizerView
     private lateinit var pauseHaIconBtn: ImageView
     private lateinit var spotifyShortcutButton: LinearLayout
+    private lateinit var appleMusicShortcutButton: LinearLayout
+    private lateinit var musicShortcutsContainer: LinearLayout
     private lateinit var actionMenuExit: TextView
     private val nowPlayingHideRunnable = Runnable { hideNowPlaying() }
     private val autoResumeRunnable = Runnable {
@@ -663,9 +665,11 @@ class SlideshowController(
         root.addView(buildTouchOverlay())
         initPlayButton()
         initSpotifyShortcut()
+        initAppleMusicShortcut()
+        initMusicShortcutsContainer()
         initNowPlaying()
         root.addView(clockExit)
-        root.addView(spotifyShortcutButton)
+        root.addView(musicShortcutsContainer)
         root.addView(nowPlayingCard)
         root.addView(playButtonOverlay)
         root.addView(actionMenuBackdrop)
@@ -731,26 +735,91 @@ class SlideshowController(
                 }
             }
         }
+    }
 
-        val spLp = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.END
-            bottomMargin = Ui.dp(context, 24f)
-            marginEnd = Ui.dp(context, 24f)
-            rightMargin = Ui.dp(context, 24f)
+    private fun initAppleMusicShortcut() {
+        appleMusicShortcutButton = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.roundRect(0x99121418.toInt(), Ui.dp(context, 23f)).apply {
+                setStroke(Ui.dp(context, 1.2f), 0x4DFFFFFF)
+            }
+            alpha = 0.90f
+            val padH = Ui.dp(context, 18f)
+            val padV = Ui.dp(context, 11f)
+            setPadding(padH, padV, padH, padV)
+            minimumHeight = Ui.dp(context, 46f)
+            elevation = Ui.dp(context, 6f).toFloat()
+            clipToOutline = true
+            isClickable = true
+            isFocusable = true
+            visibility = View.GONE
+
+            val icon = ImageView(context).apply {
+                setImageResource(R.drawable.ic_apple_music)
+                val s = Ui.dp(context, 22f)
+                layoutParams = LinearLayout.LayoutParams(s, s).apply {
+                    rightMargin = Ui.dp(context, 8f)
+                }
+            }
+
+            val label = TextView(context).apply {
+                text = "Apple Music"
+                setTextColor(Color.WHITE)
+                typeface = Ui.bold(context)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
+            }
+
+            addView(icon)
+            addView(label)
+
+            setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> v.alpha = 1.0f
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 0.90f
+                }
+                false
+            }
+            setOnClickListener {
+                if (!CompanionAppInstaller.launchAppleMusic(context)) {
+                    MediaMonitor.launchApp(context)
+                }
+            }
         }
-        spotifyShortcutButton.layoutParams = spLp
+    }
+
+    private fun initMusicShortcutsContainer() {
+        musicShortcutsContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            val scLp = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.BOTTOM or Gravity.END
+                bottomMargin = Ui.dp(context, 24f)
+                marginEnd = Ui.dp(context, 24f)
+                rightMargin = Ui.dp(context, 24f)
+            }
+            layoutParams = scLp
+            addView(spotifyShortcutButton)
+            addView(appleMusicShortcutButton)
+        }
     }
 
     /**
      * Updates visibility of corner overlay shortcuts:
-     * - Bottom-right Spotify icon: only visible when Spotify is installed/setup on Portal,
-     *   the Spotify shortcut setting is enabled, and slideshow is not in clock-only mode.
+     * - Bottom-right Spotify & Apple Music icons: visible when companion app is installed,
+     *   shortcut preference is enabled, and slideshow is not in clock-only mode or actively showing playback.
      */
     fun updateOverlayShortcuts() {
         val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+
+        val isMediaActive = (lastMediaState?.isPlaying == true) ||
+            (::nowPlayingCard.isInitialized && nowPlayingCard.visibility == View.VISIBLE)
+
+        var hasVisibleShortcut = false
 
         if (::spotifyShortcutButton.isInitialized) {
             val spotifyInstalled = CompanionAppInstaller.isSpotifyInstalled(context)
@@ -758,13 +827,42 @@ class SlideshowController(
                 ConfigReceiver.KEY_SPOTIFY_SHORTCUT,
                 ConfigReceiver.DEFAULT_SPOTIFY_SHORTCUT
             )
-            val isMediaActive = (lastMediaState?.isPlaying == true) ||
-                (::nowPlayingCard.isInitialized && nowPlayingCard.visibility == View.VISIBLE)
             val shouldShowSpotify = spotifyInstalled && spotifyPrefEnabled && !clockOnly && !isMediaActive
             spotifyShortcutButton.visibility = if (shouldShowSpotify) View.VISIBLE else View.GONE
             if (shouldShowSpotify) {
                 spotifyShortcutButton.alpha = 0.90f
-                spotifyShortcutButton.bringToFront()
+                hasVisibleShortcut = true
+            }
+        }
+
+        if (::appleMusicShortcutButton.isInitialized) {
+            val appleMusicInstalled = CompanionAppInstaller.isAppleMusicInstalled(context)
+            val appleMusicPrefEnabled = prefs.getBoolean(
+                ConfigReceiver.KEY_APPLE_MUSIC_SHORTCUT,
+                ConfigReceiver.DEFAULT_APPLE_MUSIC_SHORTCUT
+            )
+            val shouldShowAppleMusic = appleMusicInstalled && appleMusicPrefEnabled && !clockOnly && !isMediaActive
+            appleMusicShortcutButton.visibility = if (shouldShowAppleMusic) View.VISIBLE else View.GONE
+            if (shouldShowAppleMusic) {
+                appleMusicShortcutButton.alpha = 0.90f
+                hasVisibleShortcut = true
+            }
+        }
+
+        if (::spotifyShortcutButton.isInitialized && ::appleMusicShortcutButton.isInitialized) {
+            val bothVisible = spotifyShortcutButton.visibility == View.VISIBLE &&
+                    appleMusicShortcutButton.visibility == View.VISIBLE
+            val spLp = (spotifyShortcutButton.layoutParams as? LinearLayout.LayoutParams)
+                ?: LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            spLp.marginEnd = if (bothVisible) Ui.dp(context, 10f) else 0
+            spLp.rightMargin = if (bothVisible) Ui.dp(context, 10f) else 0
+            spotifyShortcutButton.layoutParams = spLp
+        }
+
+        if (::musicShortcutsContainer.isInitialized) {
+            musicShortcutsContainer.visibility = if (hasVisibleShortcut) View.VISIBLE else View.GONE
+            if (hasVisibleShortcut) {
+                musicShortcutsContainer.bringToFront()
             }
         }
     }
@@ -969,6 +1067,26 @@ class SlideshowController(
         }
     }
 
+    private fun launchActiveMusicPlayer() {
+        val src = lastMediaState?.source ?: ""
+        val pkg = lastMediaState?.packageName ?: ""
+        if (src.contains("Apple", ignoreCase = true) || pkg.contains("apple", ignoreCase = true)) {
+            if (!CompanionAppInstaller.launchAppleMusic(context)) {
+                MediaMonitor.launchApp(context)
+            }
+        } else if (src.contains("Spotify", ignoreCase = true) || pkg.contains("spotify", ignoreCase = true)) {
+            if (!CompanionAppInstaller.launchSpotify(context)) {
+                MediaMonitor.launchApp(context)
+            }
+        } else {
+            if (!CompanionAppInstaller.launchSpotify(context)) {
+                if (!CompanionAppInstaller.launchAppleMusic(context)) {
+                    MediaMonitor.launchApp(context)
+                }
+            }
+        }
+    }
+
     private fun initNowPlaying() {
         nowPlayingCard = PinchableMediaCard(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -988,17 +1106,13 @@ class SlideshowController(
                 persistMediaWidgetScale()
             }
             onCardTapped = {
-                if (!CompanionAppInstaller.launchSpotify(context)) {
-                    MediaMonitor.launchApp(context)
-                }
+                launchActiveMusicPlayer()
             }
         }
 
         val pillGestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                if (!CompanionAppInstaller.launchSpotify(context)) {
-                    MediaMonitor.launchApp(context)
-                }
+                launchActiveMusicPlayer()
                 return true
             }
 
@@ -1087,9 +1201,7 @@ class SlideshowController(
             background = Ui.roundRect(0x22FFFFFF, Ui.dp(context, 20f))
             clipToOutline = true
             setOnClickListener {
-                if (!CompanionAppInstaller.launchSpotify(context)) {
-                    MediaMonitor.launchApp(context)
-                }
+                launchActiveMusicPlayer()
             }
         }
 
@@ -2693,7 +2805,7 @@ class SlideshowController(
             applyClockOnlyTransform()
             clockBox.visibility = View.GONE // hide the bottom overlay clock
             broadcastBanner.visibility = View.GONE
-            spotifyShortcutButton.visibility = View.GONE
+            if (::musicShortcutsContainer.isInitialized) musicShortcutsContainer.visibility = View.GONE
             nowPlayingCard.visibility = View.GONE
             clockOnlyBox.visibility = View.VISIBLE // big centered clock instead
             clockExit.visibility = View.VISIBLE

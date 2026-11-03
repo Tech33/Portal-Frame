@@ -238,6 +238,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_HA_IDLE_TIMEOUT_SEC = "ha_idle_timeout_sec"
         const val KEY_HA_BUTTON = "ha_button"
         const val KEY_SPOTIFY_SHORTCUT = "spotify_shortcut_button"
+        const val KEY_APPLE_MUSIC_SHORTCUT = "apple_music_shortcut_button"
 
         // Broadcast Intent Actions
         const val ACTION_SHOW_DASHBOARD = "com.portalhacks.frame.SHOW_DASHBOARD"
@@ -317,6 +318,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val DEFAULT_HA_IDLE_TIMEOUT_SEC = 60
         const val DEFAULT_HA_BUTTON = true
         const val DEFAULT_SPOTIFY_SHORTCUT = true
+        const val DEFAULT_APPLE_MUSIC_SHORTCUT = true
 
         const val DEFAULT_PRESENCE_ENABLED = true
         const val DEFAULT_PRESENCE_TIMEOUT_MIN = 10
@@ -347,6 +349,7 @@ class ConfigReceiver : BroadcastReceiver() {
             arrayOf("ha_embedded", KEY_HA_EMBEDDED),
             arrayOf("ha_button", KEY_HA_BUTTON),
             arrayOf("spotify_shortcut_button", KEY_SPOTIFY_SHORTCUT),
+            arrayOf("apple_music_shortcut_button", KEY_APPLE_MUSIC_SHORTCUT),
             arrayOf("presence_enabled", KEY_PRESENCE_ENABLED),
             arrayOf("airplay_enabled", KEY_AIRPLAY_ENABLED),
             arrayOf("now_playing_enabled", KEY_NOW_PLAYING_ENABLED),

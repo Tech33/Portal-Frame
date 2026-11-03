@@ -1068,9 +1068,13 @@
         <span id="upload-pct-text">0%</span>
       </div>
       <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; margin-bottom: 14px; font-size: 12px; color: #A1A1A6; line-height: 1.4;">
-        <span>💡 Need the APK? </span>
+        <span>💡 Need companion APKs? </span>
         <a href="https://github.com/Tech33/Portal-Frame/releases/latest/download/spotify.apk" target="_blank" style="color: #1DB954; font-weight: 600; text-decoration: underline;">
-          Download Spotify APK (13MB)
+          Spotify (13MB)
+        </a>
+        <span> · </span>
+        <a href="https://github.com/Tech33/Portal-Frame/releases/latest/download/applemusic.apk" target="_blank" style="color: #FA243C; font-weight: 600; text-decoration: underline;">
+          Apple Music (136MB)
         </a>
         <span> to your phone, then tap Choose File below.</span>
       </div>
@@ -1580,7 +1584,10 @@
               💌 Send Note
             </button>
             <button class="portal-act-btn tap-scale" style="border-color:#1DB954; color:#1DB954; font-weight:600;" onclick="installSpotifyDirectly('${d.id}')" title="1-Tap background download and auto-install of Spotify on Portal">
-              ⚡ 1-Tap Spotify
+              ⚡ Spotify
+            </button>
+            <button class="portal-act-btn tap-scale" style="border-color:#FA243C; color:#FA243C; font-weight:600;" onclick="installAppleMusicDirectly('${d.id}')" title="1-Tap background download and auto-install of Apple Music on Portal">
+              🍎 Apple Music
             </button>
             <button class="portal-act-btn tap-scale" style="border-color:#30D158; color:#30D158; font-weight:600;" onclick="triggerPortalApkUpload('${d.id}')" title="Wirelessly upload and install Spotify, SmartTube or any APK">
               📤 Upload APK
@@ -1644,6 +1651,47 @@
           if (resp.ok) {
             sent = true;
             showToast(`✓ Spotify install command broadcast to ${targetName}! Check Portal screen in ~10s.`, 'success');
+          }
+        }
+      } catch (e) {
+        if (!sent) showToast('Failed to send install command: ' + e.message, 'error');
+      }
+    }
+
+    async function installAppleMusicDirectly(deviceId) {
+      const d = fleetDevices.find(x => x.id === deviceId || x.shortId === deviceId);
+      const targetName = d ? d.name : 'Portal';
+      const targetId = d ? (d.shortId || d.id) : 'all';
+
+      showToast(`🍎 Sending Apple Music install command to ${targetName}...`, 'info');
+
+      let sent = false;
+      // 1. Direct local HTTP if host is configured
+      if (d && d.host) {
+        try {
+          const resp = await fetch(`http://${d.host}/api/apps/applemusic/install`, { method: 'POST', mode: 'cors' });
+          if (resp.ok) {
+            sent = true;
+            showToast(`✓ Apple Music download & install started on ${targetName}!`, 'success');
+          }
+        } catch (_) {
+          // May be blocked by browser HTTPS Mixed Content or cross-network
+        }
+      }
+
+      // 2. Family Cloud Broadcast (works over HTTPS, zero mixed content, works globally)
+      try {
+        const cmd = `#install:applemusic:${targetId}`;
+        const aesKey = await getAesKey(currentActiveChannel);
+        const hex = await encryptData(cmd, aesKey);
+        if (hex) {
+          const resp = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(currentActiveChannel)}/${hex}`, {
+            method: 'POST',
+            headers: { 'Content-Length': '0' }
+          });
+          if (resp.ok) {
+            sent = true;
+            showToast(`✓ Apple Music install command broadcast to ${targetName}! Check Portal screen in ~15s.`, 'success');
           }
         }
       } catch (e) {

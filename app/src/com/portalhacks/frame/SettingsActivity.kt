@@ -1661,6 +1661,7 @@ class SettingsActivity : ComponentActivity() {
                     )
                 }
                 val isSpotifyInstalled = CompanionAppInstaller.isSpotifyInstalled(ctx)
+                val isAppleMusicInstalled = CompanionAppInstaller.isAppleMusicInstalled(ctx)
                 if (isSpotifyInstalled) {
                     Spacer(Modifier.height(10.dp))
                     ToggleRow(
@@ -1670,6 +1671,17 @@ class SettingsActivity : ComponentActivity() {
                         subtitle = "Bottom-right floating shortcut to quickly open Spotify from the photo slideshow.",
                         iconRes = R.drawable.ic_spotify,
                         iconBg = Color(0xFF1DB954),
+                    )
+                }
+                if (isAppleMusicInstalled) {
+                    Spacer(Modifier.height(10.dp))
+                    ToggleRow(
+                        label = "Apple Music Shortcut Button",
+                        key = ConfigReceiver.KEY_APPLE_MUSIC_SHORTCUT,
+                        def = ConfigReceiver.DEFAULT_APPLE_MUSIC_SHORTCUT,
+                        subtitle = "Bottom-right floating shortcut to quickly open Apple Music from the photo slideshow.",
+                        iconRes = R.drawable.ic_apple_music,
+                        iconBg = Color(0xFFFA243C),
                     )
                 }
                 Spacer(Modifier.height(6.dp))
@@ -1776,6 +1788,69 @@ class SettingsActivity : ComponentActivity() {
                         Column(horizontalAlignment = Alignment.End) {
                             SmallAction(if (installStatus.isEmpty()) "Install OTA" else "Installing…", installStatus.isEmpty()) {
                                 CompanionAppInstaller.installSpotify(ctx) { st ->
+                                    installStatus = st
+                                    Toast.makeText(ctx, st, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            if (installStatus.isNotEmpty()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(installStatus, color = Color(0xFF007AFF), fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x12FFFFFF))
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Apple Music",
+                                color = PortalColors.Text,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isAppleMusicInstalled) Color(0x3334C759) else Color(0x228E8E93))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    if (isAppleMusicInstalled) "Installed ✓" else "Companion App",
+                                    color = if (isAppleMusicInstalled) Color(0xFF34C759) else Color(0xFF8E8E93),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Apple Music for Android. Stream your library and lossless tracks wirelessly behind photos.",
+                            color = PortalColors.Text.copy(alpha = 0.65f),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    if (isAppleMusicInstalled) {
+                        SmallAction("Launch", true) {
+                            if (!CompanionAppInstaller.launchAppleMusic(ctx)) {
+                                Toast.makeText(ctx, "Could not launch Apple Music", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        var installStatus by remember { mutableStateOf("") }
+                        Column(horizontalAlignment = Alignment.End) {
+                            SmallAction(if (installStatus.isEmpty()) "Install OTA" else "Installing…", installStatus.isEmpty()) {
+                                CompanionAppInstaller.installAppleMusic(ctx) { st ->
                                     installStatus = st
                                     Toast.makeText(ctx, st, Toast.LENGTH_SHORT).show()
                                 }

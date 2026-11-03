@@ -31,9 +31,27 @@ object CompanionAppInstaller {
     const val OFFICIAL_SPOTIFY_RELEASE_URL =
         "https://github.com/Tech33/Portal-Frame/releases/latest/download/spotify.apk"
 
+    val APPLE_MUSIC_PACKAGES = listOf(
+        "com.apple.android.music"
+    )
+
+    const val OFFICIAL_APPLE_MUSIC_RELEASE_URL =
+        "https://github.com/Tech33/Portal-Frame/releases/latest/download/applemusic.apk"
+
     fun isSpotifyInstalled(context: Context): Boolean {
         val pm = context.packageManager
         for (pkg in SPOTIFY_PACKAGES) {
+            try {
+                pm.getPackageInfo(pkg, 0)
+                return true
+            } catch (_: PackageManager.NameNotFoundException) {}
+        }
+        return false
+    }
+
+    fun isAppleMusicInstalled(context: Context): Boolean {
+        val pm = context.packageManager
+        for (pkg in APPLE_MUSIC_PACKAGES) {
             try {
                 pm.getPackageInfo(pkg, 0)
                 return true
@@ -53,6 +71,17 @@ object CompanionAppInstaller {
         return null
     }
 
+    fun getInstalledAppleMusicPackage(context: Context): String? {
+        val pm = context.packageManager
+        for (pkg in APPLE_MUSIC_PACKAGES) {
+            try {
+                pm.getPackageInfo(pkg, 0)
+                return pkg
+            } catch (_: PackageManager.NameNotFoundException) {}
+        }
+        return null
+    }
+
     fun launchSpotify(context: Context): Boolean {
         val pkg = getInstalledSpotifyPackage(context) ?: return false
         return try {
@@ -64,6 +93,21 @@ object CompanionAppInstaller {
             true
         } catch (e: Exception) {
             Log.w(TAG, "Failed launching Spotify ($pkg)", e)
+            false
+        }
+    }
+
+    fun launchAppleMusic(context: Context): Boolean {
+        val pkg = getInstalledAppleMusicPackage(context) ?: return false
+        return try {
+            val intent = context.packageManager.getLaunchIntentForPackage(pkg) ?: Intent().apply {
+                setClassName(pkg, "com.apple.android.music.onboarding.activities.SplashActivity")
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed launching Apple Music ($pkg)", e)
             false
         }
     }
@@ -122,6 +166,63 @@ object CompanionAppInstaller {
             Log.i(TAG, "Successfully terminated background Spotify processes")
         } catch (e: Exception) {
             Log.w(TAG, "Failed terminating Spotify background processes", e)
+        }
+    }
+
+    /**
+     * Terminates background Apple Music processes and stops active playback
+     * when the media widget idle timeout expires, saving memory and battery on Portal Go.
+     */
+    fun killAppleMusic(context: Context) {
+        try {
+            // 1. Direct MediaController IPC Stop to release foreground service status
+            try {
+                MediaMonitor.activeController?.transportControls?.stop()
+                MediaMonitor.activeController?.transportControls?.pause()
+            } catch (e: Exception) {
+                Log.d(TAG, "MediaController stop failed: ${e.message}")
+            }
+
+            // 2. Targeted Media Stop broadcast to all Apple Music packages
+            for (pkg in APPLE_MUSIC_PACKAGES) {
+                try {
+                    val stopDown = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+                        setPackage(pkg)
+                        putExtra(Intent.EXTRA_KEY_EVENT, android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_STOP))
+                    }
+                    context.sendBroadcast(stopDown)
+                    val stopUp = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+                        setPackage(pkg)
+                        putExtra(Intent.EXTRA_KEY_EVENT, android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_STOP))
+                    }
+                    context.sendBroadcast(stopUp)
+                } catch (_: Exception) {}
+            }
+
+            // 3. Dispatch standard Android Media Stop key event
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+            audioManager?.dispatchMediaKeyEvent(
+                android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_STOP)
+            )
+            audioManager?.dispatchMediaKeyEvent(
+                android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_STOP)
+            )
+
+            // 4. Kill background processes via ActivityManager
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            for (pkg in APPLE_MUSIC_PACKAGES) {
+                am?.killBackgroundProcesses(pkg)
+            }
+
+            // 5. Fallback shell force-stop (if ADB / system permissions granted)
+            for (pkg in APPLE_MUSIC_PACKAGES) {
+                try {
+                    Runtime.getRuntime().exec(arrayOf("am", "force-stop", pkg))
+                } catch (_: Exception) {}
+            }
+            Log.i(TAG, "Successfully terminated background Apple Music processes")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed terminating Apple Music background processes", e)
         }
     }
 
@@ -240,6 +341,97 @@ object CompanionAppInstaller {
 
             if (!success) {
                 Log.e(TAG, "All Spotify download URLs failed", lastError)
+                mainHandler.post { onStatus("Installation failed: ${lastError?.message ?: "network error"}") }
+            }
+        }
+    }
+
+    fun installAppleMusic(
+        context: Context,
+        fallbackUrl: String? = null,
+        onStatus: (String) -> Unit = {}
+    ) {
+        val mainHandler = Handler(Looper.getMainLooper())
+        val candidateUrls = if (fallbackUrl != null) {
+            listOf(fallbackUrl)
+        } else {
+            listOf(
+                OFFICIAL_APPLE_MUSIC_RELEASE_URL,
+                "https://github.com/arabaizzet/Apple-Music-for-Rooted-Devices/releases/download/v4.8.1/AppleMusicbywizzeteren.apk"
+            )
+        }
+
+        mainHandler.post { onStatus("Connecting to download server…") }
+
+        thread(name = "AppleMusic-Downloader") {
+            var lastError: Exception? = null
+            var success = false
+
+            for (targetUrl in candidateUrls) {
+                try {
+                    val destFile = File(context.cacheDir, "applemusic_installer.apk")
+                    if (destFile.exists()) destFile.delete()
+
+                    mainHandler.post { onStatus("Downloading Apple Music for Meta Portal…") }
+
+                    val conn = openConnectionWithRedirects(targetUrl)
+                    if (conn.responseCode !in 200..299) {
+                        val code = conn.responseCode
+                        conn.disconnect()
+                        throw Exception("HTTP error $code from $targetUrl")
+                    }
+
+                    val totalBytes = conn.contentLength
+                    var downloadedBytes = 0L
+
+                    conn.inputStream.use { input ->
+                        FileOutputStream(destFile).use { output ->
+                            val buffer = ByteArray(8192)
+                            var bytesRead: Int
+                            var lastReport = System.currentTimeMillis()
+
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                output.write(buffer, 0, bytesRead)
+                                downloadedBytes += bytesRead
+                                val now = System.currentTimeMillis()
+                                if (now - lastReport > 500L && totalBytes > 0) {
+                                    val pct = (downloadedBytes * 100 / totalBytes).toInt()
+                                    mainHandler.post { onStatus("Downloading Apple Music ($pct%)…") }
+                                    lastReport = now
+                                }
+                            }
+                        }
+                    }
+                    conn.disconnect()
+
+                    if (destFile.length() < 100_000) {
+                        throw Exception("Downloaded file too small (${destFile.length()} bytes)")
+                    }
+
+                    mainHandler.post { onStatus("Installing Apple Music automatically…") }
+
+                    // Arm the accessibility service to auto-click Install/Update
+                    ScreenControl.enableAccessibility(context)
+                    PortalAccessibilityService.armAutoInstall()
+
+                    val launched = UpdateInstaller.promptInstall(context, destFile)
+                    mainHandler.post {
+                        if (launched) {
+                            onStatus("Installing Apple Music in background…")
+                        } else {
+                            onStatus("Permission needed: Allow installing unknown apps.")
+                        }
+                    }
+                    success = true
+                    break
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed downloading Apple Music from $targetUrl: ${e.message}")
+                    lastError = e
+                }
+            }
+
+            if (!success) {
+                Log.e(TAG, "All Apple Music download URLs failed", lastError)
                 mainHandler.post { onStatus("Installation failed: ${lastError?.message ?: "network error"}") }
             }
         }
