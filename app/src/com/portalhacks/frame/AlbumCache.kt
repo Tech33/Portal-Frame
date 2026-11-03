@@ -25,7 +25,7 @@ internal object AlbumCache {
 
     private fun legacyKey(url: String): String = KEY_PREFIX + Integer.toHexString(url.hashCode())
 
-    const val MAX_CACHED_PHOTOS_PER_ALBUM = 300
+    const val MAX_CACHED_PHOTOS_PER_ALBUM = 1500
 
     private val ioExecutor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "album-cache-io").apply { priority = Thread.MIN_PRIORITY }
@@ -204,5 +204,25 @@ internal object AlbumCache {
             } catch (_: Exception) {}
         }
         prefs.edit().remove(legacyKey(url)).apply()
+    }
+
+    /** Clear all disk album caches and in-memory caches. */
+    @JvmStatic
+    fun clearAll(prefs: SharedPreferences) {
+        memCache.clear()
+        ioExecutor.execute {
+            try {
+                val dir = baseDir ?: File("/data/data/com.portalhacks.frame/cache/albums")
+                if (dir.exists()) {
+                    dir.listFiles()?.forEach { it.delete() }
+                }
+            } catch (_: Exception) {}
+        }
+        val allKeys = prefs.all.keys.filter { it.startsWith(KEY_PREFIX) }
+        if (allKeys.isNotEmpty()) {
+            val ed = prefs.edit()
+            for (k in allKeys) ed.remove(k)
+            ed.apply()
+        }
     }
 }

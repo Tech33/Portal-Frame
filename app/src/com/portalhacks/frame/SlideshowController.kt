@@ -246,6 +246,7 @@ class SlideshowController(
     private var use24Hour: Boolean = ConfigReceiver.DEFAULT_CLOCK_24H
     private var shuffle: Boolean = false // play photos in random order
     private var recentFirst: Boolean = ConfigReceiver.DEFAULT_RECENT_FIRST // sort newest photos first
+    private var forceDescending: Boolean = false // override shuffle to enforce strict reverse-chronological playback
     private var pairs: Boolean = ConfigReceiver.DEFAULT_PAIRS // pair two photos to fill the screen (side-by-side or stacked)
     private var kenBurns: Boolean = ConfigReceiver.DEFAULT_KEN_BURNS // cinematic slow pan + zoom while held
     private var showClock: Boolean = ConfigReceiver.DEFAULT_CLOCK // clock + weather overlay
@@ -2739,6 +2740,17 @@ class SlideshowController(
         }
     }
 
+    fun setForceDescending(force: Boolean) {
+        forceDescending = force
+        if (force && items.isNotEmpty()) {
+            items = ArrayList(sortByCaptureDescending(items))
+            index = 0
+            if (running && !clockOnly) {
+                showImmediate(0)
+            }
+        }
+    }
+
     /** Swap the photo source at runtime (e.g. bundled samples -> album). */
     fun setItems(newItems: List<Slide>?) {
         if (newItems == null || newItems.isEmpty()) {
@@ -2749,12 +2761,14 @@ class SlideshowController(
         forwardHistory.clear()
         isNavigatingHistory = false
         transitionDirection = 0
-        if (recentFirst && !shuffle) {
+        if (forceDescending) {
+            items = ArrayList(sortByCaptureDescending(items))
+        } else if (recentFirst && !shuffle) {
             items.sortByDescending { it.timeMs }
         } else if (shuffle) {
             smartShuffle(items)
         }
-        if (onThisDay) {
+        if (onThisDay && !forceDescending) {
             promoteOnThisDay(items)
         }
         remote = true

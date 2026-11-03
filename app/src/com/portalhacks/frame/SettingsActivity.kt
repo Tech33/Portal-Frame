@@ -966,7 +966,15 @@ class SettingsActivity : ComponentActivity() {
                         Box(modifier = Modifier.weight(1f)) {
                             SecondaryBtn("🗑 Clear cache") {
                                 loader.clearDiskAndMemoryCache()
-                                Toast.makeText(ctx, "Photo cache cleared. Fresh high-res photos will download.", Toast.LENGTH_LONG).show()
+                                AlbumCache.clearAll(prefs)
+                                refreshAlbumsNow(
+                                    urls = albums,
+                                    onStatus = { albumRefreshStatus = it },
+                                    onFinished = {
+                                        refreshingAlbums = false
+                                    },
+                                )
+                                Toast.makeText(ctx, "Photo cache cleared. Fetching latest album photos…", Toast.LENGTH_LONG).show()
                             }
                         }
                     }

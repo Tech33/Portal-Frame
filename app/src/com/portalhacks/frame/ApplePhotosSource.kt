@@ -28,7 +28,7 @@ import java.util.TimeZone
 internal object ApplePhotosSource : PhotoProvider {
 
     private const val TAG = "PortalFrame"
-    private const val MAX_JSON_BYTES = 16 * 1024 * 1024
+    private const val MAX_JSON_BYTES = 32 * 1024 * 1024
     private const val GUID_BATCH = 25 // bound each webasseturls request
 
     override val displayName = "iCloud"

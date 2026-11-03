@@ -324,10 +324,17 @@ class SlideshowComposeActivity : ComponentActivity() {
         if (targetMode != null) {
             Log.i(TAG, "Applying showcase from broadcast: mode=$targetMode, location=$targetLoc")
             applyShowcase(mode = targetMode, location = targetLoc)
+            // When user switches to showcase modes (like Last 7 Days / Last 30 Days),
+            // temporarily disable shuffle so photos play strictly in newest-first descending order
+            if (targetMode in listOf("last_7_days", "last_30_days", "recent_trip", "date_descending", "date_range")) {
+                controller.setForceDescending(true)
+            } else if (targetMode == "all") {
+                controller.setForceDescending(false)
+            }
         }
 
         // Immediately trigger a hard background refresh of albums so newly uploaded trip photos land without waiting
-        fetchAllAndApply(showHint = false)
+        fetchAllAndApply(showHint = false, forceReapply = true)
     }
 
     private fun handleClearBroadcastMessage() {
@@ -1049,8 +1056,10 @@ class SlideshowComposeActivity : ComponentActivity() {
     /**
      * Fetch every configured album in the background; cache each and re-apply the merged
      * photo set as each one lands (only when the set actually changed, to avoid flicker).
+     * When [forceReapply] is true (e.g. after a showcase change or cache clear), the new
+     * photos are applied immediately even if the id count or items match.
      */
-    private fun fetchAllAndApply(showHint: Boolean) {
+    private fun fetchAllAndApply(showHint: Boolean, forceReapply: Boolean = false) {
         val albums = currentAlbums
         if (albums.isEmpty()) {
             return
@@ -1063,11 +1072,11 @@ class SlideshowComposeActivity : ComponentActivity() {
                     if (album.slides.isNotEmpty()) {
                         AlbumCache.write(prefs, url, album.slides, album.title)
                     }
-                    runOnUiThread { rebuildFromCaches(showHint) }
+                    runOnUiThread { rebuildFromCaches(showHint, forceReapply) }
                 } catch (e: Exception) {
                     Log.e(TAG, "album fetch failed: $url", e)
                     if (showHint) {
-                        runOnUiThread { rebuildFromCaches(true) }
+                        runOnUiThread { rebuildFromCaches(true, forceReapply) }
                     }
                 }
             }
@@ -1075,7 +1084,7 @@ class SlideshowComposeActivity : ComponentActivity() {
     }
 
     /** Recompute the slideshow from all albums' caches and apply it if it changed. */
-    private fun rebuildFromCaches(showHint: Boolean) {
+    private fun rebuildFromCaches(showHint: Boolean, forceReapply: Boolean = false) {
         val prefs = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
         if (currentAlbums != Albums.enabled(prefs)) {
             return // the playing album set changed while fetching
@@ -1102,7 +1111,7 @@ class SlideshowComposeActivity : ComponentActivity() {
             return
         }
         val ids = idsOf(merged)
-        if (ids != currentIds) {
+        if (forceReapply || ids != currentIds) {
             currentIds = ids
             controller.setItems(merged)
         }

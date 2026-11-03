@@ -215,9 +215,9 @@ internal object GooglePhotosSource : PhotoProvider {
         return Slide.NO_DATE
     }
 
-    // Cap how much of the share page we'll buffer: it's normally a few MB, and an
-    // unbounded read of a hostile/oversized response could exhaust memory.
-    private const val MAX_HTML_BYTES = 12 * 1024 * 1024
+    // Cap how much of the share page we'll buffer: it's normally a few MB, but for large
+    // albums (1500+ items) it can be 20-30 MB.
+    private const val MAX_HTML_BYTES = 32 * 1024 * 1024
 
     @Throws(Exception::class)
     private fun httpGet(urlStr: String?): String {
