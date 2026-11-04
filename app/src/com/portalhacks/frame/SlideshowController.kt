@@ -62,6 +62,10 @@ import java.util.TimeZone
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import java.net.NetworkInterface
+import java.net.URLEncoder
 import android.media.AudioTrack
 import android.media.AudioFormat
 import android.media.AudioAttributes
@@ -112,6 +116,10 @@ class SlideshowController(
     private lateinit var pillPlayBtn: ImageView
     private lateinit var pillVisualizer: AudioVisualizerView
     private lateinit var pauseHaIconBtn: ImageView
+    private lateinit var pauseRemoteQrOverlay: FrameLayout
+    private lateinit var pauseRemoteQrImage: ImageView
+    private lateinit var pauseRemoteQrIpText: TextView
+    private lateinit var pauseRemoteQrPortalText: TextView
     private lateinit var spotifyShortcutButton: LinearLayout
     private lateinit var appleMusicShortcutButton: LinearLayout
     private lateinit var musicShortcutsContainer: LinearLayout
@@ -1926,7 +1934,11 @@ class SlideshowController(
                             val dy = abs(event.y - downY)
                             val dt = event.eventTime - downTime
                             if (dx < TAP_SLOP && dy < TAP_SLOP && dt < TAP_TIMEOUT_MS) {
-                                resumeSlideshow()
+                                if (::pauseRemoteQrOverlay.isInitialized && pauseRemoteQrOverlay.visibility == View.VISIBLE) {
+                                    hideRemoteQrDialog()
+                                } else {
+                                    resumeSlideshow()
+                                }
                             }
                             return true
                         }
@@ -2013,6 +2025,9 @@ class SlideshowController(
             isFocusable = true
             setOnClickListener {
                 isEnabled = false
+                if (::pauseRemoteQrOverlay.isInitialized) {
+                    pauseRemoteQrOverlay.visibility = View.GONE
+                }
                 playButtonOverlay.visibility = View.GONE
                 onDismiss?.run()
             }
@@ -2141,9 +2156,281 @@ class SlideshowController(
         bottomControlDock.addView(resumeBtn)
         bottomControlDock.addView(nextBtn)
         bottomControlDock.addView(div2)
+
+        // Web Remote / QR button
+        val remoteBtn = TextView(context).apply {
+            text = "📱 Web Remote"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            typeface = Ui.medium(context)
+            gravity = Gravity.CENTER
+            val paddingH = Ui.dp(context, 20f)
+            val paddingV = Ui.dp(context, 14f)
+            setPadding(paddingH, paddingV, paddingH, paddingV)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x330A84FF.toInt())
+                cornerRadius = Ui.dp(context, 28f).toFloat()
+                setStroke(Ui.dp(context, 1.2f), 0x660A84FF.toInt())
+            }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                showRemoteQrDialog()
+            }
+        }
+        applySpringTouch(remoteBtn)
+        bottomControlDock.addView(remoteBtn)
+
+        val dockBtnSpacer = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(Ui.dp(context, 8f), 1)
+        }
+        bottomControlDock.addView(dockBtnSpacer)
         bottomControlDock.addView(settingsBtn)
 
         playButtonOverlay.addView(bottomControlDock)
+
+        initRemoteQrOverlay()
+    }
+
+    private fun initRemoteQrOverlay() {
+        pauseRemoteQrOverlay = FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(0xDD000000.toInt())
+            visibility = View.GONE
+            elevation = Ui.dp(context, 32f).toFloat()
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                hideRemoteQrDialog()
+            }
+        }
+
+        val cardW = min(Ui.dp(context, 480f), context.resources.displayMetrics.widthPixels - Ui.dp(context, 32f))
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            val padH = Ui.dp(context, 26f)
+            val padV = Ui.dp(context, 22f)
+            setPadding(padH, padV, padH, padV)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF1C1C1E.toInt())
+                cornerRadius = Ui.dp(context, 24f).toFloat()
+                setStroke(Ui.dp(context, 1.5f), 0x4DFFFFFF)
+            }
+            elevation = Ui.dp(context, 20f).toFloat()
+            isClickable = true // Prevent backdrop dismissal when tapping card
+            layoutParams = FrameLayout.LayoutParams(cardW, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+
+        val title = TextView(context).apply {
+            text = "📱 Web Remote & Dashboard"
+            setTextColor(Color.WHITE)
+            textSize = 21f
+            typeface = Ui.bold(context)
+            gravity = Gravity.CENTER
+        }
+        card.addView(title)
+
+        val subtitle = TextView(context).apply {
+            text = "Scan with phone camera to control slideshow, send notes & install apps"
+            setTextColor(0xFFA1A1A6.toInt())
+            textSize = 13f
+            typeface = Ui.medium(context)
+            gravity = Gravity.CENTER
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.topMargin = Ui.dp(context, 4f)
+            layoutParams = lp
+        }
+        card.addView(subtitle)
+
+        val qrContainerSize = Ui.dp(context, 220f)
+        val qrContainer = FrameLayout(context).apply {
+            val lp = LinearLayout.LayoutParams(qrContainerSize, qrContainerSize).apply {
+                topMargin = Ui.dp(context, 14f)
+            }
+            layoutParams = lp
+            val p = Ui.dp(context, 12f)
+            setPadding(p, p, p, p)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = Ui.dp(context, 18f).toFloat()
+            }
+        }
+
+        pauseRemoteQrImage = ImageView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        qrContainer.addView(pauseRemoteQrImage)
+        card.addView(qrContainer)
+
+        val infoBox = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = Ui.dp(context, 12f)
+            setPadding(pad, pad, pad, pad)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x1AFFFFFF)
+                cornerRadius = Ui.dp(context, 12f).toFloat()
+            }
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Ui.dp(context, 14f)
+            }
+            layoutParams = lp
+        }
+
+        pauseRemoteQrIpText = TextView(context).apply {
+            setTextColor(0xFF30D158.toInt())
+            textSize = 14f
+            typeface = Ui.bold(context)
+            gravity = Gravity.CENTER
+        }
+        infoBox.addView(pauseRemoteQrIpText)
+
+        val sideloadText = TextView(context).apply {
+            text = "Direct APK Sideload: /upload • Slideshow: /"
+            setTextColor(0xFF64D2FF.toInt())
+            textSize = 12f
+            gravity = Gravity.CENTER
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Ui.dp(context, 3f)
+            }
+            layoutParams = lp
+        }
+        infoBox.addView(sideloadText)
+
+        pauseRemoteQrPortalText = TextView(context).apply {
+            setTextColor(0xFF8E8E93.toInt())
+            textSize = 11f
+            gravity = Gravity.CENTER
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Ui.dp(context, 3f)
+            }
+            layoutParams = lp
+        }
+        infoBox.addView(pauseRemoteQrPortalText)
+        card.addView(infoBox)
+
+        val closeBtn = TextView(context).apply {
+            text = "✕ Close"
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            typeface = Ui.bold(context)
+            gravity = Gravity.CENTER
+            val padH = Ui.dp(context, 36f)
+            val padV = Ui.dp(context, 12f)
+            setPadding(padH, padV, padH, padV)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x33FFFFFF)
+                cornerRadius = Ui.dp(context, 20f).toFloat()
+            }
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Ui.dp(context, 14f)
+            }
+            layoutParams = lp
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                hideRemoteQrDialog()
+            }
+        }
+        applySpringTouch(closeBtn)
+        card.addView(closeBtn)
+
+        pauseRemoteQrOverlay.addView(card)
+        playButtonOverlay.addView(pauseRemoteQrOverlay)
+    }
+
+    private fun showRemoteQrDialog() {
+        try {
+            val localIp = getLocalIpAddress()
+            if (localIp != null) {
+                try { AlbumServer.startServer(context, 8080) } catch (_: Exception) {}
+            }
+            val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
+            val currentChannel = prefs.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL) ?: ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL
+            val aesKey = CryptoUtils.deriveAesKey(currentChannel)
+            val shortId = ConfigReceiver.getDeviceShortId(context)
+            val displayName = ConfigReceiver.getDeviceDisplayName(context)
+            val encodedName = java.net.URLEncoder.encode(displayName, "UTF-8")
+            val hostParam = if (localIp != null) "&host=${localIp}:8080" else ""
+            val pairUrl = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$currentChannel&key=$aesKey&id=$shortId&name=$encodedName$hostParam&v=1.6.28"
+
+            val qrBmp = generateQrBitmap(pairUrl, 320)
+            if (qrBmp != null) {
+                pauseRemoteQrImage.setImageBitmap(qrBmp)
+            }
+
+            if (localIp != null) {
+                pauseRemoteQrIpText.text = "Wi-Fi LAN IP: $localIp:8080"
+                pauseRemoteQrIpText.setTextColor(0xFF30D158.toInt())
+            } else {
+                pauseRemoteQrIpText.text = "Wi-Fi not connected"
+                pauseRemoteQrIpText.setTextColor(0xFFFF453A.toInt())
+            }
+
+            pauseRemoteQrPortalText.text = "$displayName (ID: $shortId) • Network: $currentChannel"
+
+            // Prevent auto-resume while user is scanning the QR code
+            handler.removeCallbacks(autoResumeRunnable)
+
+            pauseRemoteQrOverlay.alpha = 0f
+            pauseRemoteQrOverlay.visibility = View.VISIBLE
+            pauseRemoteQrOverlay.animate().alpha(1f).setDuration(200).start()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to show Remote QR dialog", e)
+        }
+    }
+
+    private fun hideRemoteQrDialog() {
+        if (!::pauseRemoteQrOverlay.isInitialized || pauseRemoteQrOverlay.visibility != View.VISIBLE) return
+        pauseRemoteQrOverlay.animate().alpha(0f).setDuration(150).withEndAction {
+            pauseRemoteQrOverlay.visibility = View.GONE
+            resetAutoResumeTimer()
+        }.start()
+    }
+
+    private fun generateQrBitmap(text: String, sizePx: Int): Bitmap? {
+        return try {
+            val bitMatrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, sizePx, sizePx)
+            val w = bitMatrix.width
+            val h = bitMatrix.height
+            val pixels = IntArray(w * h)
+            for (y in 0 until h) {
+                val offset = y * w
+                for (x in 0 until w) {
+                    pixels[offset + x] = if (bitMatrix.get(x, y)) Color.BLACK else Color.WHITE
+                }
+            }
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            bmp.setPixels(pixels, 0, w, 0, 0, w, h)
+            bmp
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to generate QR bitmap", e)
+            null
+        }
+    }
+
+    private fun getLocalIpAddress(): String? {
+        try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (intf in interfaces) {
+                val addrs = Collections.list(intf.inetAddresses)
+                for (addr in addrs) {
+                    if (!addr.isLoopbackAddress) {
+                        val sAddr = addr.hostAddress
+                        if (sAddr != null && sAddr.indexOf(':') < 0) {
+                            return sAddr
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return null
     }
 
     private fun showPlayButtonOverlay() {
@@ -2172,6 +2459,9 @@ class SlideshowController(
     }
 
     private fun hidePlayButtonOverlay() {
+        if (::pauseRemoteQrOverlay.isInitialized) {
+            pauseRemoteQrOverlay.visibility = View.GONE
+        }
         playButtonOverlay.animate().cancel()
         playButtonOverlay.animate().alpha(0f).setDuration(200).withEndAction {
             playButtonOverlay.visibility = View.GONE

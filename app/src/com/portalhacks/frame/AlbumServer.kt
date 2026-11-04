@@ -167,6 +167,20 @@ class AlbumServer(
                     sendResponse(socket, 200, "OK", "text/html; charset=utf-8", html.toByteArray(Charsets.UTF_8))
                 }
 
+                // 1-Tap redirect to Web Dashboard (message.html) with auto-credentials
+                method == "GET" && (rawPath == "/remote" || rawPath == "/dashboard" || rawPath == "/message.html" || rawPath == "/control") -> {
+                    val channel = prefs.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL) ?: ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL
+                    val aesKey = CryptoUtils.deriveAesKey(channel)
+                    val shortId = ConfigReceiver.getDeviceShortId(context)
+                    val displayName = java.net.URLEncoder.encode(ConfigReceiver.getDeviceDisplayName(context), "UTF-8")
+                    val host = socket.localAddress?.hostAddress ?: ""
+                    val hostParam = if (host.isNotEmpty() && !host.startsWith("127.")) "&host=${host}:8080" else ""
+                    val dest = "https://raw.githack.com/Tech33/Portal-Frame/main/message.html?channel=$channel&key=$aesKey&id=$shortId&name=$displayName$hostParam&v=1.6.28"
+                    val resp = "HTTP/1.1 302 Found\r\nLocation: $dest\r\nConnection: close\r\n\r\n"
+                    socket.getOutputStream().write(resp.toByteArray(Charsets.UTF_8))
+                    socket.getOutputStream().flush()
+                }
+
                 // JSON list of active slides
                 method == "GET" && rawPath == "/api/slides" -> {
                     val json = getSlidesJson(prefs)

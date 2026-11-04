@@ -1061,11 +1061,14 @@ class SettingsActivity : ComponentActivity() {
         }
 
         val cardPortalIdentity: @Composable () -> Unit = {
-            Card("Portal Identity") {
+            Card("Phone Remote & Local Web Dashboard (message.html)") {
                 val displayName = ConfigReceiver.getDeviceDisplayName(ctx)
                 val shortId = ConfigReceiver.getDeviceShortId(ctx)
                 val localIp = remember { getLocalIpAddress() }
                 var showPairQr by remember { mutableStateOf(false) }
+
+                Body("Control this frame wirelessly from any smartphone, tablet, or PC on your home Wi-Fi. Scan the QR code or navigate to the local endpoints below to control slideshow playback, push announcements, and install companion APKs.")
+                Spacer(Modifier.height(12.dp))
 
                 Row(
                     modifier = Modifier
@@ -1189,6 +1192,29 @@ class SettingsActivity : ComponentActivity() {
                             fontSize = 11.sp
                         )
                     }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0x10FFFFFF))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "🌐 Direct Browser Endpoints (Same Wi-Fi)",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "• Web Remote & Fleet: http://${localIp ?: "<Portal-IP>"}:8080/remote (or message.html)\n• 1-Click APK Installer: http://${localIp ?: "<Portal-IP>"}:8080/upload\n• Live Slideshow Stream: http://${localIp ?: "<Portal-IP>"}:8080/",
+                        color = PortalColors.TextMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
                 }
 
                 Spacer(Modifier.height(8.dp))
