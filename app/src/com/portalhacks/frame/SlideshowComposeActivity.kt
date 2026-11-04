@@ -258,24 +258,29 @@ class SlideshowComposeActivity : ComponentActivity() {
         }
 
         // 1. Album Sync: #setalbum:<url>, #replacealbum:<url>, #addalbum:<url>, #album:<url>, or raw Google/iCloud Photos URL
-        val albumUrlRegex = Regex("""https?://(?:photos\.app\.goo\.gl/[^\s]+|photos\.google\.com/[^\s]+|share\.icloud\.com/photos/[^\s]+)""")
-        val setAlbumMatch = Regex("""#(?:setalbum|replacealbum):([^\s]+)""", RegexOption.IGNORE_CASE).find(trimmed)
-        val addAlbumMatch = Regex("""#(?:addalbum|album):([^\s]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+        val albumUrlRegex = Regex("""https?://(?:photos\.app\.goo\.gl/[^\s,"';|]+|photos\.google\.com/[^\s,"';|]+|share\.icloud\.com/photos/[^\s,"';|]+)""")
+        val setAlbumMatch = Regex("""#(?:setalbum|replacealbum|setalbums):([^\r\n]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+        val addAlbumMatch = Regex("""#(?:addalbum|addalbums|album):([^\r\n]+)""", RegexOption.IGNORE_CASE).find(trimmed)
         val rawUrlMatch = albumUrlRegex.find(trimmed)
 
         if (setAlbumMatch != null || addAlbumMatch != null || (rawUrlMatch != null && !trimmed.contains("#showcase:"))) {
             val replace = setAlbumMatch != null || currentAlbums.isEmpty()
-            val targetUrl = setAlbumMatch?.groupValues?.get(1)
+            val targetText = setAlbumMatch?.groupValues?.get(1)
                 ?: addAlbumMatch?.groupValues?.get(1)
-                ?: rawUrlMatch?.value ?: ""
+                ?: if (!trimmed.contains("#showcase:")) trimmed else ""
 
-            if (targetUrl.isNotEmpty()) {
+            val extractedUrls = albumUrlRegex.findAll(targetText).map { it.value.trim() }.distinct().toList()
+
+            if (extractedUrls.isNotEmpty()) {
                 if (replace) {
                     Albums.clear(prefs)
                 }
-                Albums.add(prefs, targetUrl)
+                for (u in extractedUrls) {
+                    Albums.add(prefs, u)
+                }
                 currentAlbums = Albums.enabled(prefs)
-                controller.showTemporaryBanner("🖼️ Syncing family album...")
+                val countMsg = if (extractedUrls.size > 1) "${extractedUrls.size} family albums" else "family album"
+                controller.showTemporaryBanner("🖼️ Syncing $countMsg...")
                 controller.setStatusHint("Loading new album photos…")
                 fetchAllAndApply(showHint = true)
                 return

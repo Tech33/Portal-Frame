@@ -879,10 +879,10 @@
           <span>📁</span> Add a New Photo Album
         </div>
         <p class="section-desc">
-          Paste a Google Photos or iCloud shared link to display photos on the frame:
+          Paste Google Photos shared link(s) to display photos across all remote Portals:
         </p>
 
-        <input type="url" id="album-input" placeholder="https://photos.app.goo.gl/..." class="input-text">
+        <textarea id="album-input" rows="3" placeholder="https://photos.app.goo.gl/...&#10;💡 Tip: Paste 2 or 3 links on separate lines to exceed 300 photos (e.g. 900+ photos)!" class="input-text" style="resize: vertical; min-height: 78px; font-family: -apple-system, sans-serif; font-size: 13px; padding: 12px; line-height: 1.4;"></textarea>
         
         <div class="pill-actions">
           <button class="pill-btn tap-scale" onclick="pasteAlbum()">
@@ -896,7 +896,7 @@
         <div class="radio-box">
           <label class="radio-label">
             <input type="radio" name="album-mode" value="replace" checked style="accent-color: #0A84FF;">
-            <span>Show only this album (replaces current)</span>
+            <span>Show only these albums (replaces current)</span>
           </label>
           <label class="radio-label">
             <input type="radio" name="album-mode" value="add" style="accent-color: #0A84FF;">
@@ -1394,14 +1394,24 @@
     }
 
     async function sendAlbum() {
-      const url = document.getElementById('album-input').value.trim();
-      if (!url) {
-        showToast('Please paste a Google Photos or iCloud link first.', 'error');
+      const rawText = document.getElementById('album-input').value.trim();
+      if (!rawText) {
+        showToast('Please paste a Google Photos shared link first.', 'error');
+        return;
+      }
+      const urlRegex = /https?:\/\/[^\s,"';|]+/g;
+      const urls = rawText.match(urlRegex) || [];
+      if (urls.length === 0) {
+        showToast('No valid photo links detected.', 'error');
         return;
       }
       const isReplace = document.querySelector('input[name="album-mode"]:checked').value === 'replace';
-      const tag = isReplace ? `#setalbum:${url}` : `#addalbum:${url}`;
-      await sendPayload(tag, '✓ Album sent! Portals are downloading and showing photos.');
+      const joined = urls.join(' | ');
+      const tag = isReplace ? `#setalbum:${joined}` : `#addalbum:${joined}`;
+      const msg = urls.length > 1
+        ? `✓ ${urls.length} albums sent! Connected Portals are downloading and merging photos.`
+        : '✓ Album sent! Connected Portals are downloading and showing photos.';
+      await sendPayload(tag, msg);
       document.getElementById('album-input').value = '';
     }
 
