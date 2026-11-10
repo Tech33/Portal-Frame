@@ -257,6 +257,8 @@ class SlideshowComposeActivity : ComponentActivity() {
             }
         }
 
+        var displayMsg = trimmed
+
         // 1. Album Sync: #setalbum:<url>, #replacealbum:<url>, #addalbum:<url>, #album:<url>, or raw Google/iCloud Photos URL
         val albumUrlRegex = Regex("""https?://(?:photos\.app\.goo\.gl/[^\s,"';|]+|photos\.google\.com/[^\s,"';|]+|share\.icloud\.com/photos/[^\s,"';|]+)""")
         val setAlbumMatch = Regex("""#(?:setalbum|replacealbum|setalbums):([^\r\n]+)""", RegexOption.IGNORE_CASE).find(trimmed)
@@ -283,11 +285,22 @@ class SlideshowComposeActivity : ComponentActivity() {
                 controller.showTemporaryBanner("🖼️ Syncing $countMsg...")
                 controller.setStatusHint("Loading new album photos…")
                 fetchAllAndApply(showHint = true)
-                return
+
+                // If broadcast also included a note message, apply the note instead of dropping it
+                var remainingText = trimmed
+                if (setAlbumMatch != null) remainingText = remainingText.replace(setAlbumMatch.value, "")
+                if (addAlbumMatch != null) remainingText = remainingText.replace(addAlbumMatch.value, "")
+                for (u in extractedUrls) remainingText = remainingText.replace(u, "")
+                remainingText = remainingText.replace("#setalbum:", "").replace("#addalbum:", "").trim()
+
+                if (remainingText.isNotEmpty()) {
+                    displayMsg = remainingText
+                } else {
+                    return
+                }
             }
         }
 
-        var displayMsg = trimmed
         var targetMode: String? = null
         var targetLoc: String? = null
 
@@ -895,8 +908,21 @@ class SlideshowComposeActivity : ComponentActivity() {
         handler.removeCallbacks(refreshTick)
         handler.postDelayed(refreshTick, REFRESH_INTERVAL_MS)
 
+        // Continuous cloud broadcast listener: checks for new albums, notes, and showcase commands every 10s
+        handler.removeCallbacks(cloudPollRunnable)
+        handler.post(cloudPollRunnable)
+
         // Apply clock only mode at the end to override slideshow if needed
         applyClockOnlyMode()
+    }
+
+    private val cloudPollRunnable = object : Runnable {
+        override fun run() {
+            if (::controller.isInitialized) {
+                controller.pollRemoteAnnouncement()
+            }
+            handler.postDelayed(this, 10_000L)
+        }
     }
 
     override fun onPause() {
@@ -906,6 +932,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         sensorManager.unregisterListener(lightListener)
         handler.removeCallbacks(refreshTick)
         handler.removeCallbacks(scheduleTick)
+        handler.removeCallbacks(cloudPollRunnable)
         controller.stop()
     }
 

@@ -779,8 +779,8 @@
       <!-- Live Delivery Confirmation Box -->
       <div id="delivery-receipts" class="delivery-receipts hidden">
         <div class="delivery-receipts-title">
-          <span>📡 Delivery Receipts (Family Fleet)</span>
-          <span id="receipts-count" class="receipts-badge">0</span>
+          <span>📡 Broadcast Relay Status</span>
+          <span id="receipts-count" class="receipts-badge">Sent</span>
         </div>
         <div id="receipts-list" class="receipts-list"></div>
       </div>
@@ -1524,31 +1524,26 @@
       box.classList.remove('hidden');
       const list = document.getElementById('receipts-list');
       const count = document.getElementById('receipts-count');
-      count.innerText = `0/${fleetDevices.length}`;
+      if (count) count.innerText = `Transmitted`;
 
-      list.innerHTML = fleetDevices.map(d => `
-        <div id="receipt-row-${d.id}" class="receipt-item">
-          <span>${d.name || 'Portal'}</span>
-          <span id="receipt-status-${d.id}" style="color: #8E8E93;">Transmitting...</span>
+      list.innerHTML = `
+        <div class="receipt-item received" style="flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px; background: rgba(48,209,88,0.08); border: 1px solid rgba(48,209,88,0.25); border-radius: 10px;">
+          <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+            <span style="font-weight: 700; color: #30D158; font-size: 13px;">✓ Encrypted & Broadcasted to Cloud Relay</span>
+            <span style="color: #64D2FF; font-weight: 600; font-size: 12px; background: rgba(10,132,255,0.15); padding: 2px 8px; border-radius: 6px;">Channel: ${currentActiveChannel}</span>
+          </div>
+          <div style="font-size: 12px; color: #E5E5EA; line-height: 1.4;">
+            All Portals connected to family network <b>"${currentActiveChannel}"</b> poll this relay every 10 seconds.
+          </div>
+          <div style="font-size: 11px; color: #8E8E93; line-height: 1.3; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 4px; width: 100%;">
+            💡 Tip: Ensure both Portals have the same Family Network name set in Settings → Announcement Banner.
+          </div>
         </div>
-      `).join('');
+      `;
     }
 
     function simulateDeliveryReceipts() {
-      let receivedCount = 0;
-      fleetDevices.forEach((d, idx) => {
-        setTimeout(() => {
-          const row = document.getElementById(`receipt-row-${d.id}`);
-          const status = document.getElementById(`receipt-status-${d.id}`);
-          const count = document.getElementById(`receipts-count`);
-          if (row && status) {
-            row.classList.add('received');
-            status.innerHTML = `<span style="color:#30D158; font-weight:700;">✓ Delivered</span>`;
-            receivedCount++;
-            if (count) count.innerText = `${receivedCount}/${fleetDevices.length}`;
-          }
-        }, 400 + idx * 300);
-      });
+      // Replaced with honest broadcast status in renderDeliveryReceipts
     }
 
     function updateFleetTabLabel() {

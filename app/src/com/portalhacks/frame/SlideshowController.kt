@@ -1579,9 +1579,9 @@ class SlideshowController(
         pollRemoteAnnouncement()
     }
 
-    private fun pollRemoteAnnouncement() {
+    fun pollRemoteAnnouncement(force: Boolean = false) {
         val now = System.currentTimeMillis()
-        if (now - lastAnnouncementPollMs < 15_000L) return
+        if (!force && now - lastAnnouncementPollMs < 10_000L) return
         lastAnnouncementPollMs = now
 
         ImageLoader(context).executor().execute {
@@ -1603,19 +1603,21 @@ class SlideshowController(
                     if (resp.isNotEmpty() && resp != "null") {
                         val lastSeenRemote = prefs.getString("last_remote_announcement_seen", "") ?: ""
                         if (resp != lastSeenRemote) {
-                            prefs.edit().putString("last_remote_announcement_seen", resp).apply()
                             val aesKey = CryptoUtils.deriveAesKey(channel)
                             val decrypted = CryptoUtils.decrypt(resp, aesKey).trim()
-                            if (decrypted == "__CLEAR__") {
-                                context.sendBroadcast(
-                                    Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE).setPackage(context.packageName)
-                                )
-                            } else if (decrypted.isNotEmpty()) {
-                                context.sendBroadcast(
-                                    Intent(ConfigReceiver.ACTION_SET_MESSAGE)
-                                        .setPackage(context.packageName)
-                                        .putExtra("message", decrypted)
-                                )
+                            if (decrypted.isNotEmpty()) {
+                                prefs.edit().putString("last_remote_announcement_seen", resp).apply()
+                                if (decrypted == "__CLEAR__") {
+                                    context.sendBroadcast(
+                                        Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE).setPackage(context.packageName)
+                                    )
+                                } else {
+                                    context.sendBroadcast(
+                                        Intent(ConfigReceiver.ACTION_SET_MESSAGE)
+                                            .setPackage(context.packageName)
+                                            .putExtra("message", decrypted)
+                                    )
+                                }
                             }
                         }
                     }
