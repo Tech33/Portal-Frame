@@ -575,11 +575,17 @@ class MqttManager private constructor(context: Context) {
             "$prefix/message/set" -> {
                 if (msg.isEmpty() || msg == "__CLEAR__") {
                     prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
-                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE))
+                    appContext.sendBroadcast(
+                        Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE).setPackage(appContext.packageName)
+                    )
                     publishState("$prefix/message/state", "")
                 } else {
                     prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, msg).apply()
-                    appContext.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", msg))
+                    appContext.sendBroadcast(
+                        Intent(ConfigReceiver.ACTION_SET_MESSAGE)
+                            .setPackage(appContext.packageName)
+                            .putExtra("message", msg)
+                    )
                     publishState("$prefix/message/state", msg)
                 }
             }

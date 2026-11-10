@@ -209,7 +209,11 @@ class AlbumServer(
                     val msg = parseFormParam(bodyStr, "message") ?: parseJsonMessage(bodyStr) ?: ""
                     val sanitized = sanitizeHtml(msg.trim().take(200))
                     prefs.edit().putString(ConfigReceiver.KEY_CUSTOM_MESSAGE, sanitized).apply()
-                    context.sendBroadcast(Intent(ConfigReceiver.ACTION_SET_MESSAGE).putExtra("message", sanitized))
+                    context.sendBroadcast(
+                        Intent(ConfigReceiver.ACTION_SET_MESSAGE)
+                            .setPackage(context.packageName)
+                            .putExtra("message", sanitized)
+                    )
                     MqttManager.getInstance(context).publishAllStates()
                     if (rawPath == "/api/message" || queryString.contains("format=json")) {
                         val receipt = JSONObject()

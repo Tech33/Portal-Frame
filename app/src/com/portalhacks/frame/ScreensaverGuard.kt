@@ -107,12 +107,22 @@ class ScreensaverGuardService : Service() {
         }
     }
 
+    private val cloudPollRunnable = object : Runnable {
+        override fun run() {
+            CloudRelayPoller.poll(this@ScreensaverGuardService)
+            handler.postDelayed(this, 12000)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         startForeground(NOTIF_ID, buildNotification())
 
         // Always ensure local AlbumServer is listening for Kiosk / Home Assistant / QR requests
         AlbumServer.startServer(this)
+
+        // Keep 24/7 Cloud Relay Poller active so albums & messages are never lost when app is closed
+        handler.post(cloudPollRunnable)
 
         val prefs = getSharedPreferences("portalframe", Context.MODE_PRIVATE)
         val haMode = prefs.getBoolean(ConfigReceiver.KEY_HA_BRIDGE_MODE, ConfigReceiver.DEFAULT_HA_BRIDGE_MODE)
@@ -171,6 +181,7 @@ class ScreensaverGuardService : Service() {
     override fun onDestroy() {
         observer?.let { contentResolver.unregisterContentObserver(it) }
         handler.removeCallbacks(checkRunnable)
+        handler.removeCallbacks(cloudPollRunnable)
         super.onDestroy()
     }
 
@@ -205,12 +216,11 @@ class ScreensaverGuardService : Service() {
             ctx.startForegroundService(Intent(ctx, ScreensaverGuardService::class.java))
         }
 
-        /** Start the guard only if the user opted in and we can write settings. */
+        /** Start the guard only if the user opted in. */
         fun startIfEnabled(ctx: Context) {
             val prefs = ctx.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
 
             if (!prefs.getBoolean(ConfigReceiver.KEY_GUARD, true)) return
-            if (!Screensaver.canWrite(ctx)) return
             start(ctx)
         }
 

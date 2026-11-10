@@ -19,6 +19,8 @@ class PortalFrameApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AlbumCache.setContext(this)
+        ScreensaverGuardService.startIfEnabled(this)
         setupCrashWatchdog()
     }
 

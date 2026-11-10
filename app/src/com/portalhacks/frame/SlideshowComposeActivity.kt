@@ -596,6 +596,9 @@ class SlideshowComposeActivity : ComponentActivity() {
         // Start MQTT if enabled
         MqttManager.startIfEnabled(this)
 
+        // Ensure persistent 24/7 background guard service is active
+        ScreensaverGuardService.startIfEnabled(this)
+
         // Start Presence Detector (Aloha CV heartbeats)
         presenceDetector = PresenceDetector(this) { isPresent ->
             val wasClockOnly = noPresenceClockOnly
@@ -909,6 +912,7 @@ class SlideshowComposeActivity : ComponentActivity() {
         handler.postDelayed(refreshTick, REFRESH_INTERVAL_MS)
 
         // Continuous cloud broadcast listener: checks for new albums, notes, and showcase commands every 10s
+        CloudRelayPoller.poll(this, force = true)
         handler.removeCallbacks(cloudPollRunnable)
         handler.post(cloudPollRunnable)
 

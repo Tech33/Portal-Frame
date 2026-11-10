@@ -129,7 +129,12 @@
         <!-- Set the Google Photos shared-album URL over ADB (see ConfigReceiver). -->
         <receiver
             android:name=".ConfigReceiver"
-            android:exported="true" />
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.portalhacks.frame.SET_MESSAGE" />
+                <action android:name="com.portalhacks.frame.CLEAR_MESSAGE" />
+            </intent-filter>
+        </receiver>
 
         <!-- Re-asserts Frame as the screensaver when the launcher reclaims the dream
              slot. Needs WRITE_SECURE_SETTINGS (granted over ADB); see ScreensaverGuard. -->

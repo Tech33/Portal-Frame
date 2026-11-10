@@ -1580,51 +1580,7 @@ class SlideshowController(
     }
 
     fun pollRemoteAnnouncement(force: Boolean = false) {
-        val now = System.currentTimeMillis()
-        if (!force && now - lastAnnouncementPollMs < 10_000L) return
-        lastAnnouncementPollMs = now
-
-        ImageLoader(context).executor().execute {
-            try {
-                val prefs = context.getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
-                val channel = prefs.getString(ConfigReceiver.KEY_ANNOUNCEMENT_CHANNEL, ConfigReceiver.DEFAULT_ANNOUNCEMENT_CHANNEL)?.trim() ?: "portal_broadcast"
-                if (channel.isEmpty()) return@execute
-                val url = "https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/${java.net.URLEncoder.encode(channel, "UTF-8")}"
-                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 4000
-                conn.readTimeout = 4000
-                if (conn.responseCode == 200) {
-                    val reader = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream))
-                    var resp = reader.readLine()?.trim() ?: ""
-                    reader.close()
-                    if (resp.startsWith("\"") && resp.endsWith("\"")) {
-                        resp = resp.substring(1, resp.length - 1)
-                    }
-                    if (resp.isNotEmpty() && resp != "null") {
-                        val lastSeenRemote = prefs.getString("last_remote_announcement_seen", "") ?: ""
-                        if (resp != lastSeenRemote) {
-                            val aesKey = CryptoUtils.deriveAesKey(channel)
-                            val decrypted = CryptoUtils.decrypt(resp, aesKey).trim()
-                            if (decrypted.isNotEmpty()) {
-                                prefs.edit().putString("last_remote_announcement_seen", resp).apply()
-                                if (decrypted == "__CLEAR__") {
-                                    context.sendBroadcast(
-                                        Intent(ConfigReceiver.ACTION_CLEAR_MESSAGE).setPackage(context.packageName)
-                                    )
-                                } else {
-                                    context.sendBroadcast(
-                                        Intent(ConfigReceiver.ACTION_SET_MESSAGE)
-                                            .setPackage(context.packageName)
-                                            .putExtra("message", decrypted)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                conn.disconnect()
-            } catch (_: Exception) {}
-        }
+        CloudRelayPoller.poll(context, force)
     }
 
     fun setStatusHint(text: String?) {

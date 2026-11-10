@@ -26,6 +26,22 @@ class ConfigReceiver : BroadcastReceiver() {
         }
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+        val action = intent.action
+        if (action == ACTION_CLEAR_MESSAGE) {
+            prefs.edit().remove(KEY_CUSTOM_MESSAGE).apply()
+            Log.i("PortalFrame", "Custom message cleared via broadcast")
+            return
+        }
+        if (action == ACTION_SET_MESSAGE) {
+            if (!intent.getBooleanExtra("from_poller", false)) {
+                val msg = intent.getStringExtra("message") ?: ""
+                if (msg.isNotEmpty()) {
+                    CloudRelayPoller.dispatchCommand(ctx, msg)
+                }
+            }
+            return
+        }
+
         // This receiver is exported (so albums can be managed over ADB), which means any
         // installed app could broadcast to it. `url` adds a recognised shared-album link
         // (empty clears ALL albums); `remove_url` removes one. Unrecognised links are
