@@ -110,17 +110,33 @@ object CloudRelayPoller {
             return
         }
 
-        // 2. Remote OTA Update: #update or #ota
-        if (trimmed.equals("#update", ignoreCase = true) || trimmed.equals("#ota", ignoreCase = true) ||
+        // 2. Remote OTA Update: #update or #ota or #update:<targetId>
+        if (trimmed.startsWith("#update", ignoreCase = true) || trimmed.startsWith("#ota", ignoreCase = true) ||
             trimmed.contains("#update") || trimmed.contains("#ota")) {
-            Log.i(TAG, "CloudRelayPoller: triggering background auto-update")
-            AutoUpdateWorker.triggerNow(context)
-            context.sendBroadcast(
-                Intent(ConfigReceiver.ACTION_SET_MESSAGE)
-                    .setPackage(context.packageName)
-                    .putExtra("message", trimmed)
-                    .putExtra("from_poller", true)
-            )
+            val parts = trimmed.split(":")
+            val targetId = if (parts.size >= 2) parts[1].trim() else "all"
+            if (matchesDevice(context, targetId)) {
+                Log.i(TAG, "CloudRelayPoller: triggering background auto-update for target: $targetId")
+                AutoUpdateWorker.triggerNow(context)
+                context.sendBroadcast(
+                    Intent(ConfigReceiver.ACTION_SET_MESSAGE)
+                        .setPackage(context.packageName)
+                        .putExtra("message", trimmed)
+                        .putExtra("from_poller", true)
+                )
+            }
+            return
+        }
+
+        // 2.5. Remote Status Ping Request: #ping or #status
+        if (trimmed.equals("#ping", ignoreCase = true) || trimmed.equals("#status", ignoreCase = true) ||
+            trimmed.startsWith("#ping:", ignoreCase = true) || trimmed.startsWith("#status:", ignoreCase = true)) {
+            val parts = trimmed.split(":")
+            val targetId = if (parts.size >= 2) parts[1].trim() else "all"
+            if (matchesDevice(context, targetId)) {
+                Log.i(TAG, "CloudRelayPoller: responding to status ping request")
+                AutoUpdateWorker.postHeartbeat(context)
+            }
             return
         }
 

@@ -321,6 +321,13 @@ class AlbumServer(
                     sendResponse(socket, 200, "OK", "application/json; charset=utf-8", status.toString().toByteArray(Charsets.UTF_8))
                 }
 
+                // Dedicated Remote Update trigger endpoint
+                (method == "POST" || method == "GET") && (rawPath == "/api/update" || rawPath == "/update") -> {
+                    AutoUpdateWorker.triggerNow(context)
+                    val resp = JSONObject().put("status", "updating").put("message", "Update triggered")
+                    sendResponse(socket, 200, "OK", "application/json; charset=utf-8", resp.toString().toByteArray(Charsets.UTF_8))
+                }
+
                 // Currently playing media art stream
                 method == "GET" && (rawPath == "/api/media/art" || rawPath == "/media/art") -> {
                     val art = MediaMonitor.currentState.art

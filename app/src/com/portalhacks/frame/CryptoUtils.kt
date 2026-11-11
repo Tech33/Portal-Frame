@@ -20,6 +20,21 @@ object CryptoUtils {
         return hex.substring(0, 16)
     }
 
+    fun encrypt(plainText: String, keyStr: String): String {
+        return try {
+            val keySpec = SecretKeySpec(keyStr.toByteArray(Charsets.UTF_8), "AES")
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            val iv = ByteArray(16)
+            java.security.SecureRandom().nextBytes(iv)
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec, IvParameterSpec(iv))
+            val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+            val combined = iv + encrypted
+            combined.joinToString("") { "%02x".format(it) }
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
     fun decrypt(hexStr: String, keyStr: String): String {
         return try {
             if (hexStr.length < 34) return ""

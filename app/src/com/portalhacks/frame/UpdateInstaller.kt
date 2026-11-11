@@ -2,10 +2,14 @@ package com.portalhacks.frame
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import java.io.BufferedInputStream
 import java.io.File
@@ -47,7 +51,77 @@ internal object UpdateInstaller {
                 return null
             }
         }
+        val (sigMatch, _) = checkSignatureCompatibility(context, dest)
+        if (!sigMatch) {
+            dest.delete()
+            return null
+        }
         return dest
+    }
+
+    /**
+     * Checks if the target APK's certificate signature is compatible with the installed app.
+     * Prevents silent installation aborts due to INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+     */
+    fun checkSignatureCompatibility(context: Context, apkFile: File): Pair<Boolean, String?> {
+        try {
+            val pm = context.packageManager
+            val installedSignatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val pi = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                pi.signingInfo?.apkContentsSigners?.map { sha256Hex(it.toByteArray()) }?.toSet()
+            } else {
+                @Suppress("DEPRECATION")
+                val pi = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+                @Suppress("DEPRECATION")
+                pi.signatures?.map { sha256Hex(it.toByteArray()) }?.toSet()
+            } ?: emptySet()
+
+            val apkSignatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val pi = pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
+                pi?.signingInfo?.apkContentsSigners?.map { sha256Hex(it.toByteArray()) }?.toSet()
+            } else {
+                @Suppress("DEPRECATION")
+                val pi = pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
+                @Suppress("DEPRECATION")
+                pi?.signatures?.map { sha256Hex(it.toByteArray()) }?.toSet()
+            } ?: emptySet()
+
+            if (installedSignatures.isEmpty() || apkSignatures.isEmpty()) {
+                return Pair(true, null)
+            }
+
+            val matches = installedSignatures.intersect(apkSignatures).isNotEmpty()
+            if (!matches) {
+                val msg = "Signature mismatch: Installed app was signed with a different certificate. A clean reinstall is required."
+                Log.e(TAG, msg)
+                return Pair(false, msg)
+            }
+            return Pair(true, null)
+        } catch (e: Exception) {
+            Log.w(TAG, "Signature pre-check exception: ${e.message}", e)
+            return Pair(true, null)
+        }
+    }
+
+    /**
+     * Ensures minimum disk headroom before downloading or installing APK.
+     * Automatically prunes image caches and deletes stale temporary updates.
+     */
+    fun ensureDiskHeadroom(context: Context, minRequiredBytes: Long = 250L * 1024 * 1024): Boolean {
+        val cacheDir = context.cacheDir
+        if (cacheDir.usableSpace < minRequiredBytes) {
+            Log.w(TAG, "Low disk headroom (${cacheDir.usableSpace / 1024 / 1024}MB), purging old files...")
+            try {
+                ImageLoader(context).pruneDiskCacheIfNeeded()
+                val ext = context.externalCacheDir ?: context.cacheDir
+                ext.listFiles()?.forEach { f ->
+                    if (f.name.endsWith(".tmp") || (f.name.startsWith("frame-update-") && f.name.endsWith(".apk"))) {
+                        f.delete()
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        return cacheDir.usableSpace >= (80L * 1024 * 1024)
     }
 
     /** Download [manifest.apkUrl] into [Context.cacheDir] with real-time progress callbacks. */
@@ -61,6 +135,10 @@ internal object UpdateInstaller {
             val szMb = existing.length() / (1024f * 1024f)
             onProgress?.invoke(100, szMb, szMb)
             return Result.Ready(existing)
+        }
+
+        if (!ensureDiskHeadroom(context)) {
+            return Result.Error("Insufficient storage space. Please free up space on device.")
         }
 
         val url = manifest.apkUrl
@@ -124,6 +202,12 @@ internal object UpdateInstaller {
                     return Result.Error("Download failed integrity check.")
                 }
             }
+            val (sigMatch, sigError) = checkSignatureCompatibility(context, dest)
+            if (!sigMatch) {
+                dest.delete()
+                return Result.Error(sigError ?: "Certificate signature mismatch.")
+            }
+
             onProgress?.invoke(100, total / (1024f * 1024f), totalMb)
             return Result.Ready(dest)
         } catch (e: Exception) {
@@ -143,6 +227,21 @@ internal object UpdateInstaller {
         if (!apk.isFile) {
             return false
         }
+
+        // 1. Pre-flight signature validation
+        val (sigMatch, sigError) = checkSignatureCompatibility(context, apk)
+        if (!sigMatch) {
+            Log.e(TAG, "Refusing promptInstall: $sigError")
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(context, "⚠️ Update error: $sigError", Toast.LENGTH_LONG).show()
+            }
+            return false
+        }
+
+        // 2. Pre-flight disk space check
+        ensureDiskHeadroom(context)
+
+        // 3. Unknown apps permission check
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !context.packageManager.canRequestPackageInstalls()
         ) {
@@ -195,5 +294,10 @@ internal object UpdateInstaller {
             }
         }
         return digest.digest().joinToString("") { b -> "%02x".format(b) }
+    }
+
+    fun sha256Hex(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(bytes).joinToString("") { "%02x".format(it) }
     }
 }

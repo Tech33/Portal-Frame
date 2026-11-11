@@ -12,6 +12,12 @@ class BootReceiver : BroadcastReceiver() {
 
         if (intent?.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             try {
+                val curVer = UpdateChecker.currentVersionName(ctx)
+                val curCode = UpdateChecker.currentVersionCode(ctx)
+                AutoUpdateWorker.postUpdateStatus(ctx, "success", "✓ Successfully updated to v$curVer (Build $curCode)", 100)
+            } catch (_: Exception) {}
+
+            try {
                 val launchIntent = Intent(ctx, SlideshowComposeActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 }

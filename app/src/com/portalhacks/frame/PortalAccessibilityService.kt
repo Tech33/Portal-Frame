@@ -7,6 +7,7 @@ import android.content.Intent
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Toast
 
 class PortalAccessibilityService : AccessibilityService() {
 
@@ -244,10 +245,35 @@ class PortalAccessibilityService : AccessibilityService() {
             viewId.endsWith(":id/done_button") ||
             viewId.endsWith(":id/launch_button")
         )
-        if (isDoneOrOpen && performClick(node)) {
-            Log.i(TAG, "auto-install clicked completion button: text=$text, id=$viewId")
-            disarmAutoInstall()
-            return true
+        if (isDoneOrOpen) {
+            val windowContent = findTextInNode(rootInActiveWindow)
+            val hasFailed = windowContent.contains("not installed") ||
+                    windowContent.contains("problem parsing") ||
+                    windowContent.contains("failed")
+            if (hasFailed) {
+                Log.e(TAG, "auto-install detected installation failure: $windowContent")
+                mainHandler.post {
+                    Toast.makeText(this, "⚠️ Update failed: App not installed. Check storage/signature.", Toast.LENGTH_LONG).show()
+                }
+                disarmAutoInstall()
+                return false
+            }
+
+            if (performClick(node)) {
+                Log.i(TAG, "auto-install clicked completion button: text=$text, id=$viewId")
+                disarmAutoInstall()
+                // Auto-relaunch Frame into slideshow after install completion
+                mainHandler.postDelayed({
+                    try {
+                        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                        if (launchIntent != null) {
+                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            startActivity(launchIntent)
+                        }
+                    } catch (_: Exception) {}
+                }, 600L)
+                return true
+            }
         }
 
         // 3. Check for Install / Update button
@@ -274,6 +300,21 @@ class PortalAccessibilityService : AccessibilityService() {
             child.recycle()
         }
         return false
+    }
+
+    private fun findTextInNode(node: AccessibilityNodeInfo?): String {
+        if (node == null) return ""
+        val sb = java.lang.StringBuilder()
+        val t = node.text?.toString()?.trim()
+        if (!t.isNullOrEmpty()) sb.append(t).append(" ")
+        val cd = node.contentDescription?.toString()?.trim()
+        if (!cd.isNullOrEmpty()) sb.append(cd).append(" ")
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            sb.append(findTextInNode(child)).append(" ")
+            child.recycle()
+        }
+        return sb.toString().lowercase(java.util.Locale.US)
     }
 
     override fun onInterrupt() = Unit

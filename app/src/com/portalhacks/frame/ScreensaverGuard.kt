@@ -110,6 +110,7 @@ class ScreensaverGuardService : Service() {
     private val cloudPollRunnable = object : Runnable {
         override fun run() {
             CloudRelayPoller.poll(this@ScreensaverGuardService)
+            AutoUpdateWorker.postHeartbeat(this@ScreensaverGuardService)
             handler.postDelayed(this, 12000)
         }
     }

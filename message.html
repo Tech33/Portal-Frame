@@ -284,6 +284,29 @@
     .badge-online { background: rgba(48, 209, 88, 0.2); color: #30D158; }
     .badge-presence { background: rgba(10, 132, 255, 0.2); color: #0A84FF; }
     .badge-vacant { background: rgba(255, 159, 10, 0.2); color: #FF9F0A; }
+    .badge-updating { background: rgba(10, 132, 255, 0.25); color: #0A84FF; border: 1px solid rgba(10, 132, 255, 0.4); animation: pulseGlow 1.6s infinite ease-in-out; }
+    .badge-updated { background: rgba(48, 209, 88, 0.25); color: #30D158; border: 1px solid rgba(48, 209, 88, 0.4); }
+    .badge-failed { background: rgba(255, 69, 58, 0.25); color: #FF453A; border: 1px solid rgba(255, 69, 58, 0.4); }
+    .update-progress-container {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 6px;
+      position: relative;
+    }
+    .update-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #0A84FF, #30D158);
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    @keyframes pulseGlow {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
     .portal-card-actions {
       display: flex;
       gap: 8px;
@@ -985,6 +1008,9 @@
           <p style="font-size: 12px; color: #8E8E93;">Portals active across Dublin, Delhi, and family locations</p>
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="fleet-refresh-btn tap-scale" onclick="triggerFleetUpdate()" style="background: rgba(10,132,255,0.2); color: #0A84FF; font-weight: 700; border: 1px solid rgba(10,132,255,0.4);" title="Trigger atomic, deep-sleep resilient OTA update across all family Portals">
+            🚀 Fleet Update All
+          </button>
           <button class="fleet-refresh-btn tap-scale" onclick="sendEnableAllAlbums()" style="background: rgba(48,209,88,0.15); color: #30D158; font-weight: 600;" title="Remotely enable all albums across all Portals">
             🖼️ Enable All Albums
           </button>
@@ -1000,6 +1026,20 @@
           <button class="fleet-refresh-btn tap-scale" onclick="refreshFleet()">
             ↻ Refresh
           </button>
+        </div>
+      </div>
+
+      <!-- Live Fleet Update Monitor -->
+      <div id="fleet-update-monitor" class="section-card" style="display: none; margin-bottom: 14px; background: rgba(10,132,255,0.06); border: 1px solid rgba(10,132,255,0.3); border-radius: 16px; padding: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0A84FF; animation: pulseGlow 1.5s infinite;"></span>
+            <span style="font-weight: 700; font-size: 13.5px; color: #FFF;">Live Fleet Update Telemetry</span>
+          </div>
+          <button class="tap-scale" onclick="dismissUpdateMonitor()" style="background: none; border: none; color: #8E8E93; font-size: 13px; cursor: pointer;">✕ Hide</button>
+        </div>
+        <div id="fleet-update-list" style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Dynamically populated update progress rows -->
         </div>
       </div>
 
@@ -1276,6 +1316,9 @@
       if (tab === 'fleet') {
         renderFleet();
         refreshFleet();
+        startFleetUpdatePolling();
+      } else {
+        stopFleetUpdatePolling();
       }
     }
 
@@ -1664,7 +1707,29 @@
       const container = document.getElementById('fleet-container');
       if (!container) return;
 
-      container.innerHTML = fleetDevices.map(d => `
+      container.innerHTML = fleetDevices.map(d => {
+        let updateBadge = '';
+        let progressBar = '';
+        if (d.updateStatus) {
+          if (['waking', 'downloading', 'verifying', 'installing'].includes(d.updateStatus)) {
+            updateBadge = `<span class="badge-pill badge-updating">⚡ ${d.updateMessage || d.updateStatus}</span>`;
+            progressBar = `
+              <div class="update-progress-container">
+                <div class="update-progress-bar" style="width: ${d.updateProgress || 10}%"></div>
+              </div>
+            `;
+          } else if (d.updateStatus === 'success' || d.updateStatus === 'up_to_date') {
+            updateBadge = `<span class="badge-pill badge-updated">${d.updateMessage || '✓ Up to date'}</span>`;
+          } else if (d.updateStatus === 'error') {
+            updateBadge = `<span class="badge-pill badge-failed">⚠️ ${d.updateMessage || 'Update failed'}</span>`;
+          }
+        }
+
+        const batteryText = (d.battery !== undefined && d.battery >= 0)
+          ? `<span>🔋 ${d.battery}%${d.charging ? ' ⚡' : ''}</span>`
+          : '';
+
+        return `
         <div class="portal-card">
           <div class="portal-card-top">
             <div class="portal-card-name">
@@ -1690,10 +1755,17 @@
               ${d.host ? '🌐 ' + d.host : '⚪ LAN IP not set'}
             </span>
             <span style="color:#636366;">ID: ${d.shortId || d.id}</span>
+            ${d.updateVersion ? `<span class="badge-pill" style="background:rgba(255,255,255,0.08); color:#E5E5EA;">v${d.updateVersion}</span>` : ''}
+            ${batteryText}
+            ${updateBadge}
           </div>
+          ${progressBar}
           <div class="portal-card-actions">
             <button class="portal-act-btn tap-scale" onclick="sendTargetedNote('${d.name}')">
               💌 Send Note
+            </button>
+            <button class="portal-act-btn tap-scale" style="border-color:#0A84FF; color:#0A84FF; font-weight:600;" onclick="triggerDeviceUpdate('${d.id}')" title="Trigger atomic, resilient OTA update on this Portal">
+              ⚡ Update
             </button>
             <button class="portal-act-btn tap-scale" style="border-color:#1DB954; color:#1DB954; font-weight:600;" onclick="installSpotifyDirectly('${d.id}')" title="1-Tap background download and auto-install of Spotify on Portal">
               ⚡ Spotify
@@ -1712,7 +1784,8 @@
             </button>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     function setPortalIp(deviceId) {
@@ -1908,6 +1981,165 @@
       }
       saveFleet();
       renderFleet();
+    }
+
+    // --- Live Fleet Update Telemetry & Controls ---
+    let fleetUpdatePollTimer = null;
+
+    function dismissUpdateMonitor() {
+      const mon = document.getElementById('fleet-update-monitor');
+      if (mon) mon.style.display = 'none';
+    }
+
+    async function triggerFleetUpdate() {
+      if (!confirm('Broadcast resilient OTA update to all family Portals in Dublin, Delhi, and remote locations?')) return;
+      showToast('🚀 Broadcasting update command to all Portals...', 'info');
+
+      const mon = document.getElementById('fleet-update-monitor');
+      if (mon) mon.style.display = 'block';
+
+      // 1. Direct local HTTP trigger if host reachable
+      for (const d of fleetDevices) {
+        if (d.host) {
+          try {
+            fetch(`http://${d.host}/api/update`, { method: 'POST', mode: 'cors' }).catch(() => {});
+          } catch (_) {}
+        }
+      }
+
+      // 2. Broadcast via AES-encrypted family channel to wake deep sleep devices
+      try {
+        const aesKey = await getAesKey(currentActiveChannel);
+        const hex = await encryptData('#update:all', aesKey);
+        if (hex) {
+          await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(currentActiveChannel)}/${hex}`, {
+            method: 'POST',
+            headers: { 'Content-Length': '0' }
+          });
+        }
+      } catch (e) {
+        console.error('Fleet update broadcast error:', e);
+      }
+
+      startFleetUpdatePolling();
+    }
+
+    async function triggerDeviceUpdate(deviceId) {
+      const d = fleetDevices.find(x => x.id === deviceId || x.shortId === deviceId);
+      const targetName = d ? d.name : 'Portal';
+      const targetId = d ? (d.shortId || d.id) : deviceId;
+
+      if (!confirm(`Trigger resilient OTA update on ${targetName}?`)) return;
+      showToast(`🚀 Sending update command to ${targetName}...`, 'info');
+
+      const mon = document.getElementById('fleet-update-monitor');
+      if (mon) mon.style.display = 'block';
+
+      // 1. Direct local HTTP trigger if available
+      if (d && d.host) {
+        try {
+          fetch(`http://${d.host}/api/update`, { method: 'POST', mode: 'cors' }).catch(() => {});
+        } catch (_) {}
+      }
+
+      // 2. Broadcast targeted update command via AES cloud relay
+      try {
+        const aesKey = await getAesKey(currentActiveChannel);
+        const hex = await encryptData(`#update:${targetId}`, aesKey);
+        if (hex) {
+          await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/cs79vqdm/${encodeURIComponent(currentActiveChannel)}/${hex}`, {
+            method: 'POST',
+            headers: { 'Content-Length': '0' }
+          });
+        }
+      } catch (e) {
+        console.error('Device update broadcast error:', e);
+      }
+
+      startFleetUpdatePolling();
+    }
+
+    function startFleetUpdatePolling() {
+      if (fleetUpdatePollTimer) clearInterval(fleetUpdatePollTimer);
+      pollFleetUpdateTelemetry();
+      fleetUpdatePollTimer = setInterval(pollFleetUpdateTelemetry, 2500);
+    }
+
+    function stopFleetUpdatePolling() {
+      if (fleetUpdatePollTimer) {
+        clearInterval(fleetUpdatePollTimer);
+        fleetUpdatePollTimer = null;
+      }
+    }
+
+    async function pollFleetUpdateTelemetry() {
+      const aesKey = await getAesKey(currentActiveChannel);
+
+      for (const d of fleetDevices) {
+        const keysToTry = [
+          (d.shortId || '').toLowerCase(),
+          (d.id || '').toLowerCase(),
+          (d.city || '').toLowerCase(),
+          (d.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')
+        ].filter(Boolean);
+
+        for (const keyId of keysToTry) {
+          try {
+            const fullKey = `${currentActiveChannel}_status_${keyId}`;
+            const resp = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/cs79vqdm/${encodeURIComponent(fullKey)}`, {
+              cache: 'no-store'
+            });
+            if (resp.ok) {
+              let raw = await resp.text();
+              if (raw && raw !== 'null') {
+                raw = raw.trim().replace(/^"/, '').replace(/"$/, '');
+                const dec = await decryptData(raw, aesKey);
+                if (dec) {
+                  const statusObj = JSON.parse(dec);
+                  if (statusObj && statusObj.state) {
+                    d.updateStatus = statusObj.state;
+                    d.updateProgress = statusObj.progress;
+                    d.updateMessage = statusObj.message;
+                    if (statusObj.version) d.updateVersion = statusObj.version;
+                    if (statusObj.battery !== undefined) d.battery = statusObj.battery;
+                    if (statusObj.charging !== undefined) d.charging = statusObj.charging;
+                    d.lastTelemetryMs = statusObj.timestamp;
+                    break;
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+      renderFleetUpdateMonitor();
+      renderFleet();
+    }
+
+    function renderFleetUpdateMonitor() {
+      const container = document.getElementById('fleet-update-list');
+      if (!container) return;
+      const activeItems = fleetDevices.filter(d => d.updateStatus || d.updateMessage);
+      if (activeItems.length === 0) {
+        container.innerHTML = `<div style="font-size: 12px; color: #8E8E93; padding: 4px 0;">Broadcasting wake signals to all Portals… waiting for first telemetry ping.</div>`;
+        return;
+      }
+      container.innerHTML = activeItems.map(d => {
+        const pct = d.updateProgress || (d.updateStatus === 'success' || d.updateStatus === 'up_to_date' ? 100 : 15);
+        const color = (d.updateStatus === 'error') ? '#FF453A' : (d.updateStatus === 'success' || d.updateStatus === 'up_to_date') ? '#30D158' : '#0A84FF';
+        return `
+          <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 8px 10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 600; margin-bottom: 4px;">
+              <span>🖼️ ${d.name} (${d.shortId || d.id})</span>
+              <span style="color: ${color}; font-size: 12px;">${d.updateMessage || d.updateStatus}</span>
+            </div>
+            <div class="update-progress-container" style="margin-top: 3px;">
+              <div class="update-progress-bar" style="width: ${pct}%; background: ${color};"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
     function saveFleet() {

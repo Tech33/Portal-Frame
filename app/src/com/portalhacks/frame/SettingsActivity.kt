@@ -2458,10 +2458,54 @@ class SettingsActivity : ComponentActivity() {
                 TextButton(
                     onClick = {
                         onDismiss()
-                        val intent = Intent(Intent.ACTION_DELETE).apply {
-                            data = Uri.parse("package:" + context.packageName)
+                        // 1. Release all system locks so Android allows uninstallation
+                        try {
+                            Settings.Secure.putString(context.contentResolver, "screensaver_components", null)
+                            Settings.Secure.putInt(context.contentResolver, "screensaver_enabled", 0)
+                        } catch (_: Exception) {}
+                        try {
+                            Settings.Secure.putString(context.contentResolver, "enabled_accessibility_services", null)
+                            Settings.Secure.putInt(context.contentResolver, "accessibility_enabled", 0)
+                        } catch (_: Exception) {}
+                        // 2. Try to restore the Aloha launcher if disabled
+                        try {
+                            Runtime.getRuntime().exec(arrayOf("pm", "enable", "com.facebook.aloha.launcher"))
+                        } catch (_: Exception) {}
+
+                        // 3. Launch uninstallation intent with multiple fallbacks
+                        var launched = false
+                        try {
+                            val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
+                                data = Uri.parse("package:" + context.packageName)
+                                putExtra(Intent.EXTRA_RETURN_RESULT, true)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                            launched = true
+                        } catch (_: Exception) {}
+
+                        if (!launched) {
+                            try {
+                                val intent = Intent(Intent.ACTION_DELETE).apply {
+                                    data = Uri.parse("package:" + context.packageName)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                                launched = true
+                            } catch (_: Exception) {}
                         }
-                        context.startActivity(intent)
+
+                        if (!launched) {
+                            try {
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:" + context.packageName)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "Please uninstall Frame via Portal Settings -> Apps", Toast.LENGTH_LONG).show()
+                            }
+                        }
                     }
                 ) {
                     Text("Uninstall", color = Color(0xFFFF453A), fontWeight = FontWeight.Bold)
