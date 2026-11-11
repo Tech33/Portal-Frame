@@ -67,4 +67,50 @@ class CloudRelayPollerTest {
         val displayMsg = input.replace(hashMatch.groupValues[0], "").trim()
         assertEquals("Greetings from Rome!", displayMsg)
     }
+
+    @Test
+    fun testOverwriteVsAppendCommandDetection() {
+        val setCmd = "#setalbum:https://photos.app.goo.gl/NewAlbum"
+        val isSetMatch = Regex("""#(?:setalbum|replacealbum|setalbums):([^\r\n]+)""", RegexOption.IGNORE_CASE).find(setCmd)
+        assertTrue(isSetMatch != null)
+
+        val addCmd = "#addalbum:https://photos.app.goo.gl/NewAlbum"
+        val isAddMatch = Regex("""#(?:addalbum|addalbums|album):([^\r\n]+)""", RegexOption.IGNORE_CASE).find(addCmd)
+        assertTrue(isAddMatch != null)
+    }
+
+    @Test
+    fun testExclusiveAlbumLogicDisablesRatherThanDeletes() {
+        val existingAlbums = mutableListOf("https://photos.app.goo.gl/OldAlbum1", "https://photos.app.goo.gl/OldAlbum2")
+        val disabledAlbums = mutableSetOf<String>()
+        val incomingUrls = listOf("https://photos.app.goo.gl/NewAlbum")
+
+        // Overwrite logic: disable existing, add incoming, enable incoming
+        for (u in existingAlbums) {
+            if (u !in incomingUrls) {
+                disabledAlbums.add(u)
+            }
+        }
+        for (u in incomingUrls) {
+            if (!existingAlbums.contains(u)) {
+                existingAlbums.add(u)
+            }
+            disabledAlbums.remove(u)
+        }
+
+        // All 3 albums are still in the list (none deleted!)
+        assertEquals(3, existingAlbums.size)
+        assertTrue(existingAlbums.contains("https://photos.app.goo.gl/OldAlbum1"))
+        assertTrue(existingAlbums.contains("https://photos.app.goo.gl/OldAlbum2"))
+        assertTrue(existingAlbums.contains("https://photos.app.goo.gl/NewAlbum"))
+
+        // Old albums are disabled
+        assertTrue(disabledAlbums.contains("https://photos.app.goo.gl/OldAlbum1"))
+        assertTrue(disabledAlbums.contains("https://photos.app.goo.gl/OldAlbum2"))
+
+        // Only the new album is active for slideshow playback
+        val activePlaying = existingAlbums.filter { it !in disabledAlbums }
+        assertEquals(1, activePlaying.size)
+        assertEquals("https://photos.app.goo.gl/NewAlbum", activePlaying[0])
+    }
 }

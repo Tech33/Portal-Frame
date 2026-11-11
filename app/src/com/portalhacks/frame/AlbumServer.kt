@@ -506,7 +506,9 @@ class AlbumServer(
                 method == "POST" && (rawPath == "/add" || rawPath == "/api/add") -> {
                     val bodyStr = readBodyString(input, contentLength)
                     val url = parseFormUrl(bodyStr)
-                    if (url != null && handleNewAlbumUrl(prefs, url)) {
+                    val mode = parseFormParam(bodyStr, "mode") ?: "overwrite"
+                    val overwrite = mode.equals("overwrite", ignoreCase = true) || mode.equals("replace", ignoreCase = true)
+                    if (url != null && handleNewAlbumUrl(prefs, url, overwrite)) {
                         sendResponse(socket, 200, "Success", "text/html; charset=utf-8", getSuccessHtml().toByteArray(Charsets.UTF_8))
                     } else {
                         sendResponse(socket, 400, "Bad Request", "text/html; charset=utf-8", getErrorHtml().toByteArray(Charsets.UTF_8))
@@ -526,16 +528,25 @@ class AlbumServer(
         }
     }
 
-    private fun handleNewAlbumUrl(prefs: SharedPreferences, url: String): Boolean {
+    private fun handleNewAlbumUrl(prefs: SharedPreferences, url: String, overwrite: Boolean = false): Boolean {
         val listener = onUrlReceived
         if (listener != null) {
             return listener.invoke(url)
         }
         if (PhotoSources.matches(url)) {
-            val added = Albums.add(prefs, url)
-            if (added) {
-                Log.i(TAG, "Album added via local web form: $url")
+            if (overwrite) {
+                Albums.setExclusive(prefs, listOf(url))
+                Log.i(TAG, "Album set exclusive (overwrite) via local web form: $url")
+            } else {
+                Albums.add(prefs, url)
+                Albums.setEnabled(prefs, url, true)
+                Log.i(TAG, "Album added (append) via local web form: $url")
             }
+            context.sendBroadcast(
+                Intent(ConfigReceiver.ACTION_SET_MESSAGE)
+                    .setPackage(context.packageName)
+                    .putExtra("message", if (overwrite) "#setalbum:$url" else "#addalbum:$url")
+            )
             return true
         }
         return false
@@ -1475,6 +1486,16 @@ class AlbumServer(
                   <div class="btn-row">
                     <button type="button" class="btn-secondary" onclick="pasteClipboard()">📋 Paste</button>
                     <button type="button" class="btn-secondary" onclick="clearField()">✕ Clear</button>
+                  </div>
+                  <div style="margin: 14px 0 18px 0; display: flex; flex-direction: column; gap: 8px; text-align: left;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; text-transform: none; color: #FFF; cursor: pointer; margin: 0;">
+                      <input type="radio" name="mode" value="overwrite" checked style="accent-color: #007AFF;">
+                      <span>Overwrite (plays new album, disables previous without deleting)</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; text-transform: none; color: #FFF; cursor: pointer; margin: 0;">
+                      <input type="radio" name="mode" value="append" style="accent-color: #007AFF;">
+                      <span>Append (adds to existing albums)</span>
+                    </label>
                   </div>
                   <button type="submit" class="btn-primary">Add to Frame</button>
                 </form>

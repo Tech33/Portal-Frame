@@ -216,12 +216,14 @@ object CloudRelayPoller {
 
             if (extractedUrls.isNotEmpty()) {
                 if (replace) {
-                    Albums.clear(prefs)
+                    Albums.setExclusive(prefs, extractedUrls)
+                } else {
+                    for (u in extractedUrls) {
+                        Albums.add(prefs, u)
+                        Albums.setEnabled(prefs, u, true)
+                    }
                 }
-                for (u in extractedUrls) {
-                    Albums.add(prefs, u)
-                }
-                Log.i(TAG, "CloudRelayPoller: saved ${extractedUrls.size} album URLs (replace=$replace)")
+                Log.i(TAG, "CloudRelayPoller: saved ${extractedUrls.size} album URLs (exclusive=$replace)")
 
                 // Download and cache photos to disk immediately in the background so they are
                 // ready the instant the user re-opens the Frame app or screensaver activates

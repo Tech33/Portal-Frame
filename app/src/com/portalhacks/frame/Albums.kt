@@ -33,6 +33,36 @@ internal object Albums {
         if (changed) saveDisabled(prefs, off)
     }
 
+    /**
+     * Set the active album(s) exclusively (overwrite mode). Instead of deleting existing
+     * albums and their photo caches from the portal, all existing albums not in [newUrls]
+     * are simply disabled (stopped), and [newUrls] are added and enabled.
+     */
+    @JvmStatic
+    fun setExclusive(prefs: SharedPreferences, newUrls: List<String>) {
+        if (newUrls.isEmpty()) return
+        val existing = list(prefs).toMutableList()
+        val off = disabled(prefs).toMutableSet()
+
+        // Disable any existing album that is not in newUrls
+        for (u in existing) {
+            if (u !in newUrls) {
+                off.add(u)
+            }
+        }
+
+        // Add and enable each new album
+        for (u in newUrls) {
+            if (!existing.contains(u)) {
+                existing.add(u)
+            }
+            off.remove(u)
+        }
+
+        save(prefs, existing)
+        saveDisabled(prefs, off)
+    }
+
     private fun disabled(prefs: SharedPreferences): Set<String> =
         parse(prefs.getString(ConfigReceiver.KEY_ALBUMS_DISABLED, null) ?: "").toSet()
 

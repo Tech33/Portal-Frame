@@ -275,10 +275,12 @@ class SlideshowComposeActivity : ComponentActivity() {
 
             if (extractedUrls.isNotEmpty()) {
                 if (replace) {
-                    Albums.clear(prefs)
-                }
-                for (u in extractedUrls) {
-                    Albums.add(prefs, u)
+                    Albums.setExclusive(prefs, extractedUrls)
+                } else {
+                    for (u in extractedUrls) {
+                        Albums.add(prefs, u)
+                        Albums.setEnabled(prefs, u, true)
+                    }
                 }
                 currentAlbums = Albums.enabled(prefs)
                 val countMsg = if (extractedUrls.size > 1) "${extractedUrls.size} family albums" else "family album"
