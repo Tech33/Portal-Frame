@@ -27,6 +27,14 @@ class ConfigReceiver : BroadcastReceiver() {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
         val action = intent.action
+        if (action == ACTION_ENABLE_ALL_ALBUMS || intent.hasExtra("enable_all_albums") || intent.hasExtra("enable_all")) {
+            Albums.enableAll(prefs)
+            Log.i("PortalFrame", "All albums enabled via broadcast")
+            ctx.sendBroadcast(
+                Intent(ACTION_ENABLE_ALL_ALBUMS).setPackage(ctx.packageName)
+            )
+            return
+        }
         if (action == ACTION_CLEAR_MESSAGE) {
             prefs.edit().remove(KEY_CUSTOM_MESSAGE).apply()
             Log.i("PortalFrame", "Custom message cleared via broadcast")
@@ -257,6 +265,7 @@ class ConfigReceiver : BroadcastReceiver() {
         const val KEY_APPLE_MUSIC_SHORTCUT = "apple_music_shortcut_button"
 
         // Broadcast Intent Actions
+        const val ACTION_ENABLE_ALL_ALBUMS = "com.portalhacks.frame.ENABLE_ALL_ALBUMS"
         const val ACTION_SHOW_DASHBOARD = "com.portalhacks.frame.SHOW_DASHBOARD"
         const val ACTION_SHOW_SLIDESHOW = "com.portalhacks.frame.SHOW_SLIDESHOW"
         const val ACTION_NEXT_PHOTO = "com.portalhacks.frame.NEXT_PHOTO"

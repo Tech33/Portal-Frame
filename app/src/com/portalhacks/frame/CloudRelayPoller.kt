@@ -200,6 +200,28 @@ object CloudRelayPoller {
             return
         }
 
+        // 6.5. Remote Enable All Albums: #enableallalbums, #enableall, #enablealbums
+        if (trimmed.equals("#enableallalbums", ignoreCase = true) ||
+            trimmed.equals("#enableall", ignoreCase = true) ||
+            trimmed.equals("#enablealbums", ignoreCase = true) ||
+            trimmed.contains("#enableallalbums") ||
+            trimmed.contains("#enableall")) {
+            Albums.enableAll(prefs)
+            val count = Albums.enabled(prefs).size
+            Log.i(TAG, "CloudRelayPoller: enabled all $count configured albums")
+            context.sendBroadcast(
+                Intent(ConfigReceiver.ACTION_ENABLE_ALL_ALBUMS)
+                    .setPackage(context.packageName)
+            )
+            context.sendBroadcast(
+                Intent(ConfigReceiver.ACTION_SET_MESSAGE)
+                    .setPackage(context.packageName)
+                    .putExtra("message", trimmed)
+                    .putExtra("from_poller", true)
+            )
+            return
+        }
+
         // 7. Remote Album Sync: #setalbum:<urls>, #addalbum:<urls>, or raw photos URLs
         val albumUrlRegex = Regex("""https?://(?:photos\.app\.goo\.gl/[^\s,"';|]+|photos\.google\.com/[^\s,"';|]+|share\.icloud\.com/photos/[^\s,"';|]+)""")
         val setAlbumMatch = Regex("""#(?:setalbum|replacealbum|setalbums):([^\r\n]+)""", RegexOption.IGNORE_CASE).find(trimmed)
@@ -262,7 +284,8 @@ object CloudRelayPoller {
 
         // 8. Announcement Note & Showcase Tags
         var displayMsg = trimmed
-        val hashMatch = Regex("""#(?:showcase:(?:date:)?|date:|showcase:|location:)?([A-Za-z0-9_.-]+)""").find(trimmed)
+        val hashMatch = Regex("""#(?:showcase:(?:date:)?|date:|showcase:|location:)([A-Za-z0-9_.-]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+            ?: Regex("""#(all|recent_trip|last_7_days|last_30_days|7days|30days)\b""", RegexOption.IGNORE_CASE).find(trimmed)
         if (hashMatch != null) {
             val fullTag = hashMatch.groupValues[0]
             displayMsg = trimmed.replace(fullTag, "").trim()

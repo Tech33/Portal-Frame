@@ -164,8 +164,8 @@ object LocationExtractor {
     fun extractLocation(text: String?): ExtractedLocation? {
         if (text.isNullOrBlank()) return null
 
-        // 1. Explicit tag syntax e.g. #showcase:portugal or #portugal or #location:lisbon
-        val hashMatch = Regex("""#(?:showcase:|location:)?([A-Za-z_-]+)""").find(text)
+        // 1. Explicit tag syntax e.g. #showcase:portugal or #location:lisbon
+        val hashMatch = Regex("""#(?:showcase:|location:)([A-Za-z_-]+)""").find(text)
         if (hashMatch != null) {
             val tag = hashMatch.groupValues[1].replace("_", " ").trim().lowercase(Locale.US)
             if (tag.isNotEmpty() && tag != "all" && tag != "recent" && tag != "trip") {

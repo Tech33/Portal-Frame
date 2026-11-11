@@ -121,6 +121,7 @@ class SlideshowComposeActivity : ComponentActivity() {
                         ?: prefs.getString(ConfigReceiver.KEY_CUSTOM_MESSAGE, "") ?: ""
                     handleIncomingBroadcastMessage(msg)
                 }
+                ConfigReceiver.ACTION_ENABLE_ALL_ALBUMS -> handleEnableAllAlbums()
                 ConfigReceiver.ACTION_CLEAR_MESSAGE -> handleClearBroadcastMessage()
                 ConfigReceiver.ACTION_SLEEP -> sleepScreen(lockHardware = true)
                 Intent.ACTION_SCREEN_OFF -> sleepScreen(lockHardware = false)
@@ -257,6 +258,16 @@ class SlideshowComposeActivity : ComponentActivity() {
             }
         }
 
+        // 0.9 Remote Enable All Albums: #enableallalbums, #enableall, #enablealbums
+        if (trimmed.equals("#enableallalbums", ignoreCase = true) ||
+            trimmed.equals("#enableall", ignoreCase = true) ||
+            trimmed.equals("#enablealbums", ignoreCase = true) ||
+            trimmed.contains("#enableallalbums") ||
+            trimmed.contains("#enableall")) {
+            handleEnableAllAlbums()
+            return
+        }
+
         var displayMsg = trimmed
 
         // 1. Album Sync: #setalbum:<url>, #replacealbum:<url>, #addalbum:<url>, #album:<url>, or raw Google/iCloud Photos URL
@@ -307,10 +318,11 @@ class SlideshowComposeActivity : ComponentActivity() {
         var targetLoc: String? = null
 
         // 2. Check for explicit #showcase: or #date: tag (e.g. #showcase:portugal, #date:2024-06-14, #showcase:2024-09, #showcase:all)
-        val hashMatch = Regex("""#(?:showcase:(?:date:)?|date:|showcase:|location:)?([A-Za-z0-9_.-]+)""").find(trimmed)
+        val hashMatch = Regex("""#(?:showcase:(?:date:)?|date:|showcase:|location:)([A-Za-z0-9_.-]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+            ?: Regex("""#(all|recent_trip|last_7_days|last_30_days|7days|30days)\b""", RegexOption.IGNORE_CASE).find(trimmed)
         if (hashMatch != null) {
             val fullTag = hashMatch.groupValues[0]
-            val tag = hashMatch.groupValues[1].trim()
+            val tag = (if (hashMatch.groupValues[1].isNotEmpty()) hashMatch.groupValues[1] else hashMatch.groupValues[0].removePrefix("#")).trim()
             displayMsg = trimmed.replace(fullTag, "").trim()
             val lowerTag = tag.lowercase(Locale.US).replace("-", "_")
             when {
@@ -385,7 +397,16 @@ class SlideshowComposeActivity : ComponentActivity() {
     private fun handleClearBroadcastMessage() {
         prefs.edit().remove(ConfigReceiver.KEY_CUSTOM_MESSAGE).apply()
         controller.checkCustomMessage()
-        applyShowcase(mode = "all", location = "")
+    }
+
+    private fun handleEnableAllAlbums() {
+        Log.i(TAG, "Re-enabling all configured family albums")
+        Albums.enableAll(prefs)
+        currentAlbums = Albums.enabled(prefs)
+        val count = currentAlbums.size
+        val countMsg = if (count == 1) "1 family album enabled" else "$count family albums enabled"
+        controller.showTemporaryBanner("🖼️ Enabled all $countMsg ✓")
+        fetchAllAndApply(showHint = true, forceReapply = true)
     }
 
     private var isScreenAsleep = false
@@ -591,6 +612,7 @@ class SlideshowComposeActivity : ComponentActivity() {
             addAction(ConfigReceiver.ACTION_MEDIA_PLAY_PAUSE)
             addAction(ConfigReceiver.ACTION_MEDIA_NEXT)
             addAction(ConfigReceiver.ACTION_MEDIA_PREV)
+            addAction(ConfigReceiver.ACTION_ENABLE_ALL_ALBUMS)
             addAction(ConfigReceiver.ACTION_RELOAD_SETTINGS)
         }
         registerReceiver(commandReceiver, cmdFilter)

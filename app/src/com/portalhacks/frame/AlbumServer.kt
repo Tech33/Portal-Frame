@@ -515,6 +515,18 @@ class AlbumServer(
                     }
                 }
 
+                // Re-enable all albums via API
+                (method == "POST" || method == "GET") && (rawPath == "/api/albums/enable_all" || rawPath == "/api/enable_all_albums") -> {
+                    Albums.enableAll(prefs)
+                    context.sendBroadcast(
+                        Intent(ConfigReceiver.ACTION_ENABLE_ALL_ALBUMS)
+                            .setPackage(context.packageName)
+                    )
+                    val enabledCount = Albums.enabled(prefs).size
+                    val json = """{"status":"ok","enabled_albums":$enabledCount}"""
+                    sendResponse(socket, 200, "OK", "application/json", json.toByteArray(Charsets.UTF_8))
+                }
+
                 else -> {
                     sendResponse(socket, 404, "Not Found", "text/plain", "Not Found".toByteArray())
                 }

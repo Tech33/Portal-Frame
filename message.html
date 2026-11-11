@@ -440,6 +440,39 @@
     .btn-clear-frame:hover {
       opacity: 0.8;
     }
+    /* Note Filter Chips */
+    .note-filter-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .note-filter-chip {
+      padding: 9px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.04);
+      color: #A1A1A6;
+      font-size: 12px;
+      font-weight: 500;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .note-filter-chip:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .note-filter-chip.active {
+      background: rgba(10, 132, 255, 0.22);
+      border-color: #0A84FF;
+      color: #FFFFFF;
+      font-weight: 600;
+    }
+    .note-filter-icon {
+      font-size: 14px;
+    }
     /* Section card styles */
     .section-card {
       background: rgba(10, 132, 255, 0.06);
@@ -768,6 +801,31 @@
         </div>
       </div>
 
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+          <label class="field-label" style="margin-bottom: 0;">Frame Photo Filter With Note</label>
+          <span style="font-size: 11px; color: #8E8E93;">Note banner + filter coexist</span>
+        </div>
+        <div class="note-filter-grid">
+          <button id="filter-chip-keep" class="note-filter-chip active tap-scale" onclick="selectNoteFilter('keep')">
+            <span class="note-filter-icon">🔒</span>
+            <span>Keep Current Filter</span>
+          </button>
+          <button id="filter-chip-last_7_days" class="note-filter-chip tap-scale" onclick="selectNoteFilter('last_7_days')">
+            <span class="note-filter-icon">⚡</span>
+            <span>Last 7 Days</span>
+          </button>
+          <button id="filter-chip-last_30_days" class="note-filter-chip tap-scale" onclick="selectNoteFilter('last_30_days')">
+            <span class="note-filter-icon">⏳</span>
+            <span>Last 30 Days</span>
+          </button>
+          <button id="filter-chip-all" class="note-filter-chip tap-scale" onclick="selectNoteFilter('all')">
+            <span class="note-filter-icon">🔄</span>
+            <span>All Photos</span>
+          </button>
+        </div>
+      </div>
+
       <button id="send-msg-btn" class="btn-send tap-scale" onclick="sendGreeting()">
         <span>📢</span> Show Greeting on Frame
       </button>
@@ -907,6 +965,15 @@
         <button id="album-btn" class="btn-send-album tap-scale" onclick="sendAlbum()">
           <span>🖼️</span> Send Album to Frame
         </button>
+
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+          <button id="enable-all-btn" class="pill-btn tap-scale" style="width: 100%; height: 42px; background: rgba(48, 209, 88, 0.14); border-color: rgba(48, 209, 88, 0.3); color: #30D158;" onclick="sendEnableAllAlbums()">
+            <span>🔄</span> Remotely Enable All Albums on Frame
+          </button>
+          <p class="section-desc" style="margin-top: 6px; font-size: 11px;">
+            Accidentally disabled previous albums or want all added albums playing simultaneously? Tap to re-enable everything.
+          </p>
+        </div>
       </div>
     </div>
 
@@ -918,6 +985,9 @@
           <p style="font-size: 12px; color: #8E8E93;">Portals active across Dublin, Delhi, and family locations</p>
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="fleet-refresh-btn tap-scale" onclick="sendEnableAllAlbums()" style="background: rgba(48,209,88,0.15); color: #30D158; font-weight: 600;" title="Remotely enable all albums across all Portals">
+            🖼️ Enable All Albums
+          </button>
           <button class="fleet-refresh-btn tap-scale" onclick="autoFindLocalPortals()" style="background: rgba(48,209,88,0.15); color: #30D158; font-weight: 600;" title="Scan local Wi-Fi for Portals on port 8080">
             🔍 Auto-Find
           </button>
@@ -1210,6 +1280,19 @@
     }
 
     // --- Message Helpers ---
+    let selectedNoteFilter = 'keep';
+
+    function selectNoteFilter(filter) {
+      selectedNoteFilter = filter;
+      ['keep', 'last_7_days', 'last_30_days', 'all'].forEach(f => {
+        const el = document.getElementById('filter-chip-' + f);
+        if (el) {
+          if (f === filter) el.classList.add('active');
+          else el.classList.remove('active');
+        }
+      });
+    }
+
     function setGreeting(text) {
       document.getElementById('msg-input').value = text;
     }
@@ -1317,6 +1400,11 @@
         showToast('Please type a note or choose a greeting above.', 'error');
         return;
       }
+      let payload = text;
+      if (selectedNoteFilter && selectedNoteFilter !== 'keep') {
+        payload = `${text} #showcase:${selectedNoteFilter}`;
+      }
+
       const btn = document.getElementById('send-msg-btn');
       btn.disabled = true;
       btn.innerText = 'Checking Frame state...';
@@ -1330,10 +1418,10 @@
         }
         if (currentHex && currentHex !== 'null') {
           const currentMsg = await decryptData(currentHex, aesKey);
-          if (currentMsg && currentMsg !== '__CLEAR__' && currentMsg !== text) {
+          if (currentMsg && currentMsg !== '__CLEAR__' && currentMsg !== payload && !currentMsg.startsWith('#')) {
             btn.disabled = false;
             btn.innerHTML = '<span>📢</span> Show Greeting on Frame';
-            pendingPayload = text;
+            pendingPayload = payload;
             document.getElementById('conflict-existing-msg').innerText = currentMsg;
             document.getElementById('conflict-modal').style.display = 'flex';
             return;
@@ -1343,7 +1431,7 @@
 
       btn.disabled = false;
       btn.innerHTML = '<span>📢</span> Show Greeting on Frame';
-      await sendPayload(text);
+      await sendPayload(payload);
     }
 
     function dismissConflictModal() {
@@ -1413,6 +1501,25 @@
         : '✓ Album sent! Connected Portals are downloading and showing photos.';
       await sendPayload(tag, msg);
       document.getElementById('album-input').value = '';
+    }
+
+    async function sendEnableAllAlbums() {
+      const btn = document.getElementById('enable-all-btn');
+      if (btn) btn.disabled = true;
+      showToast('Enabling all family albums across Portals...', 'info');
+
+      // 1. Direct LAN dispatch to reachable local Portals
+      try {
+        const localTargets = (fleetDevices || []).filter(d => d.ip && d.ip.length > 5);
+        for (const d of localTargets) {
+          const endpoint = d.ip.includes(':') ? `http://${d.ip}/api/albums/enable_all` : `http://${d.ip}:8080/api/albums/enable_all`;
+          fetch(endpoint, { method: 'POST', mode: 'no-cors' }).catch(() => {});
+        }
+      } catch (_) {}
+
+      // 2. Broadcast via Cloud Relay
+      await sendPayload('#enableallalbums', '✓ All configured family albums re-enabled across all Portals!');
+      if (btn) btn.disabled = false;
     }
 
     async function removeAnnouncement() {

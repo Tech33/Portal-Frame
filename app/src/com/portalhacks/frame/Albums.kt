@@ -63,6 +63,12 @@ internal object Albums {
         saveDisabled(prefs, off)
     }
 
+    /** Enable all configured albums (clears any stopped/disabled state). */
+    @JvmStatic
+    fun enableAll(prefs: SharedPreferences) {
+        prefs.edit().remove(ConfigReceiver.KEY_ALBUMS_DISABLED).apply()
+    }
+
     private fun disabled(prefs: SharedPreferences): Set<String> =
         parse(prefs.getString(ConfigReceiver.KEY_ALBUMS_DISABLED, null) ?: "").toSet()
 

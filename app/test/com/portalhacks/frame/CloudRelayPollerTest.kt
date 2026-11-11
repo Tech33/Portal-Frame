@@ -113,4 +113,51 @@ class CloudRelayPollerTest {
         assertEquals(1, activePlaying.size)
         assertEquals("https://photos.app.goo.gl/NewAlbum", activePlaying[0])
     }
+
+    @Test
+    fun testEnableAllAlbumsCommandDetection() {
+        val cmds = listOf("#enableallalbums", "#enableall", "#enablealbums", "  #enableallalbums  ")
+        val isEnableMatch = { input: String ->
+            val trimmed = input.trim()
+            trimmed.equals("#enableallalbums", ignoreCase = true) ||
+            trimmed.equals("#enableall", ignoreCase = true) ||
+            trimmed.equals("#enablealbums", ignoreCase = true) ||
+            trimmed.contains("#enableallalbums") ||
+            trimmed.contains("#enableall")
+        }
+        for (cmd in cmds) {
+            assertTrue("Expected $cmd to match enable all albums", isEnableMatch(cmd))
+        }
+        assertFalse(isEnableMatch("Happy Diwali"))
+        assertFalse(isEnableMatch("#showcase:last_7_days"))
+    }
+
+    @Test
+    fun testNoteWithShowcaseTagBothFiltersCoexist() {
+        val input = "Happy Diwali #showcase:last_7_days"
+        val trimmed = input.trim()
+
+        val hashMatch = Regex("""#(?:showcase:(?:date:)?|date:|showcase:|location:)([A-Za-z0-9_.-]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+            ?: Regex("""#(all|recent_trip|last_7_days|last_30_days|7days|30days)\b""", RegexOption.IGNORE_CASE).find(trimmed)
+
+        assertTrue(hashMatch != null)
+        val fullTag = hashMatch!!.groupValues[0]
+        val tag = if (hashMatch.groupValues[1].isNotEmpty()) hashMatch.groupValues[1] else fullTag.removePrefix("#")
+        val displayMsg = trimmed.replace(fullTag, "").trim()
+
+        assertEquals("last_7_days", tag)
+        assertEquals("Happy Diwali", displayMsg)
+    }
+
+    @Test
+    fun testArbitraryHashtagDoesNotOverrideShowcaseFilter() {
+        val input = "Happy Diwali #diwali #family"
+        val trimmed = input.trim()
+
+        val hashMatch = Regex("""#(?:showcase:(?:date:)?|date:|showcase:|location:)([A-Za-z0-9_.-]+)""", RegexOption.IGNORE_CASE).find(trimmed)
+            ?: Regex("""#(all|recent_trip|last_7_days|last_30_days|7days|30days)\b""", RegexOption.IGNORE_CASE).find(trimmed)
+
+        // #diwali and #family should NOT match the showcase regex
+        assertTrue(hashMatch == null)
+    }
 }
