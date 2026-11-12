@@ -1,5 +1,6 @@
 package com.portalhacks.frame
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -7,6 +8,7 @@ import android.graphics.Bitmap
 import android.os.Bundle
 import android.net.Uri
 import android.provider.Settings
+import android.util.Log
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import java.net.NetworkInterface
@@ -110,6 +112,8 @@ import kotlin.math.roundToInt
  * the camera scanner / manual entry (those flows are ported in a later milestone).
  */
 class SettingsActivity : ComponentActivity() {
+
+    private val TAG = "SettingsActivity"
 
     private val prefs: SharedPreferences
         get() = getSharedPreferences(ConfigReceiver.PREFS, Context.MODE_PRIVATE)
@@ -857,7 +861,16 @@ class SettingsActivity : ComponentActivity() {
 
         // Card groups balanced for Meta Portal wide landscape screen:
         // Left Column: Live Preview -> Screensaver Status & Protected Mode -> Albums -> Custom Announcement
-        val navStack = remember { mutableStateListOf<SettingsSection>() }
+        val navStack = remember {
+            mutableStateListOf<SettingsSection>().apply {
+                val secStr = (ctx as? ComponentActivity)?.intent?.getStringExtra("section")
+                if (secStr != null) {
+                    try {
+                        add(SettingsSection.valueOf(secStr.uppercase()))
+                    } catch (_: Exception) {}
+                }
+            }
+        }
         val currentSection = navStack.lastOrNull() ?: SettingsSection.ROOT
 
         BackHandler(enabled = navStack.isNotEmpty()) {
@@ -2458,51 +2471,100 @@ class SettingsActivity : ComponentActivity() {
                 TextButton(
                     onClick = {
                         onDismiss()
-                        // 1. Release all system locks so Android allows uninstallation
+                        Log.i(TAG, "Uninstall triggered by user")
+                        // 1. Release screensaver locks
                         try {
                             Settings.Secure.putString(context.contentResolver, "screensaver_components", null)
                             Settings.Secure.putInt(context.contentResolver, "screensaver_enabled", 0)
-                        } catch (_: Exception) {}
+                            Log.i(TAG, "Screensaver unhooked")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed unhooking screensaver: ${e.message}")
+                        }
+
+                        // 2. Try to restore the Aloha launcher via root and shell
                         try {
-                            Settings.Secure.putString(context.contentResolver, "enabled_accessibility_services", null)
-                            Settings.Secure.putInt(context.contentResolver, "accessibility_enabled", 0)
+                            Runtime.getRuntime().exec(arrayOf("su", "-c", "pm enable com.facebook.aloha.launcher"))
                         } catch (_: Exception) {}
-                        // 2. Try to restore the Aloha launcher if disabled
                         try {
                             Runtime.getRuntime().exec(arrayOf("pm", "enable", "com.facebook.aloha.launcher"))
                         } catch (_: Exception) {}
 
-                        // 3. Launch uninstallation intent with multiple fallbacks
-                        var launched = false
+                        // 3. Try root silent uninstall if available
                         try {
-                            val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
-                                data = Uri.parse("package:" + context.packageName)
-                                putExtra(Intent.EXTRA_RETURN_RESULT, true)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "pm uninstall com.portalhacks.frame"))
+                            if (p.waitFor() == 0) {
+                                Log.i(TAG, "Root silent uninstall succeeded")
+                                this@SettingsActivity.finishAffinity()
+                                return@TextButton
                             }
-                            context.startActivity(intent)
-                            launched = true
                         } catch (_: Exception) {}
 
-                        if (!launched) {
-                            try {
-                                val intent = Intent(Intent.ACTION_DELETE).apply {
-                                    data = Uri.parse("package:" + context.packageName)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                                launched = true
-                            } catch (_: Exception) {}
+                        // 4. Arm accessibility service for zero-touch auto-uninstall click
+                        try {
+                            PortalAccessibilityService.armAutoUninstall()
+                            Log.i(TAG, "Armed auto-uninstall accessibility")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Could not arm auto-uninstall: ${e.message}")
                         }
 
+                        // 5. Launch uninstallation intent with multiple fallbacks
+                        val appContext = context.applicationContext
+                        var launched = false
+
+                        // Primary: Explicit PackageInstaller UninstallerActivity with ACTION_UNINSTALL_PACKAGE
+                        try {
+                            val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
+                                component = ComponentName("com.android.packageinstaller", "com.android.packageinstaller.UninstallerActivity")
+                                data = Uri.parse("package:" + appContext.packageName)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            appContext.startActivity(intent)
+                            launched = true
+                            Log.i(TAG, "Launched explicit PackageInstaller UninstallerActivity")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed explicit UninstallerActivity: ${e.message}")
+                        }
+
+                        // Fallback 1: Explicit PackageInstaller with ACTION_DELETE
+                        if (!launched) {
+                            try {
+                                val intent = Intent(Intent.ACTION_DELETE, Uri.parse("package:" + appContext.packageName)).apply {
+                                    component = ComponentName("com.android.packageinstaller", "com.android.packageinstaller.UninstallerActivity")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                appContext.startActivity(intent)
+                                launched = true
+                                Log.i(TAG, "Launched explicit UninstallerActivity with ACTION_DELETE")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed explicit UninstallerActivity ACTION_DELETE: ${e.message}")
+                            }
+                        }
+
+                        // Fallback 2: Canonical ACTION_DELETE
+                        if (!launched) {
+                            try {
+                                val intent = Intent(Intent.ACTION_DELETE, Uri.parse("package:" + appContext.packageName)).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                appContext.startActivity(intent)
+                                launched = true
+                                Log.i(TAG, "Launched ACTION_DELETE uninstaller")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed ACTION_DELETE: ${e.message}")
+                            }
+                        }
+
+                        // Fallback 3: Application Details Settings
                         if (!launched) {
                             try {
                                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = Uri.parse("package:" + context.packageName)
+                                    data = Uri.parse("package:" + appContext.packageName)
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
-                                context.startActivity(intent)
-                            } catch (_: Exception) {
+                                appContext.startActivity(intent)
+                                Log.i(TAG, "Launched ACTION_APPLICATION_DETAILS_SETTINGS")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed ACTION_APPLICATION_DETAILS_SETTINGS: ${e.message}", e)
                                 Toast.makeText(context, "Please uninstall Frame via Portal Settings -> Apps", Toast.LENGTH_LONG).show()
                             }
                         }

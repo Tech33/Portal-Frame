@@ -15,6 +15,7 @@ class PortalAccessibilityService : AccessibilityService() {
         @Volatile var instance: PortalAccessibilityService? = null
         private const val TAG = "PortalAccessibility"
         @Volatile var autoInstallArmed = false
+        @Volatile var autoUninstallArmed = false
         @Volatile var hasClickedInstall = false
         private var armedTimestamp = 0L
         private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -22,8 +23,9 @@ class PortalAccessibilityService : AccessibilityService() {
         private val pollRunnable = object : Runnable {
             var attempts = 0
             override fun run() {
-                if (!autoInstallArmed || attempts++ > 60) {
+                if ((!autoInstallArmed && !autoUninstallArmed) || attempts++ > 60) {
                     disarmAutoInstall()
+                    disarmAutoUninstall()
                     return
                 }
                 instance?.let { s ->
@@ -32,7 +34,7 @@ class PortalAccessibilityService : AccessibilityService() {
                         val pkg = root.packageName?.toString() ?: ""
                         if (isTargetInstallerPackage(pkg)) {
                             if (s.clickInstallButton(root)) {
-                                Log.i(TAG, "polling auto-install performed action on $pkg")
+                                Log.i(TAG, "polling auto-installer performed action on $pkg")
                             }
                         }
                     }
@@ -101,6 +103,21 @@ class PortalAccessibilityService : AccessibilityService() {
             mainHandler.removeCallbacks(pollRunnable)
             Log.i(TAG, "disarmed auto-install")
         }
+
+        fun armAutoUninstall() {
+            autoUninstallArmed = true
+            armedTimestamp = System.currentTimeMillis()
+            mainHandler.removeCallbacks(pollRunnable)
+            pollRunnable.attempts = 0
+            mainHandler.postDelayed(pollRunnable, 300L)
+            Log.i(TAG, "armed auto-uninstall with window polling")
+        }
+
+        fun disarmAutoUninstall() {
+            autoUninstallArmed = false
+            mainHandler.removeCallbacks(pollRunnable)
+            Log.i(TAG, "disarmed auto-uninstall")
+        }
     }
 
     override fun onServiceConnected() {
@@ -135,9 +152,10 @@ class PortalAccessibilityService : AccessibilityService() {
             }
         }
 
-        if (!autoInstallArmed) return
+        if (!autoInstallArmed && !autoUninstallArmed) return
         if (System.currentTimeMillis() - armedTimestamp > 90_000L) {
             disarmAutoInstall()
+            disarmAutoUninstall()
             return
         }
         if (isTargetInstallerPackage(pkg)) {
@@ -151,6 +169,19 @@ class PortalAccessibilityService : AccessibilityService() {
         val text = node.text?.toString()?.trim()?.lowercase() ?: ""
         val desc = node.contentDescription?.toString()?.trim()?.lowercase() ?: ""
         val viewId = node.viewIdResourceName?.lowercase() ?: ""
+
+        // 0. Check for Uninstall confirmation OK button
+        if (autoUninstallArmed) {
+            val isUninstallOk = (text == "ok" || desc == "ok" || viewId.endsWith(":id/button1") || viewId.endsWith(":id/ok_button"))
+            if (isUninstallOk) {
+                Log.i(TAG, "auto-uninstall: found OK button (text='$text', id='$viewId'), clicking...")
+                if (performClick(node)) {
+                    Log.i(TAG, "auto-uninstall clicked confirmation OK on $viewId")
+                    disarmAutoUninstall()
+                    return true
+                }
+            }
+        }
 
         // 1. Check for Confirmation Dialog "Allow" / "OK" button
         val isAllowDialogBtn = (text == "allow" || text == "ok" || text == "turn on" ||
@@ -226,6 +257,19 @@ class PortalAccessibilityService : AccessibilityService() {
         val text = node.text?.toString()?.trim()?.lowercase() ?: ""
         val desc = node.contentDescription?.toString()?.trim()?.lowercase() ?: ""
         val viewId = node.viewIdResourceName?.lowercase() ?: ""
+
+        // 0. Check for Uninstall confirmation OK button
+        if (autoUninstallArmed) {
+            val isUninstallOk = (text == "ok" || desc == "ok" || viewId.endsWith(":id/button1") || viewId.endsWith(":id/ok_button"))
+            if (isUninstallOk) {
+                Log.i(TAG, "auto-uninstall: found OK button (text='$text', id='$viewId'), clicking...")
+                if (performClick(node)) {
+                    Log.i(TAG, "auto-uninstall clicked confirmation OK on $viewId")
+                    disarmAutoUninstall()
+                    return true
+                }
+            }
+        }
 
         // 1. Check for Unknown Sources Toggle ("Allow from this source")
         val isAllowSourceSwitch = (viewId.contains("switch") || text.contains("allow from this source") || desc.contains("allow from this source")) &&
